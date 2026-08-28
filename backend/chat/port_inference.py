@@ -22,7 +22,7 @@ annule proprement.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -77,6 +77,24 @@ class RequeteGeneration(BaseModel):
     conversation_id: str = Field(min_length=1)
 
 
+class OccupationContexte(BaseModel):
+    """Ce que `chat` a besoin de savoir de l'occupation de la fenêtre, côté consommateur.
+
+    Forme minimale — un sous-ensemble de ce que le domaine `inference` mesure : `chat` n'a besoin
+    ici que du taux d'occupation, jamais de la décomposition par poste. `mesurable` faux n'est pas
+    une erreur : c'est l'absence de tokenizer (aucun modèle prêt, moteur occupé), et les champs
+    chiffrés restent alors à `None` — un zéro se lirait comme une fenêtre libre et déciderait à tort
+    de compacter, ou de ne pas le faire.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mesurable: bool
+    contexte_total: int | None = None
+    tokens_mesures: int | None = None
+    tokens_libres: int | None = None
+
+
 class FragmentTexte(BaseModel):
     """Morceau de texte produit par le moteur."""
 
@@ -107,6 +125,26 @@ class MoteurGeneration(Protocol):
 
     def generer(self, requete: RequeteGeneration) -> AsyncIterator[ElementFlux]:
         """Ouvre un flux de génération. L'itérateur rendu est fermé par `chat` à l'annulation."""
+        ...
+
+    async def mesurer_occupation(self, messages: Sequence[MessageInference]) -> OccupationContexte:
+        """Occupation de la fenêtre pour CES messages tels qu'ils partiraient au moteur.
+
+        Sert la décision de compaction : `chat` construit ce qui irait au moteur et demande combien
+        de tokens il pèse, sans lancer de génération. Une mesure absente (`mesurable=False`) ne
+        déclenche rien — c'est la même discipline que partout, une absence ne décide de rien.
+        """
+        ...
+
+    async def resumer(
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+    ) -> str | None:
+        """Résumé cumulatif orienté agent des tours anciens, produit par le modèle chargé.
+
+        `resume_precedent` est le résumé d'une compaction antérieure, à ENGLOBER et non à oublier.
+        Rend `None` si le résumé ne peut pas être produit (aucun modèle prêt, échec moteur) : la
+        compaction est alors abandonnée plutôt que de tronquer sans filet.
+        """
         ...
 
 

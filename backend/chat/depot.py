@@ -31,6 +31,7 @@ from backend.chat.erreurs import MessageIntrouvable
 from backend.chat.modeles import (
     ArbreConversation,
     EtatBranche,
+    InfoCompaction,
     MajConversation,
     MessageChat,
     ParametresEchantillonnage,
@@ -95,6 +96,25 @@ CREATE TABLE IF NOT EXISTS fichiers_conversation (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fichiers_conversation_id ON fichiers_conversation(conversation_id);
+
+-- Balises de compaction de contexte. AJOUT PUREMENT ADDITIF : nouvelle table, aucune ligne d'aucune
+-- autre table n'est touchée. Une ligne = une compaction déclenchée avant la génération d'un message
+-- assistant (`message_id`). Elle ne réduit RIEN dans `messages` : elle décrit ce que le moteur a
+-- relu à la place des tours d'avant `coupe_message_id`. Le fil et l'API rendent toujours l'intégral.
+CREATE TABLE IF NOT EXISTS chat_compactions (
+    id                  TEXT PRIMARY KEY,
+    conversation_id     TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id          TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    coupe_message_id    TEXT NOT NULL,
+    nb_messages_resumes INTEGER NOT NULL,
+    tokens_avant        INTEGER NOT NULL,
+    tokens_apres        INTEGER NOT NULL,
+    contexte_total      INTEGER NOT NULL,
+    resume              TEXT NOT NULL,
+    cree_le             TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_compactions_conversation ON chat_compactions(conversation_id);
 """
 
 # Retrait de l'ancien défaut inventé de `max_tokens`. Il valait 1024 et était figé À LA CRÉATION de
@@ -362,9 +382,89 @@ def ecrire_reglages(conversation_id: str, reglages: ReglagesConversation) -> Reg
     return reglages
 
 
+_SELECT_COMPACTIONS = (
+    "SELECT id, conversation_id, message_id, coupe_message_id, nb_messages_resumes,"
+    " tokens_avant, tokens_apres, contexte_total, resume, cree_le"
+    " FROM chat_compactions WHERE conversation_id = ? ORDER BY cree_le ASC, rowid ASC"
+)
+
+_INSERT_COMPACTION = (
+    "INSERT INTO chat_compactions (id, conversation_id, message_id, coupe_message_id,"
+    " nb_messages_resumes, tokens_avant, tokens_apres, contexte_total, resume, cree_le)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+def lire_compactions(conversation_id: str) -> list[InfoCompaction]:
+    """Toutes les compactions de la conversation, de la plus ancienne à la plus récente."""
+    return fetch_all(InfoCompaction, _SELECT_COMPACTIONS, (conversation_id,))
+
+
+def _attacher_compactions(conversation_id: str, messages: list[MessageChat]) -> list[MessageChat]:
+    """Pose sur chaque message assistant déclencheur la balise de compaction qui lui revient.
+
+    Une seule requête pour toute la conversation : la balise voyage AVEC le message, sans liste
+    parallèle à réordonner côté client. Un rechargement montre ainsi exactement ce que le direct a
+    montré. Les messages sans compaction sont rendus inchangés.
+    """
+    compactions = {info.message_id: info for info in lire_compactions(conversation_id)}
+    if not compactions:
+        return messages
+    return [
+        message.model_copy(update={"compaction": compactions[message.id]})
+        if message.id in compactions
+        else message
+        for message in messages
+    ]
+
+
+def enregistrer_compaction(info: InfoCompaction) -> None:
+    """Persiste une balise de compaction. À appeler APRÈS l'écriture de son message assistant.
+
+    La ligne référence `messages(id)` : le message déclencheur doit exister, sans quoi la clé
+    étrangère refuse l'insertion. C'est voulu — une balise sans son message serait un fantôme.
+    """
+    try:
+        execute(
+            _INSERT_COMPACTION,
+            (
+                info.id,
+                info.conversation_id,
+                info.message_id,
+                info.coupe_message_id,
+                info.nb_messages_resumes,
+                info.tokens_avant,
+                info.tokens_apres,
+                info.contexte_total,
+                info.resume,
+                info.cree_le.isoformat(),
+            ),
+        )
+    except sqlite3.Error as exc:
+        logger.error("Balise de compaction non persistée sur {} : {}", info.conversation_id, exc)
+        raise ErreurPersistance(
+            "Écriture de la balise de compaction impossible.", details={"cause": str(exc)}
+        ) from exc
+
+
+def lire_compaction_active(conversation_id: str, chemin_ids: set[str]) -> InfoCompaction | None:
+    """La compaction la plus récente dont la coupe est sur le chemin affiché, ou `None`.
+
+    Sur une conversation branchée, plusieurs compactions peuvent exister sur des branches distinctes :
+    seule compte celle dont le point de coupe appartient au chemin courant. On prend la plus récente
+    parmi celles-là — c'est le résumé cumulatif le plus à jour de cette branche.
+    """
+    candidates = [
+        info for info in lire_compactions(conversation_id) if info.coupe_message_id in chemin_ids
+    ]
+    return candidates[-1] if candidates else None
+
+
 def lire_messages_complets(conversation_id: str) -> list[MessageChat]:
     """TOUS les messages de la conversation, branches abandonnées comprises, dans l'ordre d'écriture."""
-    return fetch_all(MessageChat, _SELECT_MESSAGES, (conversation_id,))
+    return _attacher_compactions(
+        conversation_id, fetch_all(MessageChat, _SELECT_MESSAGES, (conversation_id,))
+    )
 
 
 def lister_messages(conversation_id: str) -> list[MessageChat]:

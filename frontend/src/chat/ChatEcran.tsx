@@ -105,6 +105,7 @@ function ColonneEchange({ etat, cible, fil, tiroirs, capacites, onOutils }: Colo
           <FilMessages
             messages={fil.messages ?? courante.messages}
             brouillon={fil.brouillon ?? courante.brouillon}
+            compactionEnCours={courante.compactionEnCours}
             vide={<FilVide cible={cible} />}
           />
         </FournisseurAtelier>

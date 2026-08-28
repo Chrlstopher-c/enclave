@@ -22,19 +22,22 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
-from backend.chat import annulation, depot, port_inference
+from backend.chat import annulation, compaction, depot, port_inference
 from backend.chat.annulation import GenerationActive
+from backend.chat.compaction import MessageAncre
 from backend.chat.erreurs import BrancheInvalide
 from backend.chat.modeles import (
     MAX_TOKENS_PLAFOND,
     DemandeEdition,
     DemandeGeneration,
     DemandeRejeu,
+    EvenementCompaction,
     EvenementDebut,
     EvenementErreur,
     EvenementFin,
     EvenementFlux,
     EvenementFragment,
+    InfoCompaction,
     MessageChat,
     ParametresEchantillonnage,
     ReglagesConversation,
@@ -46,12 +49,19 @@ from backend.chat.port_inference import (
     RequeteGeneration,
     StatistiquesGeneration,
 )
-from backend.core import EchoHubError, MoteurIndisponible
+from backend.core import EchoHubError, MoteurIndisponible, get_settings
 
-# Un moteur qui n'émet plus rien pendant ce délai est considéré mort. Ce n'est pas un paramètre de
-# performance : le préremplissage d'un long prompt avec offload CPU peut légitimement prendre des
-# dizaines de secondes, la valeur laisse cette marge tout en bornant l'attente.
-DELAI_INACTIVITE_S = 180.0
+
+def _delai_inactivite_s() -> float:
+    """Délai au-delà duquel un moteur muet est tenu pour mort — configurable, jamais figé.
+
+    Lu à chaque attente plutôt que gelé à l'import : `ECHOHUB_DELAI_INACTIVITE_S` doit pouvoir être
+    relevé sans reconstruire le module. Le préremplissage d'un long prompt sur le 35B (experts
+    déportés en RAM) peut dépasser plusieurs MINUTES avant le premier token, sans réarmer le
+    compteur — 180 s coupait alors une génération qui réfléchissait. Le défaut (900 s) laisse ce
+    travail aboutir, tout en finissant par voir un vrai deadlock.
+    """
+    return get_settings().delai_inactivite_generation_s
 
 # Certains moteurs émettent un fragment par morceau de token (caractère UTF-8 multi-octets, espace
 # de tête). Cette marge borne la boucle de diffusion sans couper une génération légitime.
@@ -74,6 +84,14 @@ class PreparationGeneration:
     generation: GenerationActive
     parent_id: str | None = None
     message_utilisateur_id: str | None = None
+    # Matériau de compaction, figé avec le reste : le socle d'outils (`entete`) et l'historique
+    # porteur d'identités (`ancres`), pour que la décision de compaction — asynchrone, prise à
+    # l'ouverture du flux — sache où couper en termes de messages réels de la base.
+    entete: str = ""
+    ancres: list[MessageAncre] = field(default_factory=list)
+    # Balise produite ce tour, à persister APRÈS l'écriture du message assistant. `None` = aucune
+    # compaction ce tour.
+    compaction: InfoCompaction | None = None
 
 
 @dataclass(slots=True)
@@ -112,7 +130,7 @@ def preparer(conversation_id: str, demande: DemandeGeneration) -> PreparationGen
         _lier_fichiers(conversation_id, demande.fichier_ids, message_utilisateur.id)
         if modele_id is not None and modele_id != conversation.modele_id:
             depot.definir_modele_conversation(conversation_id, modele_id)
-        messages = _construire_contexte(conversation_id, reglages, message_utilisateur.id)
+        contexte = _construire_contexte(conversation_id, reglages, message_utilisateur.id)
     except EchoHubError:
         annulation.liberer(generation)
         raise
@@ -122,7 +140,7 @@ def preparer(conversation_id: str, demande: DemandeGeneration) -> PreparationGen
         message_assistant=message_assistant,
         modele_id=modele_id,
         parametres=demande.parametres or reglages.parametres,
-        messages=messages,
+        contexte=contexte,
         generation=generation,
         ancre=message_utilisateur.id,
         message_utilisateur_id=message_utilisateur.id,
@@ -155,7 +173,7 @@ def _preparer_branche(
     generation = annulation.reserver(conversation_id, message_assistant)
     try:
         ancre, message_utilisateur_id = _ancrer_branche(cible, contenu)
-        messages = _construire_contexte(conversation_id, reglages, ancre)
+        contexte = _construire_contexte(conversation_id, reglages, ancre)
         # Écrit APRÈS la construction du contexte : une branche refusée ne doit pas déplacer la
         # vue vers un point de l'arbre où rien ne sera généré. Tant que la nouvelle réponse n'est
         # pas persistée, la vue résolue redescend sur la variante existante (cf. `resoudre_feuille`).
@@ -168,7 +186,7 @@ def _preparer_branche(
         message_assistant=message_assistant,
         modele_id=modele_id,
         parametres=demande.parametres or reglages.parametres,
-        messages=messages,
+        contexte=contexte,
         generation=generation,
         ancre=ancre,
         message_utilisateur_id=message_utilisateur_id,
@@ -242,20 +260,30 @@ def _modele_charge() -> str | None:
         return None
 
 
+@dataclass(slots=True)
+class _ContexteConstruit:
+    """Ce que l'assemblage du contexte produit : le flat envoyé au moteur, et de quoi le compacter."""
+
+    entete: str
+    ancres: list[MessageAncre]
+    messages: list[MessageInference]
+
+
 def _preparation(
     *,
     conversation_id: str,
     message_assistant: str,
     modele_id: str | None,
     parametres: ParametresEchantillonnage,
-    messages: list[MessageInference],
+    contexte: _ContexteConstruit,
     generation: GenerationActive,
     ancre: str | None,
     message_utilisateur_id: str | None,
 ) -> PreparationGeneration:
     """Assemble la préparation. Un seul endroit construit la requête envoyée au moteur."""
     requete = RequeteGeneration(
-        messages=messages, parametres=parametres, modele_id=modele_id, conversation_id=conversation_id
+        messages=contexte.messages, parametres=parametres, modele_id=modele_id,
+        conversation_id=conversation_id,
     )
     return PreparationGeneration(
         conversation_id=conversation_id,
@@ -265,6 +293,8 @@ def _preparation(
         generation=generation,
         parent_id=ancre,
         message_utilisateur_id=message_utilisateur_id,
+        entete=contexte.entete,
+        ancres=contexte.ancres,
     )
 
 
@@ -277,48 +307,59 @@ def _construire_contexte(
     conversation_id: str,
     reglages: ReglagesConversation,
     ancre: str | None,
-) -> list[MessageInference]:
+) -> _ContexteConstruit:
     """Assemble prompt système + chemin jusqu'à l'ancre, en messages, jamais en tokens estimés.
 
     L'historique est le CHEMIN de la branche visée, pas tous les messages de la conversation : une
     variante abandonnée ne doit plus peser sur ce que le modèle lit.
+
+    Rend aussi le socle (`entete`) et les `ancres` — chaque message d'historique avec son identité
+    réelle en base —, matériau que la compaction consomme pour couper à un point qui survit au
+    rechargement. La requête moteur, elle, reste le socle suivi des messages, exactement comme avant.
     """
     historique = _historique_branche(conversation_id, reglages, ancre)
-    messages: list[MessageInference] = []
-    # Socle du harnais AVANT le prompt de la conversation : il énonce les outils réellement
-    # disponibles. Sans lui, les modèles chargés ici annoncent savoir chercher sur le web puis
-    # fabriquent des résultats — constaté le 2026-08-14. Le prompt de l'utilisateur s'ajoute
-    # ensuite et ne peut pas le supprimer ; il pourrait le contredire, et c'est son droit.
-    #
-    # Import local : `chat` reste chargeable sans le domaine `outils`, comme il l'est sans
-    # `inference`. Un harnais absent doit dégrader le prompt, pas empêcher la conversation.
-    try:
-        from backend.outils import prompt_systeme
-
-        entete = prompt_systeme(reglages.prompt_systeme, _modele_charge() or "",
-                                reglages.outils_actifs)
-    except Exception as exc:  # noqa: BLE001 — le socle est un plus, jamais une condition
-        logger.warning("Socle d'outils indisponible ({}) : prompt de conversation seul.", exc)
-        entete = reglages.prompt_systeme
-    if entete.strip():
-        messages.append(MessageInference(role="system", contenu=entete))
+    entete = _socle_outils(reglages)
     # Un message vide fait échouer la tokenisation de plusieurs gabarits de chat ; un message
     # `system` en historique doublonnerait le prompt système, qui est un réglage et non un tour.
     pieces_par_message = _pieces_du_contexte(historique)
-    messages.extend(
-        MessageInference(
-            role=message.role,
-            contenu=message.contenu,
-            pieces=pieces_par_message.get(message.id, []),
+    ancres = [
+        MessageAncre(
+            id=message.id,
+            message=MessageInference(
+                role=message.role,
+                contenu=message.contenu,
+                pieces=pieces_par_message.get(message.id, []),
+            ),
         )
         for message in historique
         if message.role != "system" and message.contenu.strip()
-    )
+    ]
+    messages: list[MessageInference] = []
+    if entete.strip():
+        messages.append(MessageInference(role="system", contenu=entete))
+    messages.extend(ancre.message for ancre in ancres)
     if not messages:
         # Le port exige au moins un message : une erreur métier lisible vaut mieux qu'une
         # ValidationError remontée en 500 depuis la couche HTTP.
         raise BrancheInvalide("Aucun contenu exploitable en amont de ce point.")
-    return messages
+    return _ContexteConstruit(entete=entete, ancres=ancres, messages=messages)
+
+
+def _socle_outils(reglages: ReglagesConversation) -> str:
+    """Socle du harnais + prompt de conversation, ou le seul prompt si le harnais est indisponible.
+
+    Le socle énonce les outils réellement disponibles. Sans lui, les modèles chargés ici annoncent
+    savoir chercher sur le web puis fabriquent des résultats — constaté le 2026-08-14. Import local :
+    `chat` reste chargeable sans `outils`, comme sans `inference` ; un harnais absent dégrade le
+    prompt, il n'empêche pas la conversation.
+    """
+    try:
+        from backend.outils import prompt_systeme
+
+        return prompt_systeme(reglages.prompt_systeme, _modele_charge() or "", reglages.outils_actifs)
+    except Exception as exc:  # noqa: BLE001 — le socle est un plus, jamais une condition
+        logger.warning("Socle d'outils indisponible ({}) : prompt de conversation seul.", exc)
+        return reglages.prompt_systeme
 
 
 def _historique_branche(
@@ -382,6 +423,7 @@ async def _produire(
     """
     erreur: EvenementErreur | None = None
     try:
+        await _compacter_si_besoin(preparation, file)
         async for texte in _fragments(preparation, etat):
             await file.put(EvenementFragment(texte=texte))
     except EchoHubError as exc:
@@ -393,12 +435,62 @@ async def _produire(
     finally:
         annulation.liberer(preparation.generation)
         # La persistance a lieu ICI, dans la tâche, et non dans le flux : c'est ce qui garantit
-        # qu'une réponse produite sans auditeur est tout de même écrite.
+        # qu'une réponse produite sans auditeur est tout de même écrite. La balise de compaction
+        # suit le message assistant qu'elle précède : elle référence son identité en base, donc elle
+        # ne s'écrit qu'APRÈS lui.
         erreur = _persister(preparation, etat) or erreur
+        _persister_compaction(preparation, etat)
         if erreur is not None:
             await file.put(erreur)
         await file.put(_evenement_fin(preparation, etat))
         await file.put(None)
+
+
+async def _compacter_si_besoin(
+    preparation: PreparationGeneration, file: asyncio.Queue[EvenementFlux | None]
+) -> None:
+    """Compacte le contexte AVANT la génération si la fenêtre approche de la saturation.
+
+    Étape non destructive : elle ne touche ni la base ni ce que voit l'utilisateur, elle remplace
+    seulement, dans `requete.messages`, les tours anciens par un résumé. En cas d'impossibilité
+    (mesure absente, moteur occupé, résumé en échec), la requête part inchangée — jamais tronquée en
+    silence. La balise éventuelle est émise en direct et retenue pour être persistée après le message.
+    """
+    try:
+        moteur = port_inference.obtenir_moteur()
+        chemin_ids = {ancre.id for ancre in preparation.ancres}
+        active = depot.lire_compaction_active(preparation.conversation_id, chemin_ids)
+        resultat = await compaction.preparer_compaction(
+            moteur,
+            preparation.entete,
+            preparation.ancres,
+            active,
+            conversation_id=preparation.conversation_id,
+            message_id=preparation.message_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — la compaction est un plus, jamais une condition de génération
+        logger.warning("Compaction non tentée sur {} ({}) : contexte inchangé.",
+                       preparation.conversation_id, exc)
+        return
+    preparation.requete = preparation.requete.model_copy(update={"messages": resultat.messages})
+    if resultat.info is not None:
+        preparation.compaction = resultat.info
+        await file.put(EvenementCompaction(compaction=resultat.info))
+
+
+def _persister_compaction(preparation: PreparationGeneration, etat: _EtatFlux) -> None:
+    """Écrit la balise de compaction, une fois son message assistant en base.
+
+    Sans texte, le message assistant n'a pas été écrit (`_persister`) et la clé étrangère refuserait
+    la balise : on la garde alors non persistée plutôt que de lever. Le direct l'a déjà montrée ; le
+    cas — compaction déclenchée puis génération muette — est rare et sans conséquence.
+    """
+    if preparation.compaction is None or not etat.texte:
+        return
+    try:
+        depot.enregistrer_compaction(preparation.compaction)
+    except EchoHubError as exc:
+        logger.error("Balise de compaction non persistée sur {} : {}", preparation.conversation_id, exc)
 
 
 async def diffuser(preparation: PreparationGeneration) -> AsyncIterator[EvenementFlux]:
@@ -485,14 +577,15 @@ async def _fragments(preparation: PreparationGeneration, etat: _EtatFlux) -> Asy
 
 async def _element_suivant(iterateur: AsyncIterator[object], conversation_id: str) -> object | None:
     """Élément suivant, ou `None` en fin de flux. Une inactivité prolongée devient une erreur claire."""
+    delai = _delai_inactivite_s()
     try:
-        return await asyncio.wait_for(iterateur.__anext__(), timeout=DELAI_INACTIVITE_S)
+        return await asyncio.wait_for(iterateur.__anext__(), timeout=delai)
     except StopAsyncIteration:
         return None
     except asyncio.TimeoutError as exc:
-        logger.error("Moteur silencieux depuis {} s sur {}", DELAI_INACTIVITE_S, conversation_id)
+        logger.error("Moteur silencieux depuis {} s sur {}", delai, conversation_id)
         raise MoteurIndisponible(
-            f"Le moteur n'a rien émis depuis {DELAI_INACTIVITE_S:.0f} s.",
+            f"Le moteur n'a rien émis depuis {delai:.0f} s.",
             remediation="Vérifier l'état du moteur dans l'écran Système, puis recharger le modèle.",
         ) from exc
 

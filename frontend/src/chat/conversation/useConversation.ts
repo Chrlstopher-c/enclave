@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { messageErreur } from '../api/client';
 import type {
   ConversationDetaillee,
+  InfoCompaction,
   MajReglages,
   MessageChat,
   ReglagesConversation,
@@ -26,6 +27,8 @@ export interface EtatConversation {
   erreur: string | null;
   /** Débit mesuré de la dernière réponse complète — une mesure, pas une prévision. */
   debitObserve: number | null;
+  /** Balise de compaction du tour en cours, à rendre au-dessus du brouillon ; `null` sinon. */
+  compactionEnCours: InfoCompaction | null;
   envoyer: (contenu: string, fichierIds?: string[]) => Promise<void>;
   annuler: () => Promise<void>;
   enregistrerReglages: (patch: MajReglages) => Promise<void>;
@@ -65,6 +68,8 @@ function messageLocal(conversationId: string, contenu: string): MessageChat {
     // optimiste affiché avant la réponse ne peut que l'ignorer : `null` dit « pas encore rattaché »,
     // et la version persistée qui revient porte le vrai parent.
     parent_id: null,
+    // Un message optimiste ne déclenche aucune compaction : la balise vient du backend, jamais d'ici.
+    compaction: null,
   };
 }
 
@@ -163,6 +168,7 @@ export function useConversation(conversationId: string | null): EtatConversation
     genere: generation.genere,
     erreur: generation.erreur ?? socle.erreur,
     debitObserve: dernierDebit(socle.messages),
+    compactionEnCours: generation.compactionEnCours,
     envoyer,
     annuler: generation.annuler,
     enregistrerReglages,

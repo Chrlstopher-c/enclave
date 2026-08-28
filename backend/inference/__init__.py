@@ -359,6 +359,24 @@ class MoteurChat:
         """Ouvre le flux. Rend l'itérateur SANS être une coroutine, comme l'exige le port."""
         return self._flux(requete)
 
+    async def mesurer_occupation(self, messages: object) -> Any:
+        """Occupation de la fenêtre pour CES messages, tels qu'ils partiraient au moteur.
+
+        Rend l'`OccupationContexte` du domaine inference ; `chat.adaptation_inference` le normalise
+        vers sa propre forme. Les définitions d'outils ne sont PAS comptées ici, comme partout où ce
+        décompte sert (reprise, panneau de contexte) : c'est un léger sous-compte, donc un
+        déclenchement un peu tardif, jamais un dépassement caché.
+        """
+        return await superviseur.compter_contexte("", _messages_depuis(messages))
+
+    async def resumer(
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+    ) -> str | None:
+        """Résumé cumulatif orienté agent, produit par le modèle chargé — ou `None` s'il échoue."""
+        from backend.inference.resume_compaction import produire_resume
+
+        return await produire_resume(a_resumer, resume_precedent, langue, max_tokens)
+
     async def _flux(self, requete: object) -> AsyncIterator[dict[str, Any]]:
         """Assemble le tour complet : contexte d'exécution, boucle d'outils, mesure du débit."""
         from backend.outils import format_moteur

@@ -69,5 +69,6 @@ export function messageOptimiste(conversationId: string, contenu: string): Messa
     modele_id: null,
     interrompu: false,
     parent_id: null,
+    compaction: null,
   };
 }

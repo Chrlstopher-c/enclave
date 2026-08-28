@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { messageErreur } from '../api/client';
-import type { EvenementFlux } from '../api/contrats';
+import type { EvenementFlux, InfoCompaction } from '../api/contrats';
 import { annulerGeneration } from '../api/conversations-api';
 import { ouvrirFluxGeneration, type RappelsFlux } from '../api/flux-generation';
 import { journal } from '../api/journal';
@@ -41,6 +41,8 @@ export interface EtatGeneration {
   brouillon: string | null;
   genere: boolean;
   erreur: string | null;
+  /** Balise de compaction émise pour la réponse en cours ; `null` tant qu'aucune n'a eu lieu. */
+  compactionEnCours: InfoCompaction | null;
   envoyer: (contenu: string, fichierIds?: string[]) => Promise<void>;
   annuler: () => Promise<void>;
 }
@@ -51,6 +53,7 @@ interface FluxCourant {
   readonly brouillon: string | null;
   readonly actif: boolean;
   readonly erreur: string | null;
+  readonly compaction: InfoCompaction | null;
 }
 
 /** Flux réellement ouvert : son propriétaire et sa poignée d'annulation, jamais l'un sans l'autre. */
@@ -71,8 +74,14 @@ function avecErreur(message: string): Transformation {
   return (courant): FluxCourant => ({ ...courant, erreur: message });
 }
 
+function avecCompaction(compaction: InfoCompaction): Transformation {
+  return (courant): FluxCourant => ({ ...courant, compaction });
+}
+
 function termine(courant: FluxCourant): FluxCourant {
-  return { ...courant, brouillon: null, actif: false };
+  // La balise du direct disparaît à la clôture : la version persistée revient portée par le message
+  // relu (`message.compaction`), au même endroit. Deux balises pour un seul événement dérouteraient.
+  return { ...courant, brouillon: null, actif: false, compaction: null };
 }
 
 /**
@@ -96,6 +105,10 @@ async function couperFlux(id: string, controle: AbortController): Promise<void> 
 function appliquer(majFlux: MajFlux, id: string, evenement: EvenementFlux): void {
   if (evenement.type === 'fragment') {
     majFlux(id, avecFragment(evenement.texte));
+    return;
+  }
+  if (evenement.type === 'compaction') {
+    majFlux(id, avecCompaction(evenement.compaction));
     return;
   }
   if (evenement.type === 'erreur') {
@@ -158,7 +171,7 @@ function useEnvoi(
       const id = conversationId;
       const controle = new AbortController();
       enVol.current = { proprietaire: id, controle };
-      setFlux({ proprietaire: id, brouillon: '', actif: true, erreur: null });
+      setFlux({ proprietaire: id, brouillon: '', actif: true, erreur: null, compaction: null });
       const rappels: RappelsFlux = { onEvenement: (evenement): void => appliquer(majFlux, id, evenement) };
       try {
         await ouvrirFluxGeneration(id, { contenu, fichier_ids: fichierIds }, rappels, controle.signal);
@@ -230,6 +243,7 @@ export function useGeneration(
     brouillon: affiche?.brouillon ?? null,
     genere: affiche?.actif ?? false,
     erreur: affiche?.erreur ?? null,
+    compactionEnCours: affiche?.compaction ?? null,
     envoyer,
     annuler,
   };

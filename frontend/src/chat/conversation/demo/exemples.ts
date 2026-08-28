@@ -22,6 +22,7 @@ function message(partiel: SocleMessage): MessageChat {
     modele_id: null,
     interrompu: false,
     parent_id: null,
+    compaction: null,
     ...partiel,
   };
 }

@@ -246,6 +246,7 @@ function EchangeDemo({ donnees, tiroirs, capacites, onOutils }: EchangeDemoProps
         <FilMessages
           messages={donnees.messages}
           brouillon={donnees.brouillon}
+          compactionEnCours={null}
           vide={<p className="text-sm text-text-2">Scène vide.</p>}
         />
       </FournisseurAtelier>

@@ -256,6 +256,27 @@ export interface ReglagesConversation {
   historique_max_messages: number | null;
 }
 
+/**
+ * Balise d'une compaction de contexte. CONTRAT STABLE, décodé à l'identique par le web et par le
+ * mobile (`echo-centre` / `EchoHubNoyau`) : les noms de champs sont figés. La compaction ne touche
+ * jamais l'historique — elle décrit ce que le MOTEUR relit à la place des tours anciens. La balise
+ * s'affiche dans le fil JUSTE AVANT le message assistant `message_id`.
+ */
+export interface InfoCompaction {
+  id: string;
+  conversation_id: string;
+  /** Message assistant au-dessus duquel la balise se rend. */
+  message_id: string;
+  /** Dernier message d'historique replié dans le résumé ; tout ce qui suit reste envoyé intact. */
+  coupe_message_id: string;
+  nb_messages_resumes: number;
+  tokens_avant: number;
+  tokens_apres: number;
+  contexte_total: number;
+  resume: string;
+  cree_le: string;
+}
+
 export interface MessageChat {
   id: string;
   conversation_id: string;
@@ -272,6 +293,11 @@ export interface MessageChat {
    * qui permet d'éditer sans détruire ce qui s'est réellement passé.
    */
   parent_id: string | null;
+  /**
+   * Balise de compaction, présente uniquement sur le message assistant dont la génération l'a
+   * déclenchée. `null` partout ailleurs. Le fil la rend au-dessus de ce message.
+   */
+  compaction: InfoCompaction | null;
 }
 
 export interface ResumeConversation {
@@ -404,4 +430,19 @@ export interface EvenementErreur {
   remediation: string;
 }
 
-export type EvenementFlux = EvenementDebut | EvenementFragment | EvenementFin | EvenementErreur;
+/**
+ * Compaction déclenchée AVANT la génération de la réponse en cours. `compaction.message_id` est le
+ * message assistant à venir (celui d'`EvenementDebut`) : la balise se pose au-dessus de lui, en
+ * direct comme au rechargement. Décodé à l'identique par le mobile.
+ */
+export interface EvenementCompaction {
+  type: 'compaction';
+  compaction: InfoCompaction;
+}
+
+export type EvenementFlux =
+  | EvenementDebut
+  | EvenementFragment
+  | EvenementCompaction
+  | EvenementFin
+  | EvenementErreur;

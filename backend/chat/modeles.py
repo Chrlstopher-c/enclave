@@ -87,6 +87,35 @@ class ReglagesConversation(BaseModel):
     outils_actifs: list[str] | None = None
 
 
+class InfoCompaction(BaseModel):
+    """Balise d'une compaction de contexte, telle qu'elle s'affiche dans le fil et voyage au mobile.
+
+    CONTRAT STABLE consommé par le web ET par `echo-centre`/`EchoHubNoyau` : les noms de champs ne
+    changent pas sans versionner. La compaction ne touche JAMAIS l'historique en base — elle décrit
+    ce que le MOTEUR relit à la place des tours anciens. `resume` est le résumé cumulatif orienté
+    agent (objectif, état, fichiers, décisions, reste à faire) ; `nb_messages_resumes` compte les
+    messages du fil que ce résumé remplace côté moteur ; `tokens_avant`/`tokens_apres` chiffrent
+    l'occupation de la fenêtre juste avant et juste après la compaction, `contexte_total` la fenêtre
+    servie. La balise s'affiche dans le fil JUSTE AVANT le message assistant `message_id`.
+    """
+
+    id: str
+    conversation_id: str
+    # Message assistant dont la génération a déclenché cette compaction : la balise se rend
+    # immédiatement au-dessus de lui dans le fil.
+    message_id: str
+    # Dernier message d'historique (identité réelle en base) replié dans le résumé. Tout ce qui suit
+    # reste envoyé mot pour mot au moteur ; tout ce qui précède, y compris un résumé antérieur, est
+    # remplacé par `resume`.
+    coupe_message_id: str
+    nb_messages_resumes: int = Field(ge=0)
+    tokens_avant: int = Field(ge=0)
+    tokens_apres: int = Field(ge=0)
+    contexte_total: int = Field(gt=0)
+    resume: str
+    cree_le: datetime
+
+
 class MessageChat(BaseModel):
     """Message persisté, enrichi des métadonnées propres au domaine chat.
 
@@ -95,6 +124,10 @@ class MessageChat(BaseModel):
 
     `parent_id` porte l'arbre : `None` désigne une racine de conversation. Deux messages de même
     parent sont deux variantes du même tour — un rejeu, une édition — et aucune ne remplace l'autre.
+
+    `compaction` n'est peuplé que sur le message assistant dont la génération a déclenché une
+    compaction : il porte alors la balise à rendre au-dessus de lui. C'est ainsi que le fil rechargé
+    montre exactement ce que le direct a montré, sans liste parallèle à réordonner.
     """
 
     id: str
@@ -107,6 +140,7 @@ class MessageChat(BaseModel):
     modele_id: str | None = None
     interrompu: bool = False
     parent_id: str | None = None
+    compaction: InfoCompaction | None = None
 
 
 class ResumeConversation(BaseModel):
@@ -290,7 +324,22 @@ class EvenementErreur(BaseModel):
     remediation: str = ""
 
 
-EvenementFlux = EvenementDebut | EvenementFragment | EvenementFin | EvenementErreur
+class EvenementCompaction(BaseModel):
+    """Émis quand une compaction se déclenche AVANT la génération de la réponse en cours.
+
+    CONTRAT STABLE, décodé à l'identique par le web et par le mobile (`echo-centre`) : la charge
+    porte tout ce que la balise affiche, sans second aller-retour. `message_id` est le message
+    assistant à venir — celui annoncé par `EvenementDebut` — au-dessus duquel la balise se pose.
+    Le fil rechargé retrouve la même balise via `MessageChat.compaction`, aux mêmes valeurs.
+    """
+
+    type: Literal["compaction"] = "compaction"
+    compaction: InfoCompaction
+
+
+EvenementFlux = (
+    EvenementDebut | EvenementFragment | EvenementCompaction | EvenementFin | EvenementErreur
+)
 
 
 # Champs dont `null` est une valeur et non une absence : les remettre à zéro doit rester possible.

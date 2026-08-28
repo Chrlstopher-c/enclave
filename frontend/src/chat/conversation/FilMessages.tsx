@@ -12,7 +12,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { cn, fadeUp } from '../../shared/design';
-import type { MessageChat } from '../api/contrats';
+import type { InfoCompaction, MessageChat } from '../api/contrats';
+import { BaliseCompaction } from './BaliseCompaction';
 import { Message, MessageEnCours } from './Message';
 
 /* Marge sous laquelle on considère l'utilisateur « au bas du fil ». */
@@ -49,6 +50,11 @@ function PastilleReprise({ visible, onReprendre }: { visible: boolean; onReprend
 export interface FilMessagesProps {
   messages: MessageChat[];
   brouillon: string | null;
+  /**
+   * Balise émise en DIRECT pour la réponse en cours, avant qu'elle ne soit persistée : elle se rend
+   * au-dessus du brouillon. Au rechargement, la même balise revient portée par `message.compaction`.
+   */
+  compactionEnCours: InfoCompaction | null;
   vide: ReactElement;
 }
 
@@ -94,7 +100,12 @@ function useSuiviDefilement(messages: MessageChat[], brouillon: string | null): 
   return { conteneur, decroche, surDefilement, reprendre };
 }
 
-export function FilMessages({ messages, brouillon, vide }: FilMessagesProps): ReactElement {
+export function FilMessages({
+  messages,
+  brouillon,
+  compactionEnCours,
+  vide,
+}: FilMessagesProps): ReactElement {
   const { conteneur, decroche, surDefilement, reprendre } = useSuiviDefilement(messages, brouillon);
   const aucunContenu = messages.length === 0 && brouillon === null;
   return (
@@ -111,8 +122,14 @@ export function FilMessages({ messages, brouillon, vide }: FilMessagesProps): Re
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-6">
             {messages.map((message) => (
-              <Message key={message.id} message={message} />
+              <div key={message.id} className="flex flex-col gap-6">
+                {/* `!= null` et non `!== null` : un message servi par un backend antérieur à la
+                    compaction n'a pas du tout ce champ — il vaut `undefined`, pas `null`. */}
+                {message.compaction != null && <BaliseCompaction compaction={message.compaction} />}
+                <Message message={message} />
+              </div>
             ))}
+            {compactionEnCours != null && <BaliseCompaction compaction={compactionEnCours} />}
             {brouillon !== null && <MessageEnCours texte={brouillon} />}
           </div>
         )}

@@ -14,7 +14,7 @@ brutes ou des dictionnaires est normalisé ici, parce que c'est une conversion s
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from importlib import import_module
 from types import ModuleType
 
@@ -24,7 +24,9 @@ from backend.chat.erreurs import ContratInferenceInvalide
 from backend.chat.port_inference import (
     ElementFlux,
     FragmentTexte,
+    MessageInference,
     MoteurGeneration,
+    OccupationContexte,
     RequeteGeneration,
     StatistiquesGeneration,
 )
@@ -96,6 +98,24 @@ def normaliser_element(element: object) -> ElementFlux | None:
     return None
 
 
+def _occupation_depuis(brut: object) -> OccupationContexte:
+    """Ramène l'occupation rendue par `inference` à la forme minimale de `chat`, par attributs.
+
+    Lecture par `getattr` comme partout à cette frontière : `chat` ne connaît pas le modèle exact
+    du domaine voisin, il n'en lit que les champs dont il a besoin. Une occupation non mesurable
+    reste non mesurable — ses champs chiffrés restent `None`, jamais comblés par un zéro.
+    """
+    mesurable = bool(getattr(brut, "mesurable", False))
+    if not mesurable:
+        return OccupationContexte(mesurable=False)
+    return OccupationContexte(
+        mesurable=True,
+        contexte_total=getattr(brut, "contexte_total", None),
+        tokens_mesures=getattr(brut, "tokens_mesures", None),
+        tokens_libres=getattr(brut, "tokens_libres", None),
+    )
+
+
 def _normaliser_dictionnaire(element: dict[str, object]) -> ElementFlux | None:
     if any(cle in element for cle in _CLES_STATISTIQUES):
         tokens = element.get("tokens_generes")
@@ -121,6 +141,30 @@ class _MoteurNormalise:
     def generer(self, requete: RequeteGeneration) -> AsyncIterator[ElementFlux]:
         """Ouvre le flux du moteur enveloppé. L'itérateur rendu est asynchrone, jamais une coroutine."""
         return self._flux(requete)
+
+    async def mesurer_occupation(self, messages: Sequence[MessageInference]) -> OccupationContexte:
+        """Occupation de la fenêtre pour ces messages, normalisée à la forme attendue par `chat`.
+
+        Un moteur qui n'expose pas la mesure — un faux moteur ancien, un moteur tiers — rend une
+        occupation non mesurable plutôt que de lever : `chat` ne compacte alors pas, exactement comme
+        quand aucun tokenizer n'est disponible.
+        """
+        mesurer = getattr(self._moteur, "mesurer_occupation", None)
+        if mesurer is None:
+            logger.debug("Moteur {} sans mesure d'occupation : compaction inerte.", type(self._moteur).__name__)
+            return OccupationContexte(mesurable=False)
+        brut = await mesurer(messages)
+        return _occupation_depuis(brut)
+
+    async def resumer(
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+    ) -> str | None:
+        """Résumé cumulatif du moteur enveloppé, ou `None` s'il ne sait pas le produire."""
+        resumer = getattr(self._moteur, "resumer", None)
+        if resumer is None:
+            logger.debug("Moteur {} sans résumé : compaction inerte.", type(self._moteur).__name__)
+            return None
+        return await resumer(a_resumer, resume_precedent, langue, max_tokens)
 
     async def _flux(self, requete: RequeteGeneration) -> AsyncIterator[ElementFlux]:
         source = self._ouvrir(requete)
