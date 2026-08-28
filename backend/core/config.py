@@ -90,6 +90,17 @@ class Settings(BaseSettings):
     hf_token: SecretStr | None = Field(default=None, validation_alias="HF_TOKEN")
     db_timeout_s: float = Field(default=30.0, gt=0, validation_alias="ECHOHUB_DB_TIMEOUT_S")
 
+    # Watchdog d'inactivité de génération : un moteur qui n'émet plus rien pendant ce délai est tenu
+    # pour mort. Ce n'est PAS un budget de performance — c'est le temps qu'on laisse au préremplissage
+    # d'un long prompt (35B, experts déportés en RAM) qui, sur un gros contexte, peut dépasser
+    # plusieurs minutes AVANT le premier token, sans qu'aucun battement ne réarme le compteur. 180 s
+    # coupait des générations vivantes ; 900 s laisse le travail lourd aboutir tout en finissant par
+    # voir un vrai blocage. Les deux watchdogs (chat et flux moteur) lisent CE délai : le flux ne doit
+    # jamais couper avant le chat, sans quoi il coupe le premier.
+    delai_inactivite_generation_s: float = Field(
+        default=900.0, gt=0, validation_alias="ECHOHUB_DELAI_INACTIVITE_S"
+    )
+
     # Recherche web : nom de service Docker résolu sur le réseau interne de la pile, jamais une
     # adresse publique. Le défaut vaut pour l'exécution en conteneur ; hors Docker, SEARXNG_URL
     # doit pointer sur l'instance réellement joignable.

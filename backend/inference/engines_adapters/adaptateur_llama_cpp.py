@@ -800,9 +800,14 @@ class AdaptateurLlamaCpp(AdaptateurMoteur):
                 )
             )
         plafond = options.max_tokens or self._contexte
+        # Le watchdog d'inactivité du flux moteur lit le MÊME délai que celui du chat : il ne doit
+        # jamais couper avant lui, sous peine de tuer un préremplissage lourd avant le premier token.
+        from backend.core import get_settings
+
         return flux_depuis_bloquant(
             lambda arret: self._iterer(messages, options, arret, outils),
             iterations_max=plafond + 1,  # +1 : le morceau de fin n'est pas un token
+            delai_inactivite_s=get_settings().delai_inactivite_generation_s,
         )
 
     def _iterer(

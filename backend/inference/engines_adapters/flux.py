@@ -21,7 +21,10 @@ T = TypeVar("T")
 
 TAILLE_FILE = 64
 DELAI_PUBLICATION_S = 30.0
-DELAI_INACTIVITE_S = 300.0
+# Repli seulement : l'appelant réel (`adaptateur_llama_cpp`) passe le délai configuré du chat, pour
+# que ce watchdog ne coupe JAMAIS avant celui de génération. Le repli est aligné à la même valeur
+# haute — un préremplissage lourd n'émet aucun token avant plusieurs minutes, 300 s le tuait.
+DELAI_INACTIVITE_S = 900.0
 DELAI_ARRET_FIL_S = 5.0
 
 _SENTINELLE = object()
