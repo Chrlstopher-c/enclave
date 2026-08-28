@@ -2,6 +2,43 @@
 
 *Dernière mise à jour : 2026-08-28*
 
+## Session du 2026-08-28 — Auto-compaction du contexte (branche `auto-compact`)
+
+**Ce qui a été construit.** Compaction automatique et NON DESTRUCTIVE du contexte à 90 % de la
+fenêtre du modèle chargé (`SEUIL_COMPACTION = 0.90`, `backend/chat/compaction.py`). Avant chaque
+génération, on mesure l'occupation (socle + définitions d'outils + historique) ; au franchissement du
+seuil, les tours anciens sont remplacés — **dans le seul flux moteur** — par un résumé cumulatif
+orienté agent (objectif, état, fichiers, décisions, reste à faire) produit par le modèle chargé
+(`backend/inference/resume_compaction.py`). La base et l'API rendent toujours l'intégral. Balise en
+direct (`EvenementCompaction`) et au rechargement (`MessageChat.compaction`), table additive
+`chat_compactions`. Décision pure et testée sans DB ni moteur : `backend/chat/tests/test_compaction.py`
+(10 tests verts — seuil, coupe dichotomique, résumé cumulatif). Rendu web :
+`frontend/src/chat/conversation/BaliseCompaction.tsx` (marqueur système repliable). **Contrat de
+balise figé dans `ARCHITECTURE.md`** pour l'app mobile.
+
+**Deux corrections nécessaires à ce que la feature fonctionne sur le modèle réel :**
+- `compter_tokens` implémenté sur l'adaptateur `llama-server` via `/tokenize` : sans lui, tout modèle
+  MoE à experts déportés rendait la fenêtre « non mesurable » — panneau d'occupation vide ET
+  compaction inerte.
+- L'occupation compte désormais les **définitions d'outils** (envoyées à chaque tour, ~1500 tokens) :
+  sans elles, le prompt réel franchissait la fenêtre AVANT le seuil (mesuré : réel 8766 vs mesure 7259,
+  llama-server en 400).
+
+**Watchdog d'inactivité (commit distinct).** `DELAI_INACTIVITE_S` 180 s → configurable
+`ECHOHUB_DELAI_INACTIVITE_S`, défaut **900 s**. Un préremplissage lourd (35B, experts déportés) peut
+dépasser plusieurs minutes avant le premier token sans réarmer le compteur : 180 s coupait une
+génération vivante. Les watchdogs chat et flux moteur in-process lisent le même délai.
+
+**Preuve d'intégration (chemin de chat réel, modèle `Huihui-Qwen3.6-35B-A3B-…Q3_K_S`).** Rechargé à
+contexte 12288 (le seuil de 90 % de 262144 étant irréaliste à remplir). Conversation remplie par
+`POST …/generer` : occupation **11492 → seuil 11059 franchi → compaction → 7603 tokens**, événement
+`compaction` émis, balise persistée et rendue au rechargement (`GET …/messages`), et **la génération
+du même tour a réussi** (580 caractères, le modèle répond avec le contexte réduit). Seconde compaction
+observée, **cumulative** (`nb_messages_resumes` 5 → 11, coupe avancée, 708 c. générés). Sous le seuil,
+aucune compaction, aucun événement parasite. **35B restauré à 262144** (q4_0, 40 couches GPU, flash
+attn — vérifié `GET /inference/etat` → `pret`, contexte 262144 ; experts déportés 27 vs 24 d'origine,
+décision live du planificateur sur la VRAM courante).
+
 ## Session du 2026-08-28 — Atelier d'exécution persistant (branche `atelier`)
 
 Remplacement du bac confiné (`setuid` + `rlimits` + PATH minimal) par un **conteneur atelier** de dev,

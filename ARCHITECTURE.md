@@ -102,6 +102,62 @@ est vu du shell de l'atelier, et un fichier produit par une commande de l'atelie
 **Repli.** Atelier injoignable → les outils rendent un message actionnable (« démarrer avec
 `docker compose up -d echohub-atelier` »), journalisé (loguru), jamais un timeout muet ni un crash.
 
+## L'auto-compaction du contexte — non destructive, réduit ce qui part AU MOTEUR
+
+Prérequis d'un futur mode agent longue durée : sans elle, une session longue tronque en silence son
+contexte et perd sa tâche. La discipline est celle du harnais d'outils — **ce que l'utilisateur voit
+et ce qui est enregistré en base ne sont JAMAIS touchés** ; seul le flux envoyé au moteur est réduit.
+
+**Déclenchement.** Avant chaque génération (`backend/chat/generation.py::_compacter_si_besoin`), on
+mesure l'occupation de la fenêtre pour ce qui partirait au moteur (socle d'outils + définitions
+d'outils + historique). Si `tokens_mesures >= SEUIL_COMPACTION × contexte_total` — **une seule
+constante nommée, `SEUIL_COMPACTION = 0.90`** dans `backend/chat/compaction.py` — une compaction se
+déclenche. Une occupation non mesurable (pas de tokenizer, moteur occupé) ne déclenche rien.
+
+**Mesure.** Passe par le port d'inférence (`mesurer_occupation`), qui délègue à
+`superviseur.compter_contexte` : le tokenizer du modèle réellement chargé, jamais un ratio
+caractères/tokens. Le décompte inclut les définitions d'outils, envoyées à chaque tour. Le chemin
+`llama-server` (MoE à experts déportés) expose son tokenizer via `/tokenize` — sans quoi la fenêtre
+serait « non mesurable » et la compaction inerte.
+
+**Résumé cumulatif orienté agent.** Produit par le modèle chargé
+(`backend/inference/resume_compaction.py`) : il préserve OBJECTIF, ÉTAT, FICHIERS, DÉCISIONS, RESTE À
+FAIRE — pas un résumé littéraire —, dans la langue de la conversation. Un résumé antérieur est
+**englobé**, jamais oublié (`resume_precedent` passé au modèle). Le point de coupe est choisi par
+dichotomie pour ramener la queue conservée intacte bien sous le seuil ; on garde toujours au moins
+les 2 derniers messages.
+
+**Ce qui part au moteur après compaction** = socle + un message système portant le résumé + les
+messages récents gardés. Les messages compactés **restent en base** et dans ce que l'API rend.
+
+**Persistance + événement.** Une balise est persistée (`chat_compactions`, additive) et émise :
+- **en direct** dans le flux SSE via `EvenementCompaction` (`type: "compaction"`) ;
+- **au rechargement**, portée par `MessageChat.compaction` du message assistant déclencheur, à sa
+  place dans le fil — le rechargement montre la même chose que le direct.
+
+### Contrat de la balise — figé, consommé par le web ET le mobile (`echo-centre` / `EchoHubNoyau`)
+
+Événement SSE : `event: compaction`, charge JSON `{ "type": "compaction", "compaction": InfoCompaction }`.
+`InfoCompaction` (identique dans `MessageChat.compaction` au rechargement) porte, noms de champs
+**stables** :
+
+| champ | type | sens |
+|---|---|---|
+| `id` | string | identifiant de la compaction |
+| `conversation_id` | string | conversation |
+| `message_id` | string | message assistant AU-DESSUS duquel la balise se pose |
+| `coupe_message_id` | string | dernier message d'historique replié ; tout ce qui suit reste envoyé intact |
+| `nb_messages_resumes` | int | nombre de messages du fil que le résumé remplace côté moteur (cumulatif) |
+| `tokens_avant` | int | occupation juste avant la compaction |
+| `tokens_apres` | int | occupation juste après |
+| `contexte_total` | int | fenêtre servie par le moteur |
+| `resume` | string | résumé cumulatif (repliable côté UI) |
+| `cree_le` | datetime ISO | horodatage |
+
+Le front pose la balise **juste avant** le message assistant `message_id`. La balise n'est PAS un
+message assistant : c'est un événement de système, rendu distinct et sobre
+(`frontend/src/chat/conversation/BaliseCompaction.tsx`).
+
 ## Stack
 
 - **Backend** : Python 3.10, FastAPI, uvicorn, pydantic, loguru. Python est imposé par
