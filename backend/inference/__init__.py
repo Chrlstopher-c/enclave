@@ -360,14 +360,16 @@ class MoteurChat:
         return self._flux(requete)
 
     async def mesurer_occupation(self, messages: object) -> Any:
-        """Occupation de la fenêtre pour CES messages, tels qu'ils partiraient au moteur.
+        """Occupation de la fenêtre pour CES messages ET les définitions d'outils envoyées avec.
 
-        Rend l'`OccupationContexte` du domaine inference ; `chat.adaptation_inference` le normalise
-        vers sa propre forme. Les définitions d'outils ne sont PAS comptées ici, comme partout où ce
-        décompte sert (reprise, panneau de contexte) : c'est un léger sous-compte, donc un
-        déclenchement un peu tardif, jamais un dépassement caché.
+        Rend l'`OccupationContexte` du domaine inference ; `chat.adaptation_inference` le normalise.
+        Les définitions d'outils sont comptées : la génération les envoie à CHAQUE tour
+        (`charge["tools"]`), et sur le harnais réel elles pèsent plus de mille tokens — les ignorer
+        laissait le prompt réel franchir la fenêtre AVANT que la compaction ne se déclenche. Seuls
+        restent hors décompte les marqueurs de rôle du gabarit et le BOS, de l'ordre de la dizaine
+        de tokens par message, largement couverts par la marge de 10 % du seuil.
         """
-        return await superviseur.compter_contexte("", _messages_depuis(messages))
+        return await superviseur.compter_contexte(_socle_outils_json(), _messages_depuis(messages))
 
     async def resumer(
         self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
@@ -569,6 +571,25 @@ class MoteurChat:
         async for morceau in self._diffuser_complet(messages, options, None, recu):
             yield morceau
         yield {"tokens": len(recu)}
+
+
+def _socle_outils_json() -> str:
+    """Définitions d'outils sérialisées comme la génération les envoie, pour les compter.
+
+    La génération envoie TOUS les outils du registre à chaque tour (le port ne transporte pas de
+    sélection). On mesure donc le même socle. Un registre indisponible rend une chaîne vide : une
+    mesure sans les outils vaut mieux qu'une absence de mesure, et la marge du seuil l'absorbe.
+    """
+    import json
+
+    try:
+        from backend.outils import format_moteur
+
+        outils = format_moteur(None)
+    except Exception as exc:  # noqa: BLE001 — l'absence d'outils ne doit pas empêcher de mesurer
+        logger.debug("Définitions d'outils non mesurables ({}) : socle d'outils compté à vide.", exc)
+        return ""
+    return json.dumps(outils, ensure_ascii=False)
 
 
 def _outils_demandes(requete: object) -> list[str] | None:
