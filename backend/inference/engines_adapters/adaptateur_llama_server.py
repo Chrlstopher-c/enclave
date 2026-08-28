@@ -11,10 +11,12 @@ un bloc sur quatre porte un cache KV, les autres un état récurrent, et un éta
 tronque pas. TTFT 5,94 s à chaque message, contre 0,15 s ici dès le second. Détail complet et
 journal de llama.cpp dans `processus_llama_server`.
 
-CE QU'IL NE SAIT PAS FAIRE, et c'est pourquoi l'autre adaptateur reste : le tokenizer et le
-découpage multimodal vivent dans le processus serveur, pas ici. `compter_tokens` et
-`compter_multimodal` héritent donc du refus nommé du contrat de base, comme vLLM. Un modèle de
-vision doit rester sur le chemin bindings.
+CE QU'IL NE SAIT PAS FAIRE, et c'est pourquoi l'autre adaptateur reste : le découpage MULTIMODAL
+vit dans le processus serveur et n'est pas exposé — `compter_multimodal` hérite donc du refus nommé
+du contrat de base, comme vLLM, et un modèle de vision doit rester sur le chemin bindings. Le
+décompte de TEXTE, lui, est exposé : `compter_tokens` interroge `/tokenize`, ce qui rend la fenêtre
+de contexte mesurable ici aussi — condition sans laquelle l'auto-compaction ne se déclencherait
+jamais sur un modèle servi par llama-server (les MoE à experts déportés, notamment).
 
 FORME DES APPELS D'OUTILS. Avec `--jinja`, llama-server analyse lui-même le gabarit et rend les
 appels dans `delta.tool_calls`, en les retirant du texte. Or la boucle d'outils
@@ -45,6 +47,7 @@ from backend.inference.engines_adapters.base import (
 )
 from backend.inference.engines_adapters.contrat import (
     CauseEchec,
+    ComptageTokens,
     EtatMoteur,
     MessageChat,
     MorceauGeneration,
@@ -188,6 +191,35 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
             disponible=disponible, moteur=self.moteur, modele=self._etat.modele,
             latence_ms=round((time.monotonic() - depart) * 1000, 1), detail=detail,
         )
+
+    async def compter_tokens(self, textes: Sequence[str]) -> ComptageTokens:
+        """Compte les tokens via l'endpoint `/tokenize` du serveur — le tokenizer du modèle chargé.
+
+        Contrairement à vLLM, llama-server EXPOSE son tokenizer par HTTP. Sans ce décompte, la
+        fenêtre de contexte était « non mesurable » pour tout modèle servi ici (les MoE à experts
+        déportés, notamment) : le panneau d'occupation restait vide ET l'auto-compaction, qui décide
+        sur cette mesure, ne se déclenchait jamais. Un texte vide n'est pas envoyé au serveur — il
+        pèse zéro token — pour ne pas payer un aller-retour pour rien.
+        """
+        if self._etat is None:
+            return ComptageTokens(possible=False, raison="Aucun modèle servi par llama-server.")
+        comptes: list[int] = []
+        try:
+            async with httpx.AsyncClient(timeout=serveur.DELAI_SONDE_HTTP_S) as client:
+                for texte in textes:
+                    comptes.append(await self._tokeniser(client, texte))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("Décompte de tokens llama-server impossible ({}) : mesure absente.", exc)
+            return ComptageTokens(possible=False, raison=f"llama-server /tokenize a échoué : {exc}")
+        return ComptageTokens(possible=True, tokens_par_texte=comptes, contexte_moteur=self._etat.contexte)
+
+    async def _tokeniser(self, client: httpx.AsyncClient, texte: str) -> int:
+        """Nombre de tokens d'un texte selon `/tokenize`. Un texte vide vaut zéro, sans appel."""
+        if not texte:
+            return 0
+        reponse = await client.post(f"{serveur.url_base()}/tokenize", json={"content": texte})
+        reponse.raise_for_status()
+        return len(reponse.json()["tokens"])
 
     def generer(
         self,
