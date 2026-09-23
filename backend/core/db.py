@@ -231,7 +231,10 @@ def _colonnes_existantes(conn: sqlite3.Connection, table: str) -> set[str]:
 def _assurer_colonnes(conn: sqlite3.Connection) -> None:
     """Ajoute les colonnes manquantes d'une base existante, puis les index qui en dépendent."""
     for table, colonne, sql in _COLONNES_ADDITIVES:
-        if colonne in _colonnes_existantes(conn, table):
+        existantes = _colonnes_existantes(conn, table)
+        # Table absente = base neuve : son domaine la crée plus tard, déjà complète. Un ALTER ici ferait
+        # échouer toute l'initialisation (vu le 2026-09-24 : « no such table: chat_reglages »).
+        if not existantes or colonne in existantes:
             continue
         conn.execute(sql)
         logger.info("Colonne {}.{} ajoutée à une base existante.", table, colonne)

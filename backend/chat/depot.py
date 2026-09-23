@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS chat_reglages (
     prompt_systeme          TEXT NOT NULL DEFAULT '',
     parametres              TEXT NOT NULL,
     historique_max_messages INTEGER,
-    maj_le                  TEXT NOT NULL
+    maj_le                  TEXT NOT NULL,
+    outils_actifs           TEXT
 );
 
 CREATE TABLE IF NOT EXISTS chat_meta_messages (
