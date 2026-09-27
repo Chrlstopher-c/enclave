@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" fill="none" role="img" aria-label="EchoHub v2 — Find, download and run GGUF models on your own GPU, with a load planner that measures the machine instead of guessing.">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" fill="none" role="img" aria-label="Enclave — Find, download and run GGUF models on your own GPU, with a load planner that measures the machine instead of guessing.">
   <defs>
     <linearGradient id="b-dark-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a0b0e"/><stop offset="1" stop-color="#0e1014"/></linearGradient>
     <radialGradient id="b-dark-h" cx="0.8" cy="0.5" r="0.5"><stop offset="0" stop-color="#d8a35f" stop-opacity="0.14"/><stop offset="1" stop-color="#d8a35f" stop-opacity="0"/></radialGradient>
@@ -10,7 +10,7 @@
     <rect x="0" y="-11" width="26" height="2" rx="1" fill="#d8a35f"/>
     <text x="40" y="-5" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="13" letter-spacing="3" fill="#8b929c">LOCAL LLM MANAGER</text>
   </g>
-  <text x="70" y="140" font-family="Georgia,'Times New Roman',serif" font-size="62" font-weight="600" fill="#f4f1ea" letter-spacing="0.5">EchoHub v2</text>
+  <text x="70" y="140" font-family="Georgia,'Times New Roman',serif" font-size="62" font-weight="600" fill="#f4f1ea" letter-spacing="0.5">Enclave</text>
   <line x1="72" y1="160" x2="300" y2="160" stroke="#d8a35f" stroke-width="2" stroke-linecap="round"/>
   <text x="72" y="196" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="17" fill="#c3cad3">Find, download and run GGUF models on your own GPU, with a load planner</text><text x="72" y="222" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="17" fill="#c3cad3">that measures the machine instead of guessing.</text>
   <rect x="72" y="247" width="67.6" height="22" rx="11" fill="#161b22" stroke="#2a313c"/>
@@ -21,5 +21,5 @@
         <text x="423.3999999999999" y="262" text-anchor="middle" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="11.5" fill="#8b929c">vLLM</text><rect x="457.5999999999999" y="247" width="67.6" height="22" rx="11" fill="#161b22" stroke="#2a313c"/>
         <text x="491.3999999999999" y="262" text-anchor="middle" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="11.5" fill="#8b929c">Docker</text>
   <g opacity="0.9"><path d="M890 120 l70 -34 l70 34 l-70 34 z" fill="none" stroke="#4b525c" stroke-width="2"/><path d="M890 148 l70 -34 l70 34 l-70 34 z" fill="none" stroke="#d8a35f" stroke-width="2"/><path d="M890 176 l70 -34 l70 34 l-70 34 z" fill="none" stroke="#4b525c" stroke-width="2"/></g>
-  <text x="1128" y="280" text-anchor="end" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="12" fill="#4b525c">github.com/chrlstopher-c/echohub-v2</text>
+  <text x="1128" y="280" text-anchor="end" font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="12" fill="#4b525c">github.com/chrlstopher-c/enclave</text>
 </svg>

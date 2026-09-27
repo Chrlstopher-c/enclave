@@ -1,13 +1,15 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/readme/banner-dark.svg">
-    <img src="docs/readme/banner-light.svg" alt="EchoHub v2, local LLM manager" width="100%">
+    <img src="docs/readme/banner-light.svg" alt="Enclave, local LLM manager" width="100%">
   </picture>
 </p>
 
 <p align="center"><sub>English · <a href="#version-française">Version française</a></sub></p>
 
-# EchoHub v2
+# Enclave
+
+<sub>Formerly *EchoHub v2*. The Docker images and volumes keep the `echohub` prefix.</sub>
 
 A manager for language models that run on your own GPU: find a model, download it, load it with settings that fit *this* machine, talk to it, and hand it tools that do real things. Nothing leaves the box.
 
@@ -20,7 +22,7 @@ A manager for language models that run on your own GPU: find a model, download i
 
 ## Why a v2
 
-The first EchoHub guessed. It read the number of layers from the file name, assumed 150 MB per layer, and raised the context size after every failed load until the GPU gave up. On a Qwen3.6-35B-A3B the guess was 80 layers at 150 MB; the file says 41 layers at 436 MB. Six bugs of that family in one afternoon convinced me the orchestration layer was wrong by construction, not buggy.
+The first version (EchoHub) guessed. It read the number of layers from the file name, assumed 150 MB per layer, and raised the context size after every failed load until the GPU gave up. On a Qwen3.6-35B-A3B the guess was 80 layers at 150 MB; the file says 41 layers at 436 MB. Six bugs of that family in one afternoon convinced me the orchestration layer was wrong by construction, not buggy.
 
 So the v2 has one load planner, and it measures instead of assuming.
 
@@ -202,7 +204,7 @@ Un gestionnaire de modèles de langage qui tournent sur ton propre GPU : trouver
 
 ### Pourquoi une v2
 
-Le premier EchoHub devinait. Il lisait le nombre de couches dans le nom du fichier, supposait 150 Mo par couche, et augmentait la taille du contexte après chaque échec de chargement jusqu'à ce que le GPU abandonne. Sur un Qwen3.6-35B-A3B, la supposition disait 80 couches à 150 Mo ; le fichier dit 41 couches à 436 Mo. Six défauts de cette famille en un après-midi m'ont convaincu que la couche d'orchestration était fausse par construction, pas boguée.
+La première version (EchoHub) devinait. Il lisait le nombre de couches dans le nom du fichier, supposait 150 Mo par couche, et augmentait la taille du contexte après chaque échec de chargement jusqu'à ce que le GPU abandonne. Sur un Qwen3.6-35B-A3B, la supposition disait 80 couches à 150 Mo ; le fichier dit 41 couches à 436 Mo. Six défauts de cette famille en un après-midi m'ont convaincu que la couche d'orchestration était fausse par construction, pas boguée.
 
 La v2 a donc un seul planificateur de chargement, et il mesure au lieu de supposer.
 
