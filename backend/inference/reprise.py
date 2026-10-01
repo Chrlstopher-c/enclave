@@ -196,8 +196,8 @@ _BLOC_CODE_FINAL = re.compile(r"```(?P<langue>[a-zA-Z0-9_+-]*)\n(?P<code>.*?)\n?
 # d'emploi, la fin normale d'un bilan.
 _LANGUES_SHELL = frozenset({"", "bash", "sh", "shell", "zsh", "console"})
 _MODE_D_EMPLOI = re.compile(
-    r"\b(?:pour (?:lancer|démarrer|demarrer|exécuter|executer|installer|tester|utiliser)|"
-    r"to (?:run|start|install|use|test)|usage|vous pouvez|tu peux)\b", re.IGNORECASE)
+    r"\b(?:pour \w+|to (?:run|start|install|use|test|build|compile)|usage|utilise[sz]?|"
+    r"vous pouvez|tu peux)\b", re.IGNORECASE)
 
 
 def _commande_montree(bloc: re.Match[str], fin: str) -> bool:
