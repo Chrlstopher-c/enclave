@@ -12,6 +12,8 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 
 ## À faire (priorité)
 
+- [ ] Téléchargements (`models/`) : `octets_recus` du mmproj huihui = 1,85 Go pour 0,90 Go attendus (2026-10-01) — compteur doublé ?
+
 ### Mode projet (2026-10-01) — suites
 
 - [ ] **Aperçu de l'app générée dans l'interface** : proxy `/projets/{nom}/apercu/{port}/…` vers le

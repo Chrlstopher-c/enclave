@@ -16,6 +16,7 @@ from backend.inference.reprise import promesse_non_tenue
     "Je lance tout en une seule commande :\n\n```bash\npip install fastapi && pytest -q\n```",
     "Bien, passons à l'exécution : installation puis tests.\n\n```bash\npip install fastapi && pytest\n```",
     "```bash\npython3 -m venv .venv && pytest -q\n```",
+    "Je vois le problème. Je vais appeler explicitement `init_db()` au début de chaque route API.",
     "Le cd a échoué.\n\n```bash\nexecuter_commande commande=\"pwd && ls\"\n```",
 ])
 def test_imperatif_pluriel_detecte(texte: str) -> None:
@@ -27,6 +28,8 @@ def test_imperatif_pluriel_detecte(texte: str) -> None:
     "Nous avons terminé : l'API et la page fonctionnent.",
     "Voilà les questions que nous nous posons.",
     "J'ai vérifié : les 4 tests passent.",
+    "J'ai remplacé `TemplateResponse` et modifié les routes : les 9 tests passent.",
+    "I fixed the routes and replaced the template engine; all 9 tests pass.",
     "Tout est vert. Pour lancer l'app :\n\n```bash\nuvicorn main:app --port 8000\n```",
 ])
 def test_bilan_non_detecte(texte: str) -> None:

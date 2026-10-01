@@ -99,7 +99,10 @@ _VERBES_PRODUCTION = (
     # Verbes d'INSPECTION et de mise en route, ajoutés le 2026-10-01 : en mode projet, le 35B clôt
     # ses tours sur « Je lis le code actuel pour savoir comment le corriger. » — une annonce au
     # présent que rien ne suit. Toujours ancrée en fin de message.
-    "lis |lir|regard|vérifi|verifi|examin|inspect|install|démarr|demarr|teste|check|read|look|inspect"
+    "lis |lir|regard|vérifi|verifi|examin|inspect|install|démarr|demarr|teste|check|read|look|inspect|"
+    # Verbes de MODIFICATION, ajoutés le 2026-10-01 : « Je vais appeler explicitement `init_db()` au
+    # début de chaque route API. » a clos un tour sans relance.
+    "appel|modifi|remplac|réécri|reecri|supprim|déplac|deplac|call |replace |modify |update |fix "
 )
 _ANNONCE = re.compile(
     r"\b(?:je|j'|on|nous|i|we|let me)\s*(?:vais|vas|allons|va|will|am going to|'m going to)?\s*"
