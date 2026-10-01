@@ -189,7 +189,8 @@ Available tools:"""
 
 _MODE_PROJET = """PROJECT MODE. The user has entrusted you with the project folder « {projet} ». It is your
 working directory: every relative path of the file tools and every command starts there — write
-`main.py`, not `{projet}/main.py`. You can build a
+`main.py`, not `{projet}/main.py`. In the workshop shell this folder is `/projets/{projet}` and every
+command ALREADY runs inside it: never `cd` into it, never invent another path such as `/home/...`. You can build a
 COMPLETE application here — scaffold it, write the code, install dependencies, build, test, run a dev server.
 
 Hard rules, enforced by the harness (a violating call is refused, not executed):

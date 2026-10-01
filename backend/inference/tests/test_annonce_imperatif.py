@@ -13,6 +13,7 @@ from backend.inference.reprise import promesse_non_tenue
     "Maintenant, vérifions que le serveur répond.",
     "Parfait. Je lis le code actuel pour savoir comment le corriger.",
     "Je vais vérifier que l'API répond.",
+    "Le cd a échoué.\n\n```bash\nexecuter_commande commande=\"pwd && ls\"\n```",
 ])
 def test_imperatif_pluriel_detecte(texte: str) -> None:
     assert promesse_non_tenue(texte)
@@ -23,6 +24,7 @@ def test_imperatif_pluriel_detecte(texte: str) -> None:
     "Nous avons terminé : l'API et la page fonctionnent.",
     "Voilà les questions que nous nous posons.",
     "J'ai vérifié : les 4 tests passent.",
+    "Tout est vert. Pour lancer l'app :\n\n```bash\nuvicorn main:app --port 8000\n```",
 ])
 def test_bilan_non_detecte(texte: str) -> None:
     assert not promesse_non_tenue(texte)

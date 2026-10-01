@@ -191,6 +191,22 @@ _PLACEHOLDERS = re.compile(
 _BLOC_CODE_FINAL = re.compile(r"```[a-zA-Z0-9_+-]*\n(?P<code>.*?)\n?```\s*$", re.DOTALL)
 
 
+def _nomme_un_outil(code: str) -> bool:
+    """Le bloc final nomme-t-il un outil enregistré ? C'est alors un appel ÉCRIT au lieu d'être émis.
+
+    Mesuré le 2026-10-01 : « ```bash executer_commande commande="pwd" ``` » a clos un tour du mode
+    projet. Le nom vient du registre, pas d'une liste tenue ici : un outil ajouté y est vu d'office.
+    Import local — `outils` charge le chat, qui charge l'inférence.
+    """
+    try:
+        from backend.outils import disponibles
+
+        noms = {outil.nom for outil in disponibles()}
+    except Exception:  # noqa: BLE001 — sans registre lisible, la détection se tait
+        return False
+    return any(re.search(rf"\b{re.escape(nom)}\b", code) for nom in noms)
+
+
 def promesse_non_tenue(texte: str) -> bool:
     """Le tour s'achève-t-il sur une annonce laissée sans suite ?
 
@@ -204,7 +220,7 @@ def promesse_non_tenue(texte: str) -> bool:
     bloc = _BLOC_CODE_FINAL.search(fin)
     if bloc is not None:
         # Un code à trous n'est pas un livrable : il ne peut pas avoir tourné.
-        if _PLACEHOLDERS.search(bloc.group("code")):
+        if _PLACEHOLDERS.search(bloc.group("code")) or _nomme_un_outil(bloc.group("code")):
             return True
         # La clôture du bloc masquait la vraie fin du message. On regarde ce qui la précède —
         # commentaire impératif, phrase d'annonce — au lieu de trois backticks qui n'annoncent rien.
