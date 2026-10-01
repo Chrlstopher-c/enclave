@@ -95,7 +95,11 @@ _VERBES_PRODUCTION = (
     # reste ancrée en FIN de message, là où plus aucun appel ne peut suivre.
     "lanc|exécut|execut|éxecut|run |upload|télévers|televers|envoi|déploi|deploi|compil|"
     "implémente|implemente|ajoute|complète|complete|corrige|write|create|generate|build|make|"
-    "prepare|draft|implement"
+    "prepare|draft|implement|"
+    # Verbes d'INSPECTION et de mise en route, ajoutés le 2026-10-01 : en mode projet, le 35B clôt
+    # ses tours sur « Je lis le code actuel pour savoir comment le corriger. » — une annonce au
+    # présent que rien ne suit. Toujours ancrée en fin de message.
+    "lis |lir|regard|vérifi|verifi|examin|inspect|install|démarr|demarr|teste|check|read|look|inspect"
 )
 _ANNONCE = re.compile(
     r"\b(?:je|j'|on|nous|i|we|let me)\s*(?:vais|vas|allons|va|will|am going to|'m going to)?\s*"
