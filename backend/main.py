@@ -86,6 +86,17 @@ def _reprendre_transferts() -> None:
         logger.info(f"{len(repris)} téléchargement(s) interrompu(s) repris")
 
 
+async def _arreter_moteur() -> None:
+    """Arrête le moteur à l'extinction : sans cela, `llama-server` survivait à chaque reload du backend
+    natif (re-parenté à systemd), gardait le port et la VRAM, et le backend suivant se croyait inactif."""
+    try:
+        from backend.inference import superviseur
+
+        await superviseur.decharger()
+    except Exception as e:  # noqa: BLE001 — l'arrêt doit aboutir même si le moteur résiste
+        logger.error(f"arrêt du moteur à l'extinction impossible ({type(e).__name__}: {e})")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("EchoHub v2 — démarrage")
@@ -98,6 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.error(f"{etape.__name__} a échoué ({type(e).__name__}: {e})")
     yield
     logger.info("EchoHub v2 — arrêt")
+    await _arreter_moteur()
 
 
 app = FastAPI(title="EchoHub", version="2.0.0", lifespan=lifespan)

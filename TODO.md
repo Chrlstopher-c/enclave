@@ -1,6 +1,6 @@
 # TODO — EchoHub v2
 
-*Dernière mise à jour : 2026-08-17*
+*Dernière mise à jour : 2026-10-01*
 
 ## En cours
 
@@ -11,6 +11,23 @@ processus `cloudflared` détaché qui porte le tunnel. Ce dernier meurt au redé
 et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudflared\tunnel.log`.
 
 ## À faire (priorité)
+
+### Mode projet (2026-10-01) — suites
+
+- [ ] **Aperçu de l'app générée dans l'interface** : proxy `/projets/{nom}/apercu/{port}/…` vers le
+      serveur de dev de l'atelier. Écueil : une app Vite/SPA à chemins absolus (`/assets/…`) casse sous
+      un préfixe — il faudra soit un sous-domaine local, soit imposer `base` relatif au modèle.
+- [ ] **Le modèle rend la main sur une annonce** (« je vais lancer pytest ») au lieu d'appeler l'outil,
+      mesuré pendant l'essai todo-app sur le 35B. Rejoint le point 0 bis ci-dessous.
+- [ ] **llama-server orphelin à chaque reload du backend natif** : le processus survit (re-parenté à
+      systemd --user), garde le port 8081 et la VRAM, et le nouveau backend se croit « inactif ».
+      Mesuré trois fois le 2026-10-01. Le stopper au `shutdown` du lifespan.
+- [ ] **Reload natif qui gèle l'API** : `--reload` attend la fin de la génération en cours avant de
+      redémarrer ; pendant ce temps l'API ne répond plus. Tests exclus du reload ; envisager
+      `--timeout-graceful-shutdown` ou un mode sans reload pour l'usage réel.
+- [ ] Garde-fous : analyse lexicale contournable par indirection (`X=/projets; rm -rf $X/b`). Piste
+      sérieuse si besoin d'une vraie barrière : un utilisateur Unix par projet dans l'atelier.
+- [ ] Projets imbriqués (`client/app`) non gérés : un projet = un sous-dossier direct de la racine.
 
 ### 0. Contrat réclamé par la refonte de la conversation (2026-08-26)
 

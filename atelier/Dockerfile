@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash sudo ca-certificates curl wget git unzip \
         build-essential make cmake pkg-config binutils \
-        python3 python3-pip python3-venv python3-dev \
+        python3 python3-pip python3-venv python3-dev python-is-python3 \
         xz-utils ripgrep tree jq sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 

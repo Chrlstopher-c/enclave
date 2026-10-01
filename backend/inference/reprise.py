@@ -104,6 +104,16 @@ _ANNONCE = re.compile(
     re.IGNORECASE,
 )
 
+# Impératif de la première personne du pluriel, sans pronom : « Corrigeons tout et créons la page
+# manquante. » a clos un tour de travail le 2026-10-01 sans qu'aucune relance ne parte — le motif
+# ci-dessus exige un sujet (« je », « on », « nous »). Ancré en début de phrase de la dernière ligne.
+_IMPERATIF_PLURIEL = re.compile(
+    r"(?:^|[.!:—–-]\s*)(?:maintenant,?\s*|puis\s*|ensuite,?\s*)?"
+    r"(?:corrig|cré|cre|lan[cç]|install|v[ée]rifi|test|écriv|ecriv|ajout|démarr|demarr|exécut|execut|"
+    r"pass|commen[cç]|mett|construis|compil|relan[cç]|refais|réécriv|reecriv|implément|implement)\w*ons\b",
+    re.IGNORECASE,
+)
+
 # Conservés tels quels : ce sont des annonces qui ne portent pas de verbe d'action, et que le motif
 # ci-dessus ne peut donc pas voir.
 _FINS_DE_PROMESSE = (
@@ -204,4 +214,4 @@ def promesse_non_tenue(texte: str) -> bool:
     derniere_ligne = derniere_ligne.lstrip("#/ \t")
     if any(marqueur in derniere_ligne.lower() for marqueur in _FINS_DE_PROMESSE):
         return True
-    return _ANNONCE.search(derniere_ligne) is not None
+    return _ANNONCE.search(derniere_ligne) is not None or _IMPERATIF_PLURIEL.search(derniere_ligne) is not None
