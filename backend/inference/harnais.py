@@ -170,7 +170,13 @@ def quota_promesse(etat: EtatBoucle) -> int:
 
 def fin_de_projet_prematuree(texte: str, etat: EtatBoucle) -> bool:
     """En mode projet, après du travail réel, un texte court sans appel est une pause, pas une fin."""
-    return etat.mode_projet and etat.aboutis > 0 and pause_sans_bilan(texte)
+    return etat.mode_projet and _a_travaille(etat) and pause_sans_bilan(texte)
+
+
+def _a_travaille(etat: EtatBoucle) -> bool:
+    """Un appel a été joué, réussi OU échoué : « Laissez-moi les retrouver. » après un chemin
+    introuvable (2026-10-01) est une pause, pas une fin."""
+    return etat.aboutis > 0 or bool(etat.echecs_vus)
 
 
 CONSIGNE_TOUR_MUET = (
@@ -345,7 +351,7 @@ def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
         logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
                        len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
         return CONSIGNE_SUITE_PROJET
-    if not etat.mode_projet or etat.aboutis == 0 or etat.relances_reste >= RELANCES_RESTE_MAX:
+    if not etat.mode_projet or not _a_travaille(etat) or etat.relances_reste >= RELANCES_RESTE_MAX:
         return None
     if not reste_faisable(texte):
         return None

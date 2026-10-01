@@ -102,10 +102,10 @@ _VERBES_PRODUCTION = (
     "lis |lir|regard|vérifi|verifi|examin|inspect|install|démarr|demarr|teste|check|read|look|inspect|"
     # Verbes de MODIFICATION, ajoutés le 2026-10-01 : « Je vais appeler explicitement `init_db()` au
     # début de chaque route API. » a clos un tour sans relance.
-    "appel|modifi|remplac|réécri|reecri|supprim|déplac|deplac|call |replace |modify |update |fix "
+    "appel|modifi|remplac|retrouv|cherch|réécri|reecri|supprim|déplac|deplac|call |replace |modify |update |fix "
 )
 _ANNONCE = re.compile(
-    r"\b(?:je|j'|on|nous|i|we|let me)\s*(?:vais|vas|allons|va|will|am going to|'m going to)?\s*"
+    r"\b(?:je|j'|on|nous|i|we|let me|laissez-moi|laisse-moi)\s*(?:vais|vas|allons|va|will|am going to|'m going to)?\s*"
     r"\s*(?:now|maintenant)?\s*(?:le|la|les|te|vous|lui|it|you|the)?\s*"
     rf"(?:{_VERBES_PRODUCTION})",
     re.IGNORECASE,

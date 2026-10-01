@@ -57,3 +57,11 @@ def test_lire_par_tranches(contexte_projet: ContexteExecution) -> None:
     (contexte_projet.racine_bac / "long.txt").write_text("".join(f"ligne {i}\n" for i in range(1, 101)))
     extrait = _appel("lire_fichier", {"chemin": "long.txt", "ligne_debut": 95}, contexte_projet)
     assert extrait.texte.startswith("[à partir de la ligne 95 sur 100]") and "ligne 94\n" not in extrait.texte
+
+
+def test_chemin_prefixe_par_le_projet_est_ramene_au_bac(contexte_projet: ContexteExecution) -> None:
+    (contexte_projet.racine_bac / "main.py").write_text("x = 1\n")
+    for chemin in ("app/main.py", "/projets/app/main.py"):
+        lu = _appel("lire_fichier", {"chemin": chemin}, contexte_projet)
+        assert lu.succes and "x = 1" in lu.texte, chemin
+    assert not _appel("lire_fichier", {"chemin": "/projets/autre/main.py"}, contexte_projet).succes

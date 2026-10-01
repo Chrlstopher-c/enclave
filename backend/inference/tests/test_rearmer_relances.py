@@ -73,3 +73,10 @@ def test_mode_projet_reste_qui_depend_de_l_utilisateur_termine() -> None:
     bilan = ("L'app est construite, 9 tests verts, serveur vérifié au curl sur le port 8000. " * 6
              + "\nCe qui reste à faire : renseigner ta clé Stripe dans `.env` (je ne l'ai pas).")
     assert harnais.consigne_de_relance(bilan, etat, avec_outils=True) is None
+
+
+def test_mode_projet_pause_apres_un_appel_echoue_est_relancee() -> None:
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
+    etat.echecs_vus.add("lire_fichier:todo-final/main.py")
+    pause = "Les fichiers sont dans le bac mais pas à l'endroit supposé. Laissez-moi les retrouver."
+    assert harnais.consigne_de_relance(pause, etat, avec_outils=True) is not None

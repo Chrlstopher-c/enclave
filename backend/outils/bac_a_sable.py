@@ -144,6 +144,22 @@ def preparer_bac(racine_bac: Path) -> None:
         logger.error("Préparation du dossier de bac impossible ({}) : {}", racine_bac, exc)
 
 
+def _relatif_au_bac(racine_bac: Path, demande: Path) -> Path:
+    """Ramène au bac les deux façons dont le modèle nomme son propre dossier.
+
+    Mesuré le 2026-10-01 en mode projet : il écrit `todo-final/main.py` (le nom du projet en tête)
+    ou `/projets/todo-final/main.py` (le chemin vu du shell, que le prompt lui donne). Les deux
+    désignent sans ambiguïté un fichier du bac ; les refuser lui coûtait un tour, souvent le dernier.
+    """
+    vu_du_shell = Path(chemin_dans_atelier(racine_bac))
+    if demande.is_absolute() and (demande == vu_du_shell or vu_du_shell in demande.parents):
+        return demande.relative_to(vu_du_shell)
+    parties = demande.parts
+    if len(parties) > 1 and parties[0] == racine_bac.name and not (racine_bac / parties[0]).exists():
+        return Path(*parties[1:])
+    return demande
+
+
 def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
     """Chemin absolu d'un fichier du bac — ou lève, jamais un chemin approximatif.
 
@@ -158,7 +174,7 @@ def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
     """
     if not chemin_demande.strip():
         raise CheminHorsBac("Aucun chemin fourni.")
-    demande = Path(chemin_demande)
+    demande = _relatif_au_bac(racine_bac, Path(chemin_demande))
     if demande.is_absolute():
         raise CheminHorsBac(f"Chemin absolu refusé : « {chemin_demande} ». Utiliser un chemin relatif au bac.")
     if DOSSIER_RESERVE in demande.parts:

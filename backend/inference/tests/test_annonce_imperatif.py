@@ -17,6 +17,7 @@ from backend.inference.reprise import promesse_non_tenue
     "Bien, passons à l'exécution : installation puis tests.\n\n```bash\npip install fastapi && pytest\n```",
     "```bash\npython3 -m venv .venv && pytest -q\n```",
     "Je vois le problème. Je vais appeler explicitement `init_db()` au début de chaque route API.",
+    "Les fichiers ne sont pas à l'endroit supposé. Laissez-moi les retrouver.",
     "Le cd a échoué.\n\n```bash\nexecuter_commande commande=\"pwd && ls\"\n```",
 ])
 def test_imperatif_pluriel_detecte(texte: str) -> None:
