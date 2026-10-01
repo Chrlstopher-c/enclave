@@ -39,3 +39,9 @@ def test_hors_mode_projet_une_reponse_courte_termine() -> None:
     etat.aboutis = 1
     reponse = "Il fait 18 °C à Paris aujourd’hui, ciel dégagé et vent faible toute la journée. " * 2
     assert harnais.consigne_de_relance(reponse, etat, avec_outils=True) is None
+
+
+def test_mode_projet_quota_porte_a_six() -> None:
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
+    assert all(_relance(etat, i) is not None for i in range(6))
+    assert _relance(etat, 6) is None

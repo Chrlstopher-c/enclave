@@ -166,6 +166,15 @@ CONSIGNE_SUITE_PROJET = (
 )
 
 
+# Mode projet : le 35B a besoin de 2 à 3 relances avant presque chaque appel (mesuré le 2026-10-01) ;
+# à 3, la quatrième annonce consécutive clôturait le travail. Le quota se réarme à chaque appel joué.
+RELANCES_PROMESSE_PROJET_MAX = 6
+
+
+def quota_promesse(etat: EtatBoucle) -> int:
+    return RELANCES_PROMESSE_PROJET_MAX if etat.mode_projet else RELANCES_PROMESSE_MAX
+
+
 def fin_de_projet_prematuree(texte: str, etat: EtatBoucle) -> bool:
     """En mode projet, après du travail réel, un texte court sans appel est une pause, pas une fin."""
     if not etat.mode_projet or etat.aboutis == 0:
@@ -316,7 +325,7 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         return None
     # Garde globale : somme des trois quotas. Elle borne la boucle sans amputer aucune cause de son
     # budget propre — c'était le défaut du compteur unique.
-    if etat.relances >= RELANCES_PROMESSE_MAX + etat.harnais.relances_muettes_max + etat.harnais.radotage_tours:
+    if etat.relances >= quota_promesse(etat) + etat.harnais.relances_muettes_max + etat.harnais.radotage_tours:
         return None
     if tour_muet(texte, etat.harnais) and etat.tours_muets < etat.harnais.relances_muettes_max:
         etat.tours_muets += 1
@@ -336,18 +345,18 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
 
 def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
     """Mode projet : une pause sans bilan est relancée, dans le même quota que les annonces."""
-    if not fin_de_projet_prematuree(texte, etat) or etat.relances_promesse >= RELANCES_PROMESSE_MAX:
+    if not fin_de_projet_prematuree(texte, etat) or etat.relances_promesse >= quota_promesse(etat):
         return None
     etat.relances += 1
     etat.relances_promesse += 1
     logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
-                   len(texte.strip()), etat.relances_promesse, RELANCES_PROMESSE_MAX)
+                   len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
     return CONSIGNE_SUITE_PROJET
 
 
 def _relance_promesse(etat: EtatBoucle) -> str | None:
     """Annonce non tenue : relance escaladée, ou clôture forcée quand le quota est épuisé."""
-    if etat.relances_promesse >= RELANCES_PROMESSE_MAX:
+    if etat.relances_promesse >= quota_promesse(etat):
         # Plus de relance possible, mais le texte reste une promesse : rendre la main ici
         # laisserait l'utilisateur devant une phrase en suspens. `etat.promesse_en_suspens`
         # dit à la boucle de CLÔTURER — un tour sans outil qui doit produire une vraie réponse.
@@ -357,7 +366,7 @@ def _relance_promesse(etat: EtatBoucle) -> str | None:
     etat.relances += 1
     etat.relances_promesse += 1
     logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
-                   etat.relances_promesse, RELANCES_PROMESSE_MAX)
+                   etat.relances_promesse, quota_promesse(etat))
     return consigne_promesse(etat.relances_promesse)
 
 
