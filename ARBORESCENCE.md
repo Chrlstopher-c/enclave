@@ -149,6 +149,7 @@ docker run --rm --gpus all --entrypoint /app/backend/.venv/bin/python \
 | `backend/inference/fin_projet.py` | Mode projet : pause, faux bilan, code montré, fin au futur proche, rappel du dernier appel |
 | `backend/inference/budget_outils.py` | Budget de tours d'outils : borne, avertissements, prolongations |
 | `backend/inference/suivi_taches.py` | Relance d'un tour qui finit sur une tâche ouverte |
+| `backend/inference/pre_remplissage.py` | Relance d'une annonce en rouvrant le tour sur `<tool_call>` (llama-server) |
 | `backend/inference/harnais.py` | Conduite de la boucle d'outils : tours, relances, budget, radotage |
 | `backend/inference/engines_adapters/processus_llama_server.py` | Pilotage du sous-processus `llama-server` |
 | `backend/inference/engines_adapters/adaptateur_llama_server.py` | Adaptateur `llama-server` — même plan, HTTP au lieu de bindings |

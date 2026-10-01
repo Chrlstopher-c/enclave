@@ -149,6 +149,12 @@ FORGE = Harnais(
 _CONNUS: dict[str, Harnais] = {ECHOHUB.nom: ECHOHUB, FORGE.nom: FORGE}
 DEFAUT = FORGE
 
+# Rendu par `consigne_de_relance` à la place d'une consigne : rouvrir le tour d'assistant sur son
+# annonce suivie de `<tool_call>` (voir `pre_remplissage.py`) plutôt que d'ajouter un tour utilisateur.
+PRE_REMPLISSAGE = "\x00pre-remplissage"
+# Par série sans appel joué : au-delà, le pré-remplissage n'a pas suffi et les consignes reprennent.
+PRE_REMPLISSAGES_MAX = 2
+
 # Mode projet : le 35B a besoin de 2 à 3 relances avant presque chaque appel (mesuré le 2026-10-01) ;
 # à 3, la quatrième annonce consécutive clôturait le travail. Le quota se réarme à chaque appel joué.
 RELANCES_PROMESSE_PROJET_MAX = 6
@@ -275,6 +281,15 @@ class EtatBoucle:
     # Tâches ouvertes de `suivre_taches`, lues après chaque appel de l'outil PENDANT cette génération
     # (`None` = la liste n'a pas été tenue ici). Voir `suivi_taches`.
     taches_ouvertes: list[str] | None = None
+    # Pré-remplissage de l'appel (`pre_remplissage.py`) : permis par le moteur, en cours, et nombre
+    # utilisé depuis le dernier appel joué.
+    pre_remplissage_permis: bool = False
+    pre_rempli: bool = False
+    texte_pre_rempli: str = ""
+    pre_remplissages: int = 0
+    # Texte du dernier tour du moteur, rangé par `_diffuser_tour` pour que la boucle n'ait pas à
+    # tenir le tampon elle-même.
+    texte_recu: str = ""
     relances_taches: int = 0
     ouvertes_a_la_relance: int | None = None
 
@@ -301,6 +316,7 @@ def rearmer_relances(etat: EtatBoucle) -> None:
     etat.relances = 0
     etat.relances_promesse = 0
     etat.tours_muets = 0
+    etat.pre_remplissages = 0
 
 
 def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str | None:
@@ -357,6 +373,8 @@ def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
         etat.relances_promesse += 1
         logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
                        len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
+        if _pre_remplir(etat):
+            return PRE_REMPLISSAGE
         return CONSIGNE_SUITE_PROJET + rappel_dernier_appel(etat.dernier_appel)
     if not etat.mode_projet or not _a_travaille(etat) or etat.relances_reste >= RELANCES_RESTE_MAX:
         return None
@@ -369,6 +387,16 @@ def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
     logger.warning("Mode projet : fin sur du travail rendu au lieu de fait : relance {}/{}.",
                    etat.relances_reste, RELANCES_RESTE_MAX)
     return consigne + rappel_dernier_appel(etat.dernier_appel)
+
+
+def _pre_remplir(etat: EtatBoucle) -> bool:
+    """Relancer cette annonce par pré-remplissage ? Compte le pré-remplissage s'il est accordé."""
+    if not etat.pre_remplissage_permis or etat.pre_remplissages >= PRE_REMPLISSAGES_MAX:
+        return False
+    etat.pre_remplissages += 1
+    logger.info("Annonce sans appel : pré-remplissage de l'appel {}/{}.", etat.pre_remplissages,
+                PRE_REMPLISSAGES_MAX)
+    return True
 
 
 def _relance_promesse(etat: EtatBoucle) -> str | None:
@@ -384,6 +412,8 @@ def _relance_promesse(etat: EtatBoucle) -> str | None:
     etat.relances_promesse += 1
     logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
                    etat.relances_promesse, quota_promesse(etat))
+    if _pre_remplir(etat):
+        return PRE_REMPLISSAGE
     rappel = rappel_dernier_appel(etat.dernier_appel) if etat.mode_projet else ""
     return consigne_promesse(etat.relances_promesse) + rappel
 

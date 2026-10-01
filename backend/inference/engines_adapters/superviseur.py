@@ -366,6 +366,10 @@ class SuperviseurInference:
 
     # -------------------------------------------------------------- génération
 
+    def accepte_pre_remplissage(self) -> bool:
+        """Le moteur actif continue-t-il un tour d'assistant laissé ouvert ? (llama-server : oui.)"""
+        return isinstance(self._actif, AdaptateurLlamaServer)
+
     def generer(
         self,
         messages: Sequence[MessageChat],

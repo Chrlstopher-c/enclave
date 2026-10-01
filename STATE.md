@@ -18,6 +18,17 @@ tous les fichiers pour une erreur, fichier recopié dans le chat au lieu d'écri
   modifications depuis le dernier instantané avec diff coloré, relu toutes les 4 s.
 - Radotage par similarité ESSAYÉ puis retiré : deux annonces consécutives se ressemblent toujours, la
   consigne de radotage (« dis ce qui bloque et arrête ») aurait remplacé les relances escaladées.
+- **Pré-remplissage de l'appel** (`pre_remplissage.py`, llama-server) : au lieu de relancer une annonce
+  (« je vais lire le fichier ») par une consigne — qui fait REPENSER le modèle et reformuler —, le tour
+  d'assistant est rouvert sur l'annonce + `<tool_call>` ; vérifié sur le serveur : l'appel revient
+  structuré, sans réflexion, en ~1 s. L'écho de l'annonce est retiré du flux (`sans_echo`). 2 max par
+  série sans appel joué, puis les consignes reprennent.
+- **Lenteur non linéaire (diagnostiquée, journal llama-server)** : les pauses de 5-8 s après 2-3 lectures
+  sont du RETRAITEMENT de prompt (prompt eval, ~245 tok/s) — chaque sortie d'outil ajoutée au contexte doit
+  être traitée (une lecture de 6 k car. ≈ 1,7 k tokens ≈ 7 s). Les pauses de 30-120 s sont un retraitement
+  QUASI TOTAL (f_keep 0.28-0.35) : compaction du contexte, ou slot repris par une autre conversation
+  (un seul slot). Levier principal = garder le contexte petit : chercher avant de lire, lire par plage,
+  ne pas relire. Pistes non faites : `--cache-reuse`, plusieurs slots, compaction moins agressive.
 - Effet sur le modèle NON mesuré : l'essai est réservé à Chris.
 
 ## Session du 2026-10-01 — Mode projet : un dossier de l'hôte confié à une conversation

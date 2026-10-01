@@ -47,6 +47,7 @@ from backend.inference.harnais import (
 )
 from backend.inference.reprise import CONSIGNE_CLOTURE_PROMESSE
 from backend.inference.fin_projet import DernierAppel
+from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -255,9 +256,34 @@ def _avec_avertissement(messages: list[MessageChat], etat: EtatBoucle) -> list[M
     """
     etat.tours_faits += 1
     avis = avertissement_du_tour(etat)
-    if avis is None:
+    # Un tour pré-rempli doit FINIR sur le tour d'assistant ouvert : rien ne s'intercale après lui.
+    if avis is None or etat.pre_rempli:
         return messages
     return list(messages) + [MessageChat(role="tool", content=avis)]
+
+
+def _moteur_pre_remplit() -> bool:
+    """Le moteur continue-t-il un tour d'assistant ouvert ? Un superviseur de test l'ignore : non."""
+    accepte = getattr(superviseur, "accepte_pre_remplissage", None)
+    return bool(accepte()) if callable(accepte) else False
+
+
+def _sans_pre_remplissage(messages: list[MessageChat], etat: EtatBoucle) -> list[MessageChat]:
+    """Retire le tour d'assistant pré-rempli : la suite le remplace par le texte réellement reçu."""
+    if not etat.pre_rempli:
+        return list(messages)
+    etat.pre_rempli = False
+    return list(messages[:-1])
+
+
+def _relancer_ou_pre_remplir(messages: list[MessageChat], texte: str, consigne: str,
+                             etat: EtatBoucle) -> list[MessageChat]:
+    messages = _sans_pre_remplissage(messages, etat)
+    if consigne != harnais.PRE_REMPLISSAGE:
+        return relancer(messages, texte, consigne)
+    etat.pre_rempli = True
+    etat.texte_pre_rempli = texte
+    return pre_remplir(messages, texte)
 
 
 def _prolonger_si_demande(etat: EtatBoucle) -> None:
@@ -355,6 +381,10 @@ async def _executer_appels(
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un
         # format inventé par nous, et le modèle a fini par l'imiter au lieu d'appeler l'outil.
         messages.append(MessageChat(role="tool", content=texte))
+
+
+# Marqueurs de la suite d'un tour sans appel d'outil : finir le flux, clôturer, ou continuer la boucle.
+_FIN, _CLOTURE, _CONTINUE = object(), object(), object()
 
 
 class MoteurChat:
@@ -501,61 +531,87 @@ class MoteurChat:
             return None
         return occupation.tokens_libres if occupation.mesurable else None
 
+    def _apres_tour_sans_appel(
+        self, texte: str, messages: list[MessageChat], etat: EtatBoucle,
+    ) -> tuple[object, list[MessageChat]]:
+        """Suite d'un tour qui n'a appelé aucun outil : finir, clôturer, ou relancer/pré-remplir.
+
+        Rend un marqueur (`_FIN`, `_CLOTURE` ou `_CONTINUE`) et la conversation à repasser au moteur.
+        """
+        consigne = consigne_de_relance(texte, etat, etat.outils_declares is not None)
+        if consigne is None:
+            if not etat.promesse_en_suspens:
+                return _FIN, messages
+            # Clôturer plutôt que rendre la main : le tour final doit produire une VRAIE réponse là
+            # où le modèle n'a laissé qu'une intention.
+            return _CLOTURE, relancer(_sans_pre_remplissage(messages, etat), texte, CONSIGNE_CLOTURE_PROMESSE)
+        return _CONTINUE, _relancer_ou_pre_remplir(messages, texte, consigne, etat)
+
     async def _boucle_outils(
-        self,
-        messages: list[MessageChat],
-        options: OptionsGeneration,
-        outils: list[dict[str, Any]],
-        contexte: ContexteExecution,
+        self, messages: list[MessageChat], options: OptionsGeneration,
+        outils: list[dict[str, Any]], contexte: ContexteExecution,
     ) -> AsyncIterator[dict[str, Any]]:
         """Les tours d'outils, puis la clôture si la borne est atteinte. Rend aussi `tokens` par tour.
 
-        Un seul appel au moteur par tour, outils déclarés dedans ; le tour suivant n'a lieu que si
-        le modèle a réellement demandé un outil. Les outils restent déclarés à CHAQUE tour — voir
-        `TOURS_OUTILS_MAX` pour la mesure qui a fait abandonner l'inverse.
-
-        La CONDUITE — combien de tours, quand relancer, quand constater un radotage — vient de
-        `harnais.py` et non de constantes locales : c'est ce qui permet de la faire varier sans
-        toucher au transport, et de comparer deux conduites à outils et modèle constants.
+        Un seul appel au moteur par tour, outils déclarés dedans (voir `TOURS_OUTILS_MAX`) ; la
+        CONDUITE vient de `harnais.py`, jamais de constantes locales.
         """
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
-                          outils_declares=outils or None, mode_projet=contexte.projet is not None)
+                          outils_declares=outils or None, mode_projet=contexte.projet is not None,
+                          pre_remplissage_permis=_moteur_pre_remplit())
         while not budget_epuise(etat):
             messages = _avec_avertissement(messages, etat)
-            recu: list[str] = []
-            async for morceau in self._diffuser_complet(messages, options, etat.outils_declares, recu):
+            async for morceau in self._diffuser_tour(messages, options, etat):
                 yield morceau
-            yield {"tokens": len(recu)}
-            texte = "".join(recu)
-            # Sans registre, un `<tool_call>` écrit par le modèle est une hallucination : l'exécuter
-            # produirait un bloc « outil inconnu » là où il n'y a simplement aucun outil.
+            texte = etat.texte_recu
             appels = _appels_demandes(texte) if outils else []
             if not appels:
-                consigne = consigne_de_relance(texte, etat, bool(outils))
-                if consigne is None:
-                    if not etat.promesse_en_suspens:
-                        return
-                    # Sortir de la boucle plutôt que rendre la main : la clôture ci-dessous doit
-                    # produire une VRAIE réponse là où le modèle n'a laissé qu'une intention.
-                    yield {"texte": BALISE_FIN_ETAPE}
-                    messages = relancer(messages, texte, CONSIGNE_CLOTURE_PROMESSE)
-                    break
+                suite, messages = self._apres_tour_sans_appel(texte, messages, etat)
+                if suite is _FIN:
+                    return
                 yield {"texte": BALISE_FIN_ETAPE}
-                messages = relancer(messages, texte, consigne)
+                if suite is _CLOTURE:
+                    break
                 continue
-            # Ce tour appelait un outil : ce qui vient d'être écrit était du commentaire de travail,
-            # pas la réponse. On le signale au lieu de le laisser passer pour telle. Le balisage de
-            # l'appel, lui, ne repart PAS au moteur — sinon il lui sert de modèle à recopier.
             yield {"texte": BALISE_FIN_ETAPE}
-            harnais.rearmer_relances(etat)
-            messages = list(messages) + [
+            messages = _sans_pre_remplissage(messages, etat) + [
                 MessageChat(role="assistant", content=_sans_appels_outils(texte))
             ]
-            async for etape in _jouer_appels(appels, messages, contexte, etat, texte):
+            async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):
                 yield etape
-            _prolonger_si_demande(etat)
         async for morceau in self._cloturer(messages, options, etat.aboutis, etat.harnais):
             yield morceau
+
+    async def _diffuser_tour(
+        self, messages: list[MessageChat], options: OptionsGeneration, etat: EtatBoucle,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Un tour du moteur ; pré-rempli, son écho de l'annonce est retiré avant d'atteindre l'écran.
+
+        Le texte reçu est rangé dans `etat.texte_recu` (et son décompte de tokens diffusé en fin de
+        tour) : la boucle n'a plus à tenir elle-même le tampon.
+        """
+        recu: list[str] = []
+        flux = self._diffuser_complet(messages, options, etat.outils_declares, recu)
+        if etat.pre_rempli:
+            flux = sans_echo(flux, etat.texte_pre_rempli)
+        async for morceau in flux:
+            yield morceau
+        yield {"tokens": len(recu)}
+        etat.texte_recu = "".join(recu)
+
+    async def _jouer_tour_outil(
+        self, appels: list[dict[str, Any]], messages: list[MessageChat],
+        contexte: ContexteExecution, etat: EtatBoucle, texte: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Joue les appels d'un tour en diffusant leur progression, puis prolonge le budget si demandé.
+
+        `messages` porte déjà le tour d'assistant sans son balisage d'appel (qui ne repart pas au
+        moteur, sinon il lui sert de modèle à recopier) ; `_jouer_appels` y ajoute les réponses.
+        """
+        harnais.rearmer_relances(etat)
+        async for etape in _jouer_appels(appels, messages, contexte, etat, texte):
+            yield etape
+        _prolonger_si_demande(etat)
 
     async def _cloturer(
         self, messages: list[MessageChat], options: OptionsGeneration, aboutis: int,

@@ -25,6 +25,10 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 - [x] **Écriture groupée, recherche avant lecture, tâches, avis de syntaxe** (2026-10-02) : `ecrire_fichiers`,
       `lire_fichier` par plage, `suivre_taches` (fin de tour refusée sur tâche ouverte), méthodes dans le socle.
 - [x] **Panneau Fichiers du chat** (2026-10-02) : arborescence, lecture, modifications + diff depuis l'instantané.
+- [ ] **Lenteur non linéaire** (diagnostiquée 2026-10-02) : pauses = retraitement de prompt. Petites
+      (7 s) = sortie d'outil ajoutée ; grandes (30-120 s) = compaction ou slot repris (f_keep bas).
+      Pistes : `--cache-reuse` sur llama-server, plusieurs slots, compaction moins agressive, limiter
+      la taille des sorties d'outil réinjectées.
 - [ ] **Mesurer** ce que ces changements font sur le modèle (essai `notes-app` ou `spoofer`) — réservé à Chris.
 - [ ] Radotage par paraphrase : non détecté (essai par similarité retiré, il remplaçait les relances
       escaladées). Si la boucle d'annonces revient malgré la fin du compte à rebours, borner plutôt le
