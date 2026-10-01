@@ -17,7 +17,7 @@ import shlex
 from loguru import logger
 
 from backend.outils.atelier import AtelierInjoignable, executer_commande
-from backend.projets.modeles import Instantane
+from backend.projets.modeles import DiffFichier, Instantane, Modification, ModificationsProjet
 from backend.projets.racine import ProjetInvalide, chemin_projet
 
 TIMEOUT_SECONDES = 120
@@ -87,3 +87,55 @@ def restaurer(nom: str, sha: str) -> str | None:
     _lancer(nom, f"{_GIT} cat-file -e {sha}^{{commit}} && {_GIT} read-tree -u --reset {sha}")
     logger.info("Projet « {} » restauré à {}", nom, sha[:8])
     return filet
+
+
+DIFF_MAX_OCTETS = 200_000
+_SANS_INSTANTANE = "SANS_INSTANTANE"
+_COUPURE = "---ECHOHUB---"
+
+
+def modifications(nom: str) -> ModificationsProjet:
+    """Fichiers changés depuis le dernier instantané, avec leurs lignes ajoutées et retirées.
+
+    `add -A` ne touche que l'index du dépôt d'instantanés, que le prochain `prendre` refait de toute
+    façon : c'est ce qui fait apparaître les fichiers NOUVEAUX, qu'un simple `diff HEAD` ignore.
+    """
+    script = (f"{_GIT} add -A; if ! {_GIT} rev-parse -q --verify HEAD >/dev/null; then echo {_SANS_INSTANTANE}; "
+              f"else {_GIT} log -1 --format='%H%x09%ct%x09%s'; echo {_COUPURE}; "
+              f"{_GIT} diff --cached --no-renames --name-status HEAD; echo {_COUPURE}; "
+              f"{_GIT} diff --cached --no-renames --numstat HEAD; fi")
+    sortie = _lancer(nom, script)
+    if _SANS_INSTANTANE in sortie:
+        return ModificationsProjet(reference=None)
+    entete, etats, chiffres = (sortie.split(_COUPURE) + ["", ""])[:3]
+    sha, date, message = (entete.strip().split("\t", 2) + ["", "0", ""])[:3]
+    reference = Instantane(sha=sha, date=float(date or 0), message=message) if _SHA.match(sha) else None
+    return ModificationsProjet(reference=reference, fichiers=_fusionner(etats, chiffres))
+
+
+def _fusionner(etats: str, chiffres: str) -> list[Modification]:
+    comptes: dict[str, tuple[int | None, int | None]] = {}
+    for ligne in chiffres.strip().splitlines():
+        morceaux = ligne.split("\t", 2)
+        if len(morceaux) == 3:
+            ajouts, retraits, chemin = morceaux
+            comptes[chemin] = (int(ajouts) if ajouts.isdigit() else None,
+                               int(retraits) if retraits.isdigit() else None)
+    resultat: list[Modification] = []
+    for ligne in etats.strip().splitlines():
+        morceaux = ligne.split("\t", 1)
+        if len(morceaux) == 2:
+            ajouts, retraits = comptes.get(morceaux[1], (None, None))
+            resultat.append(Modification(chemin=morceaux[1], etat=morceaux[0][:1], ajouts=ajouts,
+                                         suppressions=retraits))
+    return resultat
+
+
+def diff(nom: str, chemin: str) -> DiffFichier:
+    """Diff unifié d'un fichier depuis le dernier instantané (vide sans instantané de référence)."""
+    if not chemin or chemin.startswith("-") or ".echohub" in chemin.split("/"):
+        raise ProjetInvalide(f"Chemin refusé : « {chemin} ».")
+    script = (f"{_GIT} add -A; {_GIT} rev-parse -q --verify HEAD >/dev/null || exit 0; "
+              f"{_GIT} diff --cached --no-renames HEAD -- {shlex.quote(chemin)} | head -c {DIFF_MAX_OCTETS + 1}")
+    sortie = _lancer(nom, script)
+    return DiffFichier(chemin=chemin, diff=sortie[:DIFF_MAX_OCTETS], tronque=len(sortie) > DIFF_MAX_OCTETS)

@@ -16,8 +16,8 @@ import { FilMessages } from './conversation/FilMessages';
 import { ListeConversations } from './conversation/ListeConversations';
 import { PanneauOutils } from './conversation/PanneauOutils';
 import { useSelectionOutils } from './conversation/useSelectionOutils';
-import { EnTeteChat } from './EnTeteChat';
-import { ModaleProjet, useProjetConversation } from './projet';
+import { EnTeteChat, type EnTeteChatProps } from './EnTeteChat';
+import { ModaleProjet, PanneauFichiers, useProjetEcran } from './projet';
 import { ModaleReglages } from './reglages';
 import { PanneauPlan } from './plan/PanneauPlan';
 import type { CibleChargement } from './plan/cible';
@@ -80,9 +80,11 @@ interface ColonneEchangeProps extends ColonneProps {
   tiroirs: EtatTiroirsChat;
   capacites: CapacitesAtelier;
   onOutils: () => void;
-  projet: string | null;
-  onProjet: () => void;
+  actionsProjet: ActionsProjetEntete;
 }
+
+/* Ce que l'en-tête montre du projet confié : le bouton de la modale et celui du panneau de fichiers. */
+type ActionsProjetEntete = Pick<EnTeteChatProps, 'projet' | 'onProjet' | 'onFichiers' | 'fichiersOuverts'>;
 
 function ColonneEchange(props: ColonneEchangeProps): ReactElement {
   const { etat, cible, fil, tiroirs, capacites, onOutils } = props;
@@ -98,8 +100,7 @@ function ColonneEchange(props: ColonneEchangeProps): ReactElement {
         pret={moteurPret}
         onReglages={() => etat.ouvrirReglages(true)}
         onOutils={onOutils}
-        projet={props.projet}
-        onProjet={props.onProjet}
+        {...props.actionsProjet}
         onOuvrirConversations={() => tiroirs.ouvrir('conversations')}
         onOuvrirPlan={() => tiroirs.ouvrir('plan')}
       />
@@ -383,6 +384,18 @@ function CoteDroit({
   );
 }
 
+/* Panneau des fichiers du projet : colonne en flux sur grand écran, tiroir en dessous du seuil. */
+function TiroirFichiers({ projet, onFermer }: { projet: string | null; onFermer: () => void }): ReactElement | null {
+  if (projet === null) {
+    return null;
+  }
+  return (
+    <Feuille ouverte onFermer={onFermer} cote="droite" titre="Fichiers du projet">
+      <PanneauFichiers key={projet} projet={projet} onFermer={onFermer} />
+    </Feuille>
+  );
+}
+
 export interface ChatEcranProps {
   /**
    * Modèle sélectionné et entrées mesurées du planificateur, fournis par les domaines `models` et
@@ -423,8 +436,7 @@ function useAtelierEcran(
 export function ChatEcran({ cible }: ChatEcranProps): ReactElement {
   const etat = useEcranChat(cible);
   const [outilsOuverts, setOutilsOuverts] = useState<boolean>(false);
-  const [projetOuvert, setProjetOuvert] = useState<boolean>(false);
-  const projet = useProjetConversation(etat.conversationActive);
+  const projet = useProjetEcran(etat.conversationActive);
   // `courante.genere` est passé au fil de branche : c'est le seul signal qui dit qu'un tour occupe
   // déjà le moteur, et sa fin est le moment où la feuille active a pu changer sans qu'on l'ait
   // demandé — donc le moment où la vue de branche doit être relue.
@@ -442,16 +454,16 @@ export function ChatEcran({ cible }: ChatEcranProps): ReactElement {
         tiroirs={tiroirs}
         capacites={capacites}
         onOutils={() => setOutilsOuverts(true)}
-        projet={projet.projet}
-        onProjet={() => setProjetOuvert(true)}
+        actionsProjet={projet.actions}
       />
+      <TiroirFichiers projet={projet.projetPanneau} onFermer={projet.fermerPanneau} />
       <CoteDroit etat={etat} cible={cible} atelier={atelier} tiroirs={tiroirs} grandEcran={grandEcran} />
       <ModaleOutils
         conversationId={etat.conversationActive}
         ouvert={outilsOuverts}
         onFermer={() => setOutilsOuverts(false)}
       />
-      <ModaleProjet etat={projet} ouvert={projetOuvert} onFermer={() => setProjetOuvert(false)} />
+      <ModaleProjet etat={projet.liaison} ouvert={projet.modaleOuverte} onFermer={projet.fermerModale} />
       <PanneauDeReglages etat={etat} />
     </div>
   );

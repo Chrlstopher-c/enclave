@@ -1,4 +1,4 @@
-"""Routes HTTP du domaine `projets` : catalogue, création, instantanés, restauration et aperçu."""
+"""Routes HTTP du domaine `projets` : catalogue, création, instantanés, aperçu, contenu et modifications."""
 
 from __future__ import annotations
 
@@ -6,13 +6,17 @@ import asyncio
 
 from fastapi import APIRouter
 
-from backend.projets import apercu, instantanes, racine
+from backend.projets import apercu, contenu, instantanes, racine
 from backend.projets.modeles import (
+    ArbreProjet,
     CatalogueProjets,
+    ContenuFichier,
     DemandeApercu,
     DemandeCreation,
+    DiffFichier,
     EtatApercu,
     Instantane,
+    ModificationsProjet,
     Projet,
 )
 
@@ -48,3 +52,23 @@ async def lire_apercu(nom: str) -> EtatApercu:
 @routeur.post("/{nom}/apercu", response_model=EtatApercu)
 async def pointer_apercu(nom: str, corps: DemandeApercu) -> EtatApercu:
     return await asyncio.to_thread(apercu.pointer, nom, corps.port)
+
+
+@routeur.get("/{nom}/arbre", response_model=ArbreProjet)
+async def lire_arbre(nom: str) -> ArbreProjet:
+    return await asyncio.to_thread(contenu.arbre, nom)
+
+
+@routeur.get("/{nom}/fichier", response_model=ContenuFichier)
+async def lire_fichier(nom: str, chemin: str) -> ContenuFichier:
+    return await asyncio.to_thread(contenu.lire, nom, chemin)
+
+
+@routeur.get("/{nom}/modifications", response_model=ModificationsProjet)
+async def lire_modifications(nom: str) -> ModificationsProjet:
+    return await asyncio.to_thread(instantanes.modifications, nom)
+
+
+@routeur.get("/{nom}/diff", response_model=DiffFichier)
+async def lire_diff(nom: str, chemin: str) -> DiffFichier:
+    return await asyncio.to_thread(instantanes.diff, nom, chemin)

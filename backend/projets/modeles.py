@@ -51,3 +51,47 @@ class EtatApercu(BaseModel):
 
 class DemandeApercu(BaseModel):
     port: int = Field(gt=1023, lt=65536)
+
+
+class EntreeArbre(BaseModel):
+    """Un fichier du projet, chemin relatif en `/`. Les dossiers se déduisent des chemins."""
+
+    chemin: str
+    taille: int
+
+
+class ArbreProjet(BaseModel):
+    """`tronque` vrai = plus de fichiers que la borne : la liste est partielle, et le dit."""
+
+    fichiers: list[EntreeArbre]
+    tronque: bool = False
+
+
+class ContenuFichier(BaseModel):
+    chemin: str
+    taille: int
+    contenu: str | None
+    binaire: bool = False
+    tronque: bool = False
+
+
+class Modification(BaseModel):
+    """Changement d'un fichier depuis l'instantané de référence. `etat` : A (ajouté), M, D (supprimé)."""
+
+    chemin: str
+    etat: str
+    ajouts: int | None = None
+    suppressions: int | None = None
+
+
+class ModificationsProjet(BaseModel):
+    """Changements depuis le DERNIER instantané, pris avant le tour en cours ou le dernier tour."""
+
+    reference: Instantane | None
+    fichiers: list[Modification] = Field(default_factory=list)
+
+
+class DiffFichier(BaseModel):
+    chemin: str
+    diff: str
+    tronque: bool = False

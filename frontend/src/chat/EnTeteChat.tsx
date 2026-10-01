@@ -18,6 +18,9 @@ export interface EnTeteChatProps {
   /** Projet confié à la conversation (mode projet), `null` si aucun. */
   readonly projet: string | null;
   readonly onProjet: () => void;
+  /** Affiche ou masque le panneau des fichiers du projet (présent seulement avec un projet). */
+  readonly onFichiers: () => void;
+  readonly fichiersOuverts: boolean;
   readonly onOuvrirConversations: () => void;
   readonly onOuvrirPlan: () => void;
 }
@@ -73,9 +76,11 @@ function BoutonProjet({ projet, onProjet }: Pick<EnTeteChatProps, 'projet' | 'on
   );
 }
 
-function ActionsEntete({ pret, onOutils, onReglages, onOuvrirPlan, projet, onProjet }: Pick<
+function ActionsEntete({
+  pret, onOutils, onReglages, onOuvrirPlan, projet, onProjet, onFichiers, fichiersOuverts,
+}: Pick<
   EnTeteChatProps,
-  'pret' | 'onOutils' | 'onReglages' | 'onOuvrirPlan' | 'projet' | 'onProjet'
+  'pret' | 'onOutils' | 'onReglages' | 'onOuvrirPlan' | 'projet' | 'onProjet' | 'onFichiers' | 'fichiersOuverts'
 >): ReactElement {
   return (
     <div className="flex shrink-0 items-center gap-1 lg:gap-2">
@@ -83,6 +88,12 @@ function ActionsEntete({ pret, onOutils, onReglages, onOuvrirPlan, projet, onPro
         {pret ? 'moteur prêt' : 'moteur inactif'}
       </Badge>
       <BoutonProjet projet={projet} onProjet={onProjet} />
+      {projet !== null && (
+        <Button variant={fichiersOuverts ? 'secondary' : 'ghost'} size="sm" onClick={onFichiers}
+          aria-pressed={fichiersOuverts}>
+          Fichiers
+        </Button>
+      )}
       {/* « Outils » vit à côté de « Réglages » : les deux disent ce que la conversation met à
           disposition du modèle — l'un les capacités, l'autre les paramètres. */}
       <Button variant="ghost" size="sm" onClick={onOutils}>
@@ -120,6 +131,8 @@ export function EnTeteChat(props: EnTeteChatProps): ReactElement {
         onOutils={props.onOutils}
         projet={props.projet}
         onProjet={props.onProjet}
+        onFichiers={props.onFichiers}
+        fichiersOuverts={props.fichiersOuverts}
         onReglages={props.onReglages}
         onOuvrirPlan={props.onOuvrirPlan}
       />

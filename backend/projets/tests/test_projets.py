@@ -14,7 +14,7 @@ import pytest
 
 from backend.core.config import reset_settings_cache
 from backend.outils import atelier
-from backend.projets import instantanes, racine
+from backend.projets import contenu, instantanes, racine
 from backend.projets.racine import ProjetInvalide
 
 
@@ -90,3 +90,37 @@ def test_sha_invalide_refuse(racine_projets: Path) -> None:
     racine.creer("app")
     with pytest.raises(ProjetInvalide):
         instantanes.restaurer("app", "HEAD; rm -rf /")
+
+
+def test_arbre_ignore_les_dependances_et_lire_reste_confine(racine_projets: Path) -> None:
+    racine.creer("app")
+    base = racine_projets / "app"
+    (base / "src").mkdir()
+    (base / "src" / "main.py").write_text("print(1)\n")
+    (base / "node_modules" / "x").mkdir(parents=True)
+    (base / "node_modules" / "x" / "index.js").write_text("")
+    assert [f.chemin for f in contenu.arbre("app").fichiers] == ["src/main.py"]
+    assert contenu.lire("app", "src/main.py").contenu == "print(1)\n"
+    for chemin in ("../../etc/passwd", "/etc/passwd", ".echohub/x"):
+        with pytest.raises(ProjetInvalide):
+            contenu.lire("app", chemin)
+
+
+def test_modifications_depuis_le_dernier_instantane(racine_projets: Path) -> None:
+    racine.creer("app")
+    base = racine_projets / "app"
+    assert instantanes.modifications("app").reference is None
+    (base / "a.py").write_text("un\n")
+    (base / "b.py").write_text("b\n")
+    instantanes.prendre("app", "avant le tour")
+    (base / "a.py").write_text("un\ndeux\n")
+    (base / "b.py").unlink()
+    (base / "c.py").write_text("c\n")
+    etat = instantanes.modifications("app")
+    assert etat.reference is not None and etat.reference.message == "avant le tour"
+    par_chemin = {m.chemin: m for m in etat.fichiers}
+    assert {c: m.etat for c, m in par_chemin.items()} == {"a.py": "M", "b.py": "D", "c.py": "A"}
+    assert par_chemin["a.py"].ajouts == 1 and par_chemin["a.py"].suppressions == 0
+    assert "+deux" in instantanes.diff("app", "a.py").diff
+    with pytest.raises(ProjetInvalide):
+        instantanes.diff("app", "--output=/tmp/x")

@@ -8,6 +8,10 @@
  *   PATCH /chat/conversations/{id}/projet            <- { projet: string | null }
  *   GET   /projets/{nom}/apercu                      -> EtatApercu
  *   POST  /projets/{nom}/apercu                      <- { port }
+ *   GET   /projets/{nom}/arbre                       -> ArbreProjet
+ *   GET   /projets/{nom}/fichier?chemin=             -> ContenuFichier
+ *   GET   /projets/{nom}/modifications               -> ModificationsProjet
+ *   GET   /projets/{nom}/diff?chemin=                -> DiffFichier
  */
 
 import { getJson, patchJson, postJson } from '../api/client';
@@ -34,6 +38,44 @@ export interface EtatApercu {
   readonly port: number | null;
   readonly ports: readonly number[];
   readonly url: string;
+}
+
+export interface EntreeArbre {
+  readonly chemin: string;
+  readonly taille: number;
+}
+
+export interface ArbreProjet {
+  readonly fichiers: readonly EntreeArbre[];
+  readonly tronque: boolean;
+}
+
+export interface ContenuFichier {
+  readonly chemin: string;
+  readonly taille: number;
+  readonly contenu: string | null;
+  readonly binaire: boolean;
+  readonly tronque: boolean;
+}
+
+export type EtatModification = 'A' | 'M' | 'D';
+
+export interface Modification {
+  readonly chemin: string;
+  readonly etat: EtatModification;
+  readonly ajouts: number | null;
+  readonly suppressions: number | null;
+}
+
+export interface ModificationsProjet {
+  readonly reference: Instantane | null;
+  readonly fichiers: readonly Modification[];
+}
+
+export interface DiffFichier {
+  readonly chemin: string;
+  readonly diff: string;
+  readonly tronque: boolean;
 }
 
 interface Liaison {
@@ -74,4 +116,24 @@ export function lireApercu(nom: string, signal?: AbortSignal): Promise<EtatAperc
 
 export function pointerApercu(nom: string, port: number): Promise<EtatApercu> {
   return postJson<EtatApercu>(`/projets/${encodeURIComponent(nom)}/apercu`, { port });
+}
+
+function cheminProjet(nom: string, route: string): string {
+  return `/projets/${encodeURIComponent(nom)}/${route}`;
+}
+
+export function lireArbre(nom: string, signal?: AbortSignal): Promise<ArbreProjet> {
+  return getJson<ArbreProjet>(cheminProjet(nom, 'arbre'), signal);
+}
+
+export function lireFichierProjet(nom: string, chemin: string, signal?: AbortSignal): Promise<ContenuFichier> {
+  return getJson<ContenuFichier>(cheminProjet(nom, `fichier?chemin=${encodeURIComponent(chemin)}`), signal);
+}
+
+export function lireModifications(nom: string, signal?: AbortSignal): Promise<ModificationsProjet> {
+  return getJson<ModificationsProjet>(cheminProjet(nom, 'modifications'), signal);
+}
+
+export function lireDiff(nom: string, chemin: string, signal?: AbortSignal): Promise<DiffFichier> {
+  return getJson<DiffFichier>(cheminProjet(nom, `diff?chemin=${encodeURIComponent(chemin)}`), signal);
 }
