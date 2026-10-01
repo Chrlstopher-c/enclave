@@ -112,7 +112,7 @@ _ANNONCE = re.compile(
 # manquante. » a clos un tour de travail le 2026-10-01 sans qu'aucune relance ne parte — le motif
 # ci-dessus exige un sujet (« je », « on », « nous »). Ancré en début de phrase de la dernière ligne.
 _IMPERATIF_PLURIEL = re.compile(
-    r"(?:^|[.!:—–-]\s*)(?:maintenant,?\s*|puis\s*|ensuite,?\s*)?"
+    r"(?:^|[.!:,—–-]\s*)(?:maintenant,?\s*|puis\s*|ensuite,?\s*)?"
     r"(?:corrig|cré|cre|lan[cç]|install|v[ée]rifi|test|écriv|ecriv|ajout|démarr|demarr|exécut|execut|"
     r"pass|commen[cç]|mett|construis|compil|relan[cç]|refais|réécriv|reecriv|implément|implement)\w*ons\b",
     re.IGNORECASE,
@@ -205,7 +205,10 @@ def _commande_montree(bloc: re.Match[str], fin: str) -> bool:
         return False
     intro = fin[: bloc.start()].rstrip()
     derniere = intro.rsplit("\n", 1)[-1]
-    return intro.endswith(":") and _MODE_D_EMPLOI.search(derniere) is None
+    if _MODE_D_EMPLOI.search(derniere) is not None:
+        return False
+    return (intro.endswith(":") or _ANNONCE.search(derniere) is not None
+            or _IMPERATIF_PLURIEL.search(derniere) is not None)
 
 
 def _nomme_un_outil(code: str) -> bool:

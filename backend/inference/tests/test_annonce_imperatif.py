@@ -14,6 +14,7 @@ from backend.inference.reprise import promesse_non_tenue
     "Parfait. Je lis le code actuel pour savoir comment le corriger.",
     "Je vais vérifier que l'API répond.",
     "Je lance tout en une seule commande :\n\n```bash\npip install fastapi && pytest -q\n```",
+    "Bien, passons à l'exécution : installation puis tests.\n\n```bash\npip install fastapi && pytest\n```",
     "Le cd a échoué.\n\n```bash\nexecuter_commande commande=\"pwd && ls\"\n```",
 ])
 def test_imperatif_pluriel_detecte(texte: str) -> None:
