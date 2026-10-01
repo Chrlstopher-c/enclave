@@ -188,7 +188,24 @@ _PLACEHOLDERS = re.compile(
 )
 
 # Clôture d'un bloc de code Markdown en fin de message.
-_BLOC_CODE_FINAL = re.compile(r"```[a-zA-Z0-9_+-]*\n(?P<code>.*?)\n?```\s*$", re.DOTALL)
+_BLOC_CODE_FINAL = re.compile(r"```(?P<langue>[a-zA-Z0-9_+-]*)\n(?P<code>.*?)\n?```\s*$", re.DOTALL)
+
+# Bloc shell final introduit par deux-points : « Je lance l'installation en une seule commande :
+# ```bash …``` » — la commande est MONTRÉE au lieu d'être exécutée (35B, mode projet, 2026-10-01).
+# Sauf quand l'introduction s'adresse à l'utilisateur (« Pour lancer l'app : ») : c'est un mode
+# d'emploi, la fin normale d'un bilan.
+_LANGUES_SHELL = frozenset({"", "bash", "sh", "shell", "zsh", "console"})
+_MODE_D_EMPLOI = re.compile(
+    r"\b(?:pour (?:lancer|démarrer|demarrer|exécuter|executer|installer|tester|utiliser)|"
+    r"to (?:run|start|install|use|test)|usage|vous pouvez|tu peux)\b", re.IGNORECASE)
+
+
+def _commande_montree(bloc: re.Match[str], fin: str) -> bool:
+    if bloc.group("langue").lower() not in _LANGUES_SHELL:
+        return False
+    intro = fin[: bloc.start()].rstrip()
+    derniere = intro.rsplit("\n", 1)[-1]
+    return intro.endswith(":") and _MODE_D_EMPLOI.search(derniere) is None
 
 
 def _nomme_un_outil(code: str) -> bool:
@@ -221,6 +238,8 @@ def promesse_non_tenue(texte: str) -> bool:
     if bloc is not None:
         # Un code à trous n'est pas un livrable : il ne peut pas avoir tourné.
         if _PLACEHOLDERS.search(bloc.group("code")) or _nomme_un_outil(bloc.group("code")):
+            return True
+        if _commande_montree(bloc, fin):
             return True
         # La clôture du bloc masquait la vraie fin du message. On regarde ce qui la précède —
         # commentaire impératif, phrase d'annonce — au lieu de trois backticks qui n'annoncent rien.
