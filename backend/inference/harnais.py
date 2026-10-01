@@ -330,19 +330,7 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
                        etat.harnais.radotage_tours, etat.relances)
         return CONSIGNE_RADOTAGE
     if promesse_non_tenue(texte):
-        if etat.relances_promesse >= RELANCES_PROMESSE_MAX:
-            # Plus de relance possible, mais le texte reste une promesse : rendre la main ici
-            # laisserait l'utilisateur devant une phrase en suspens. `etat.promesse_en_suspens`
-            # dit à la boucle de CLÔTURER — un tour sans outil qui doit produire une vraie réponse.
-            etat.promesse_en_suspens = True
-            logger.warning("Annonce non tenue après {} relance(s) : clôture forcée.",
-                           etat.relances_promesse)
-            return None
-        etat.relances += 1
-        etat.relances_promesse += 1
-        logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
-                       etat.relances_promesse, RELANCES_PROMESSE_MAX)
-        return consigne_promesse(etat.relances_promesse)
+        return _relance_promesse(etat)
     if fin_de_projet_prematuree(texte, etat) and etat.relances_promesse < RELANCES_PROMESSE_MAX:
         etat.relances += 1
         etat.relances_promesse += 1
@@ -350,6 +338,22 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
                        len(texte.strip()), etat.relances_promesse, RELANCES_PROMESSE_MAX)
         return CONSIGNE_SUITE_PROJET
     return None
+
+
+def _relance_promesse(etat: EtatBoucle) -> str | None:
+    """Annonce non tenue : relance escaladée, ou clôture forcée quand le quota est épuisé."""
+    if etat.relances_promesse >= RELANCES_PROMESSE_MAX:
+        # Plus de relance possible, mais le texte reste une promesse : rendre la main ici
+        # laisserait l'utilisateur devant une phrase en suspens. `etat.promesse_en_suspens`
+        # dit à la boucle de CLÔTURER — un tour sans outil qui doit produire une vraie réponse.
+        etat.promesse_en_suspens = True
+        logger.warning("Annonce non tenue après {} relance(s) : clôture forcée.", etat.relances_promesse)
+        return None
+    etat.relances += 1
+    etat.relances_promesse += 1
+    logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
+                   etat.relances_promesse, RELANCES_PROMESSE_MAX)
+    return consigne_promesse(etat.relances_promesse)
 
 
 def budget_epuise(etat: EtatBoucle) -> bool:
