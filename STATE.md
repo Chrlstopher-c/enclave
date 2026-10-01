@@ -53,7 +53,14 @@ mais il n'a PAS fini seul : 1 test rouge, et l'app répond 500 (base SQLite `:me
 initialisée). La chaîne `serveur_fond` → curl dans l'atelier → arrêt est vérifiée à la main. La limite
 restante est le modèle sur la dernière ligne droite (il épuise ses relances en pauses sans appel).
 
-**Tests.** 559 verts (`backend/.venv/bin/python -m pytest -q backend`), build frontend OK, CI verte.
+**Recherche web en natif.** SearXNG publié sur `127.0.0.1:37925` (`SEARXNG_URL` du `.env`) : le
+backend hors Docker ne résout pas `searxng`. Conteneur `restart: unless-stopped`.
+
+**Relance nommée.** En mode projet, toute relance (pause, annonce, tour muet, reste faisable) cite le
+dernier appel joué et, s'il a échoué, la fin de sa sortie (`DernierAppel`, `fin_projet.py`). Effet sur
+le modèle pas encore mesuré.
+
+**Tests.** 568 verts (`backend/.venv/bin/python -m pytest -q backend`), build frontend OK, CI verte.
 
 *Dernière mise à jour : 2026-10-01*
 
