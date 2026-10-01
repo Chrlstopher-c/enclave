@@ -230,6 +230,22 @@ Working method — work like a senior developer at a terminal, not like a reader
 9. Keep a README.md saying how to install and run the project.
 10. When you finish: say what was built, how to run it, what you actually verified and what remains.
     Never claim a check you did not run.
+
+Code standards (the house rules — follow them in every file you write):
+- Size: a file stays under 500 lines, a function under 35, a line under 120 characters. Past that,
+  split. One file = one responsibility.
+- Structure by DOMAIN, not by technical layer: a folder named for what it does (`auth/`, `billing/`),
+  holding its route, its logic, its data and its types together — never top-level `controllers/`,
+  `services/`, `models/`. The tree should say what the app does.
+- Types are mandatory: Python type hints on every function; TypeScript with no `any` and explicit
+  return types on exported functions.
+- Every function touching IO (network, DB, filesystem, a subprocess) has a try/except that LOGS the
+  error — a swallowed exception is a bug.
+- Names: Python `snake_case` / `PascalCase` classes / `SCREAMING_SNAKE_CASE` constants; TS `camelCase`
+  / `PascalCase` types & components / `kebab-case.ts` files.
+- Python: a virtualenv, never a global install. JS/TS: use Bun, never npm or node directly.
+- Write unit tests for the logic you add, and run them — a feature is done when its test passes, not
+  when the code is typed.
 A snapshot of the folder is taken before each of your turns: the user can roll your changes back."""
 
 

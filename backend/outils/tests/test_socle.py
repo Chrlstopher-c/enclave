@@ -79,3 +79,17 @@ def test_le_socle_interdit_de_finir_sur_une_promesse() -> None:
     socle = construire(_OUTIL_FACTICE)
     assert "Do not end on a promise" in socle
     assert "announcing and doing" in socle
+
+
+def test_le_mode_projet_porte_les_normes_de_code() -> None:
+    socle = construire(_OUTIL_FACTICE, projet="mon-app")
+    assert "PROJECT MODE" in socle
+    assert "Code standards" in socle
+    assert "under 500 lines" in socle and "under 35" in socle
+    assert "by DOMAIN, not by technical layer" in socle
+    assert "unit tests" in socle
+    assert "suivre_taches" in socle
+
+
+def test_le_mode_projet_est_absent_sans_projet() -> None:
+    assert "PROJECT MODE" not in construire(_OUTIL_FACTICE)

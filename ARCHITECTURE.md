@@ -137,7 +137,9 @@ travailler dans son bac de conversation.
   (`ATELIER_APERCU_URL`). Un seul aperçu pour tout l'atelier ; pas de WebSocket (HMR de Vite absent).
 - **Socle** : bloc `_MODE_PROJET` (règles + méthode de travail : regarder, planifier en tâches
   `suivre_taches`, CHERCHER avant de lire, corriger partout, écrire groupé, étapes VÉRIFIÉES, tout lancer
-  soi-même, commandes non interactives, README, bilan honnête). Le socle dit aussi qu'il n'y a pas de
+  soi-même, commandes non interactives, README, bilan honnête, et NOS NORMES DE CODE : fichier < 500
+  lignes, fonction < 35, par domaine et non par couche, types obligatoires, try/except journalisé, venv/Bun,
+  tests unitaires). Le socle dit aussi qu'il n'y a pas de
   petite borne d'appels : sous FORGE, aucun compte à rebours (`budget_outils`), seul le garde-fou absolu
   (200 tours) est annoncé.
 - **Conduite de fin de tour** (`inference/fin_projet.py`, `suivi_taches.py`) : un tour sans appel est
