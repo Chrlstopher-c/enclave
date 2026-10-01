@@ -11,7 +11,7 @@
  * l'écran utilisable le jour où il y aura trente outils au lieu de dix.
  */
 
-export type GroupeOutils = 'web' | 'fichiers' | 'execution' | 'presentation';
+export type GroupeOutils = 'organisation' | 'web' | 'fichiers' | 'execution' | 'presentation';
 
 export interface OutilDisponible {
   readonly nom: string;
@@ -22,6 +22,7 @@ export interface OutilDisponible {
 }
 
 export const LIBELLE_GROUPE: Readonly<Record<GroupeOutils, string>> = {
+  organisation: 'Organisation',
   web: 'Web',
   fichiers: 'Fichiers',
   execution: 'Exécution',
@@ -29,6 +30,12 @@ export const LIBELLE_GROUPE: Readonly<Record<GroupeOutils, string>> = {
 };
 
 export const CATALOGUE_OUTILS: readonly OutilDisponible[] = [
+  {
+    nom: 'suivre_taches',
+    description: 'tient la liste de tâches de l’agent ; le tour ne finit pas tant qu’une tâche reste ouverte',
+    groupe: 'organisation',
+    tokens_definition: null,
+  },
   {
     nom: 'recherche_web',
     description: 'cherche sur le web via SearXNG',

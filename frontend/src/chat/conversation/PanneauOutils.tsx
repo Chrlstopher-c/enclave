@@ -23,7 +23,7 @@ import {
 const NOMBRE = new Intl.NumberFormat('fr-FR');
 
 /* L'ordre d'affichage des groupes suit l'ordre du registre : web, fichiers, exécution, présentation. */
-const ORDRE_GROUPES: readonly GroupeOutils[] = ['web', 'fichiers', 'execution', 'presentation'];
+const ORDRE_GROUPES: readonly GroupeOutils[] = ['organisation', 'web', 'fichiers', 'execution', 'presentation'];
 
 function Coche({ cochee }: { readonly cochee: boolean }): ReactElement {
   return (

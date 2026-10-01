@@ -306,6 +306,10 @@ async def _jouer_appels(
         etat.aboutis += 1 if etape.get("succes") else 0
         if isinstance(etape.get("nom"), str):
             etat.dernier_appel = DernierAppel(etape["nom"], bool(etape.get("succes")), etape.get("sortie", ""))
+            if etape["nom"] == "suivre_taches" and etape.get("succes"):
+                from backend.outils import taches_ouvertes
+
+                etat.taches_ouvertes = taches_ouvertes(contexte.conversation_id)
     if etat.aboutis > avant:
         # Un outil a abouti : l'ardoise des relances est effacée, comme celle des redites.
         # MESURÉ le 2026-08-16 : relancé une fois, le modèle écrit bien son fichier — puis referme

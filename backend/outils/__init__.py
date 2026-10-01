@@ -30,6 +30,7 @@ from backend.outils.registre import (
     groupes,
 )
 from backend.outils.socle import composer, construire
+from backend.outils.suivre_taches import taches_ouvertes
 
 
 def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: str | None = None) -> str:
@@ -64,4 +65,5 @@ __all__ = [
     "groupes",
     "prompt_socle",
     "prompt_systeme",
+    "taches_ouvertes",
 ]

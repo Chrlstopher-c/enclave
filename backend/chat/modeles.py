@@ -386,7 +386,7 @@ class OutilDisponible(BaseModel):
 
     nom: str
     description: str
-    # Famille d'appartenance (`web`, `fichiers`, `execution`, `presentation`) : elle vient du
+    # Famille d'appartenance (`organisation`, `web`, `fichiers`, `execution`, `presentation`) : elle vient du
     # registre, seule source qui connaisse les outils réellement enregistrés.
     groupe: str
     # Coût en tokens de la DÉCLARATION de cet outil, mesuré avec le tokenizer du modèle chargé.

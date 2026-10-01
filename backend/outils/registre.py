@@ -28,6 +28,7 @@ from backend.outils.presenter_fichier import OUTIL as OUTIL_PRESENTER
 from backend.outils.recherche_web import OUTIL as OUTIL_RECHERCHE
 from backend.outils.recuperer_page import OUTIL as OUTIL_PAGE
 from backend.outils.serveur_fond import OUTIL as OUTIL_SERVEUR_FOND
+from backend.outils.suivre_taches import OUTIL as OUTIL_TACHES
 
 # Ordre significatif : c'est celui dans lequel les outils sont présentés au modèle, et le premier
 # est celui vers lequel il se tourne le plus volontiers. La recherche web est en tête parce que
@@ -55,6 +56,9 @@ from backend.outils.serveur_fond import OUTIL as OUTIL_SERVEUR_FOND
 #   ailleurs : présenter le shell d'abord ferait glisser vers `bash -c python3 …` tout ce qui
 #   relève de Python, et on perdrait le confinement mieux ajusté du second.
 _OUTILS: dict[str, Outil] = {
+    # En tête (2026-10-02) : le plan précède le travail, et c'est sur lui que le harnais vérifie
+    # qu'une annonce a bien été tenue.
+    OUTIL_TACHES.nom: OUTIL_TACHES,
     OUTIL_RECHERCHE.nom: OUTIL_RECHERCHE,
     OUTIL_PAGE.nom: OUTIL_PAGE,
     OUTIL_ECRIRE.nom: OUTIL_ECRIRE,
@@ -78,6 +82,7 @@ _OUTILS: dict[str, Outil] = {
 # Familles présentées à l'écran de sélection. Un outil absent de cette table serait sans groupe :
 # la couverture est vérifiée par `groupes_complets()` plutôt que laissée à la relecture.
 _GROUPES: dict[str, str] = {
+    "suivre_taches": "organisation",
     "recherche_web": "web",
     "recuperer_page": "web",
     "ecrire_fichier": "fichiers",

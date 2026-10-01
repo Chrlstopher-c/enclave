@@ -42,6 +42,7 @@ export interface DescripteurOutil {
  * jour ici serait pire qu'un nom technique exact.
  */
 export const OUTILS_CONNUS: Readonly<Record<string, DescripteurOutil>> = {
+  suivre_taches: { libelle: 'Tâches', icone: 'document', cles: ['taches', 'todos'] },
   recherche_web: { libelle: 'Recherche web', icone: 'loupe', cles: ['requete', 'query', 'q'] },
   recuperer_page: { libelle: 'Page web', icone: 'globe', cles: ['url', 'lien', 'adresse'] },
   ecrire_fichier: { libelle: 'Écriture', icone: 'crayon', cles: ['chemin', 'path', 'fichier', 'nom'] },

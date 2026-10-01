@@ -77,6 +77,7 @@ from backend.inference.budget_outils import (
     prolonger,
 )
 from backend.inference.harnais_outils import _sans_appels_outils
+from backend.inference.suivi_taches import relance_taches
 from backend.inference.reprise import (
     RELANCES_PROMESSE_MAX,
     consigne_promesse,
@@ -271,6 +272,11 @@ class EtatBoucle:
     relances_reste: int = 0
     # Mode projet : cité dans les relances, pour qu'elles nomment l'appel à faire.
     dernier_appel: DernierAppel | None = None
+    # Tâches ouvertes de `suivre_taches`, lues après chaque appel de l'outil PENDANT cette génération
+    # (`None` = la liste n'a pas été tenue ici). Voir `suivi_taches`.
+    taches_ouvertes: list[str] | None = None
+    relances_taches: int = 0
+    ouvertes_a_la_relance: int | None = None
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
@@ -330,7 +336,16 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         return CONSIGNE_RADOTAGE + (rappel_dernier_appel(etat.dernier_appel) if etat.mode_projet else "")
     if promesse_non_tenue(texte) or (etat.mode_projet and _a_travaille(etat) and finit_sur_futur_proche(texte)):
         return _relance_promesse(etat)
-    return _relance_projet(texte, etat)
+    return _relance_fin(texte, etat)
+
+
+def _relance_fin(texte: str, etat: EtatBoucle) -> str | None:
+    """Ni muet, ni redite, ni promesse : fin de projet prématurée d'abord, puis tâches ouvertes."""
+    consigne = _relance_projet(texte, etat)
+    if consigne is None:
+        consigne = relance_taches(etat)
+        etat.relances += 1 if consigne is not None else 0
+    return consigne
 
 
 def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
