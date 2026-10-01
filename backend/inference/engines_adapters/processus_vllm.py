@@ -33,21 +33,6 @@ from backend.inference.engines_adapters.diagnostic import Diagnostic, EchecCharg
 PORT_VLLM_DEFAUT = 37823
 MODULE_SERVEUR = "vllm.entrypoints.openai.api_server"
 
-# Séquences concurrentes maximales. Le défaut vLLM (256) est un réglage datacenter : au démarrage il
-# préchauffe le sampler avec autant de requêtes factices, chacune portant des logits sur tout le
-# vocabulaire — sur un gros vocabulaire et 12 Go partagés, cela déborde (« CUDA out of memory when
-# warming up sampler with 256 dummy requests »). Un hub local sert une poignée de conversations à la
-# fois ; 4 suffit et rend sa VRAM de préchauffage au reste du modèle.
-MAX_SEQUENCES_VLLM = 4
-
-# Parseur d'appels d'outils. Contrairement à llama-server, vLLM REFUSE `tool_choice: "auto"` (400)
-# tant que `--enable-auto-tool-choice` et `--tool-call-parser` ne sont pas posés — et la boucle de
-# chat envoie toujours ses outils, donc sans ça toute génération vLLM échoue. Le format d'appel est
-# dicté par le `chat_template` du modèle : les Qwen3 récents émettent le XML `<function=…>` /
-# `<parameter=…>`, que couvre `qwen3_coder`. Surchargeable par `ECHOHUB_VLLM_TOOL_PARSER` pour un
-# modèle d'une autre famille (hermes, llama3_json, mistral…) sans toucher au code.
-PARSEUR_OUTILS_VLLM = os.environ.get("ECHOHUB_VLLM_TOOL_PARSER", "").strip() or "qwen3_coder"
-
 # Bornes du démarrage : vLLM compile ses graphes CUDA au premier chargement, plusieurs minutes sont
 # normales. Au-delà, ce n'est plus de la lenteur — le processus est bloqué et doit être tué.
 INTERVALLE_SONDE_S = 2.0
@@ -86,25 +71,19 @@ def _chemin_pid() -> Path:
 
 
 def _candidats_interpreteur() -> list[Path]:
-    """Interpréteurs des venvs vLLM RÉELLEMENT installés, du plus récent au plus ancien.
+    """Emplacements où le domaine `engines` installe le venv vLLM, layouts POSIX et Windows.
 
-    vLLM vit dans un venv séparé : ses dépendances (torch, CUDA) entrent en conflit avec celles du
-    backend. Le domaine `engines` installe chaque version dans `<engines_dir>/vllm/<version>/` et en
-    tient l'inventaire ; c'est LUI la source de vérité, pas un chemin `.venv` deviné qui n'a jamais
-    correspondu à ce layout versionné (le symptôme : « moteur non installé » alors qu'une version
-    valide existait sur le disque). Le chemin peut rester imposé par `ECHOHUB_VLLM_PYTHON`.
+    vLLM vit dans un venv séparé : ses dépendances (torch, CUDA 13) entrent en conflit avec celles
+    du backend. Le chemin peut être imposé par `ECHOHUB_VLLM_PYTHON` quand l'installation est ailleurs.
     """
     impose = os.environ.get("ECHOHUB_VLLM_PYTHON", "")
     if impose:
         return [Path(impose)]
-    # Import local : évite tout cycle au chargement du module, la résolution étant un acte runtime.
-    from backend.engines.modeles import StatutMoteur
-    from backend.engines.vllm import venvs
-
+    racine = get_settings().engines_dir / "vllm"
     return [
-        version.python
-        for version in venvs.inventaire()
-        if version.statut is StatutMoteur.FONCTIONNEL
+        racine / dossier / binaire
+        for dossier in (".venv", "venv")
+        for binaire in (Path("bin") / "python", Path("Scripts") / "python.exe")
     ]
 
 
@@ -151,43 +130,10 @@ def construire_commande(plan: PlanChargement, interpreteur: Path) -> list[str]:
         "--port", str(port_vllm()),
         "--max-model-len", str(plan.contexte),
         "--gpu-memory-utilization", str(plan.fraction_vram),
-        "--max-num-seqs", str(MAX_SEQUENCES_VLLM),
-        # Appels d'outils : la boucle de chat les envoie toujours avec `tool_choice: "auto"`, que
-        # vLLM refuse (400) sans ces deux options. llama-server, lui, les accepte nativement.
-        "--enable-auto-tool-choice",
-        "--tool-call-parser", PARSEUR_OUTILS_VLLM,
     ]
-    # `--enforce-eager` seulement quand le plan l'a décidé, c'est-à-dire quand la marge VRAM ne
-    # couvre pas la capture de graphes CUDA (cf. planificateur). Sur un modèle qui tient large, on
-    # GARDE les graphes : ils multiplient la vitesse de décodage (mesuré : 22 tok/s en eager contre
-    # 150+ avec graphes sur un 2B). Les forcer partout étranglait les petits modèles.
     if plan.mode_eager:
         commande.append("--enforce-eager")
-    if _est_multimodal(Path(plan.chemin_modele)):
-        # Chargement TEXTE SEUL d'un modèle multimodal : zéro entrée image/vidéo. vLLM saute alors le
-        # profilage de la tour de vision — une passe sur image factice qui, sur ce 9B, dépassait la
-        # VRAM (OOM dans `qkv` de la tour, non quantifiée en bf16). Les poids de vision restent
-        # chargés, mais le pic d'activation qui faisait échouer le démarrage disparaît.
-        commande += ["--limit-mm-per-prompt", '{"image": 0, "video": 0}']
     return commande
-
-
-def _est_multimodal(chemin: Path) -> bool:
-    """Vrai si le modèle déclare une tour de vision (`vision_config` dans son `config.json`).
-
-    Lu à la volée sur le dossier qu'on s'apprête à charger : le plan ne transporte pas cette
-    information, et une lecture de `config.json` coûte quelques kilooctets. Faux si le dossier n'a
-    pas de config lisible — un modèle sans vision déclarée ne reçoit pas le drapeau, qui n'aurait
-    pas de sens pour lui.
-    """
-    from backend.models import lire_config
-
-    try:
-        config = lire_config(chemin)
-    except Exception as exc:  # noqa: BLE001 - une config illisible ne doit pas empêcher le lancement
-        logger.warning("config.json de {} illisible pour la détection multimodale : {}", chemin, exc)
-        return False
-    return isinstance(config, dict) and isinstance(config.get("vision_config"), dict)
 
 
 def demarrer(commande: list[str], variables_env: dict[str, str], journal: IO[Any]) -> subprocess.Popen[bytes]:

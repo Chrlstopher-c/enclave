@@ -50,7 +50,6 @@ def vers_plan_moteur(plan: PlanDeChargement, chemin_modele: str) -> PlanChargeme
         type_kv_cache=plan.type_cache_kv.valeur.value,
         flash_attention=plan.flash_attention.valeur,
         fraction_vram=plan.utilisation_memoire_gpu.valeur if plan.utilisation_memoire_gpu else None,
-        mode_eager=plan.mode_eager,
         variables_env=plan.environnement,
         justifications=list(plan.justifications()),
     )

@@ -31,7 +31,6 @@ from backend.inference.planner.reglages import CadreCalcul, Repartition, resoudr
 SEUIL_ALERTE_RAM = 0.9
 
 
-
 class ContraintesHeritees(BaseModel):
     """Ce qu'un plan échoué interdit au plan suivant. Vide lors d'une planification initiale.
 
@@ -245,7 +244,6 @@ def _assembler(demande: DemandeDeChargement, niveau: int, preparation: _Preparat
         type_cache_kv=preparation.type_kv,
         flash_attention=preparation.flash_attention,
         utilisation_memoire_gpu=_utilisation_vllm(preparation, budget, demande),
-        mode_eager=repartition.mode_eager,
         variables_environnement=variables,
         variables_refusees=refusees,
         ejections_requises=preparation.ejections,

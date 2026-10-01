@@ -319,67 +319,6 @@ def contexte_maximal(
     return aligner(int(tokens), PAS_CONTEXTE)
 
 
-# Élément du lm_head tel que la capture de graphes CUDA le matérialise (bf16), et marge de travail
-# au-dessus. La capture alloue d'un bloc un tampon de la taille du lm_head (`vocabulaire × embedding`) :
-# c'est l'allocation qui a fait OOM le démarrage (forme mesurée 248320×4096). Réserver cette VRAM
-# permet de GARDER les graphes, qui multiplient la vitesse de décodage sur un petit modèle.
-_OCTETS_LM_HEAD = 2
-_FACTEUR_RESERVE_GRAPHES = 1.5
-_PLANCHER_RESERVE_GRAPHES = 1024**3
-
-
-def reserve_graphes_cuda_octets(metadonnees: MetadonneesModele) -> int:
-    """VRAM à réserver pour la capture de graphes CUDA de vLLM — proportionnelle au lm_head du modèle."""
-    lm_head = metadonnees.taille_vocabulaire * metadonnees.dimension_embedding * _OCTETS_LM_HEAD
-    return max(_PLANCHER_RESERVE_GRAPHES, int(lm_head * _FACTEUR_RESERVE_GRAPHES))
-
-
-def contexte_maximal_vllm(
-    metadonnees: MetadonneesModele,
-    *,
-    batch: int,
-    type_kv: TypeCacheKV,
-    flash_attention: bool,
-    vram_disponible_octets: int,
-    ratio_fragmentation: float,
-    reserve_octets: int = 0,
-) -> int:
-    """Contexte maximal pour vLLM : tout le modèle en VRAM, le contexte est ce qu'il reste.
-
-    Distinct de `contexte_maximal`, et pour une raison qui coûtait un refus : là-bas les tampons du
-    graphe d'attention sont provisionnés au plafond d'ENTRAÎNEMENT, ce qui n'est que prudent quand on
-    cherche des couches à offloader. Ici on cherche un contexte, et le graphe grandit avec le contexte
-    RÉELLEMENT SERVI (le `--max-model-len` de vLLM), pas avec l'entraînement. Provisionner 262144
-    réservait ~1,3 Gio fantôme sur ce 9B à contexte natif 262144 et refusait un modèle qui tient très
-    bien à contexte réduit — vLLM ne pouvant, lui, qu'ajuster le contexte, les poids étant incompressibles.
-
-    Forme close : le budget restant après les poids et les tampons indépendants du contexte se divise
-    par le coût par token (cache KV des couches d'attention + graphe d'attention, et matrice de scores
-    si flash attention est absente).
-    """
-    budget = vram_effective(vram_disponible_octets, ratio_fragmentation)
-    budget -= poids_cumule_gpu_octets(metadonnees, metadonnees.nombre_couches)
-    # Tampons indépendants du contexte : activations du bloc et logits. À contexte nul, la matrice de
-    # scores et les tampons du graphe d'attention valent zéro — il ne reste qu'eux.
-    budget -= octets_tampons_calcul(metadonnees, 0, batch, flash_attention)
-    # Réserve laissée à la capture de graphes CUDA quand on veut les garder : la retrancher ici
-    # raccourcit le contexte juste assez pour que la capture ne déborde pas au démarrage.
-    budget -= reserve_octets
-    # État récurrent des blocs hybrides : indépendant du contexte, mais bien compté par
-    # `construire_budget`. L'oublier ici ferait accepter un plan dont le budget affiché déborde.
-    budget -= octets_etat_recurrent(metadonnees, metadonnees.nombre_couches)
-    if budget <= 0:
-        return 0
-    porteuses = couches_attention(metadonnees, metadonnees.nombre_couches)
-    par_token = porteuses * octets_kv_par_token_par_couche(metadonnees, type_kv)
-    par_token += metadonnees.dimension_embedding + OCTETS_GRAPHE_PAR_TOKEN_FIXE * dimension_tete(metadonnees)
-    if not flash_attention:
-        par_token += batch * metadonnees.nombre_tetes_attention * OCTETS_ACTIVATION
-    if par_token <= 0:
-        return metadonnees.contexte_entrainement_max
-    return min(metadonnees.contexte_entrainement_max, aligner(int(budget / par_token), PAS_CONTEXTE))
-
-
 def aligner(valeur: int, pas: int) -> int:
     """Arrondit à l'inférieur sur un multiple de `pas`, sans jamais rendre zéro pour une valeur > 0."""
     if valeur < pas:

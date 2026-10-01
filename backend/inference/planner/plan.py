@@ -143,12 +143,6 @@ class PlanDeChargement(BaseModel):
     # VRAM préallouée. Calculé à partir du besoin réel, jamais par paliers successifs.
     utilisation_memoire_gpu: ValeurJustifiee[float] | None = None
 
-    # vLLM uniquement : désactive la capture de graphes CUDA (`--enforce-eager`). Décidé sur la
-    # marge VRAM du plan — la capture alloue d'un bloc des tampons de la taille du lm_head et déborde
-    # quand il ne reste presque rien. Faux dès qu'il y a de la marge : les graphes CUDA valent plusieurs
-    # fois la vitesse sur un petit modèle, où le coût de lancement des kernels domine chaque token.
-    mode_eager: bool = False
-
     variables_environnement: tuple[VariableEnvironnement, ...] = ()
     variables_refusees: tuple[VariableRefusee, ...] = ()
     ejections_requises: tuple[EjectionRequise, ...] = ()
