@@ -34,10 +34,28 @@ génère une application complète, avec des règles contre les dérapages.
   `backend/` déclenche un reload qui ATTEND la fin de la génération en cours — l'API ne répond plus
   pendant ce temps (« backend injoignable »). Ne pas éditer le backend pendant une génération.
 
-**Tests.** 531 verts localement (528 + 3 sautés sans llama-cpp, simulation CI). CI créée
-(`.github/workflows/ci.yml`).
+**Harnais en mode projet** (`inference/fin_projet.py`, `harnais.py`, `reprise.py`) — mesuré sur des
+essais réels (projet `todo-final`), chaque règle née d'un arrêt constaté :
+- quota de 6 relances sur annonce, RÉARMÉ à chaque appel joué ; borne globale = `tours_absolus_max` ;
+- pause sans bilan (< 400 car. visibles) après un appel, réussi OU échoué, relancée ;
+- bilan dont le « reste à faire » contient une action jouable (bloc shell, curl, pytest, serveur_fond)
+  relancé 2 fois max, sans réarmement ;
+- fin au futur proche (« je vais… », « laissez-moi… », « let me… ») = annonce, quel que soit le verbe ;
+- chemins `todo-final/main.py` ou `/projets/todo-final/main.py` ramenés au bac (`_relatif_au_bac`).
 
-*Dernière mise à jour : 2026-08-28*
+**Modèle.** `huihui-ai/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-MTP-GGUF` Q5_K (+ mmproj),
+même base que `mudler/…APEX` mais non censuré : 5 sondes de refus anodines → mudler 5/5 refus,
+huihui 5/5 réponses. ~14 tok/s. Chargé via l'UI (Modèles → Sur le disque → 2ᵉ « Charger »).
+
+**Résultat de bout en bout (honnête).** Le modèle travaille en autonomie (26 appels d'affilée,
+pytest → lecture → correction → pytest), le projet est passé de 2/9 à 8/9 tests verts en 4 tours,
+mais il n'a PAS fini seul : 1 test rouge, et l'app répond 500 (base SQLite `:memory:` partagée mal
+initialisée). La chaîne `serveur_fond` → curl dans l'atelier → arrêt est vérifiée à la main. La limite
+restante est le modèle sur la dernière ligne droite (il épuise ses relances en pauses sans appel).
+
+**Tests.** 559 verts (`backend/.venv/bin/python -m pytest -q backend`), build frontend OK, CI verte.
+
+*Dernière mise à jour : 2026-10-01*
 
 ## Session du 2026-08-28 — Auto-compaction du contexte (branche `auto-compact`)
 
@@ -118,68 +136,6 @@ mock à la frontière `atelier`). `test_contexte_execution_outil` adapté au nou
 Aucune régression (suite : 369 passés vs 360 sur `main`). *Réserve* : ~95 erreurs de suite
 préexistantes et identiques sur `main` — bug d'ordre dans `core/db.py` (`init_db` ALTER
 `chat_reglages` avant que la table chat existe) ; hors scope atelier, non corrigé.
-
-## Session du 2026-08-28 — CDI stale après reboot, zombie llama-server, plan appliqué sans revérification
-
-Panne : « Aucun moteur installé ne sait charger un modèle gguf » côté web, chargement accepté mais
-génération infinie côté mobile.
-
-### Cause racine, environnementale — majeur `nvidia_uvm` figé dans un CDI spec vieux de 18 jours
-
-`docker exec echohub-v2 python -c "import llama_cpp; ...llama_supports_gpu_offload()"` rendait
-`False` avec `ggml_cuda_init: failed to initialize CUDA: unknown error` en journal, alors que
-`nvidia-smi` (NVML) répondait normalement dans le même conteneur — c'est ce qui a orienté vers un
-problème propre à `cuInit`, pas au pilote.
-
-Artefact : `/dev/nvidia-uvm` s'ouvrait `Operation not permitted` (puis `ENXIO` après un simple
-`docker restart`, qui ne change rien au cgroup device figé à la création). Comparaison des majors :
-
-| device | host (ce boot) | conteneur (avant correctif) |
-|---|---|---|
-| `/dev/nvidia-uvm` | major 234 | major 235 (`/etc/cdi/nvidia.yaml`, généré il y a 18 jours) |
-| `/dev/nvidia-uvm-tools` | major 234 | major 235 |
-
-Le major du module `nvidia_uvm` est alloué dynamiquement à chaque chargement du module — il a
-changé au dernier boot (27/08 21:08). Le spec CDI (`/etc/cdi/nvidia.yaml`) fige ce major au moment
-de sa génération et Docker construit les nœuds du conteneur avec ces valeurs figées, pas par un
-`stat()` live de l'hôte. Un `docker restart`/`--force-recreate` seuls ne suffisent pas tant que le
-spec lui-même n'est pas régénéré.
-
-**Correctif appliqué** : `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, puis
-`docker compose up -d --force-recreate echohub`. Vérifié : `llama_supports_gpu_offload()` → `True`,
-`ggml_cuda_init: found 1 CUDA devices`. **À refaire après chaque reboot de la machine** tant que rien
-n'automatise la régénération (candidat : hook `nvidia-ctk cdi generate` dans un service systemd
-post-boot, ou dans `start.sh` avant `docker compose up`, hors scope de cette session).
-
-### Correctifs de code, branche `correctif-moteur`
-
-1. **Zombie `llama-server` non récolté sur annulation** (`superviseur.py`) — `_demarrer()` lance le
-   sous-processus puis attend sa santé ; une annulation de tâche pendant cette attente traversait
-   `adaptateur.charger()` sans jamais atteindre son propre `poll()`. Mesuré : PID 337338, zombie
-   depuis plusieurs heures, PPID le backend. `_executer()` appelle désormais
-   `adaptateur.decharger()` (idempotent) dans le handler `CancelledError` — seul point qui voit
-   passer cette exception pour tous les moteurs. Test : `test_annulation_chargement.py`.
-2. **`/inference/charger` ne revérifiait jamais la santé du moteur sur un plan déjà construit**
-   (`api.py`) — `RequeteChargement.plan` (le chemin qui applique un plan déjà affiché, pour ne pas
-   replanifier sur une VRAM qui a bougé) ne repassait jamais par `choisir_moteur()`. Un plan devenu
-   caduc entre `/planifier` et `/charger` (moteur tombé entre les deux) pouvait être accepté (202)
-   et ne jamais aboutir — piste retenue pour l'état « chargé » menteur côté mobile.
-   `_verifier_moteur_disponible()` sonde `backend.engines.service` avant de dispatcher, refuse avec
-   `MoteurIndisponible` (503) sinon. Test : `test_verification_moteur_avant_charger.py`.
-
-### Preuve, chemin réel (API HTTP, pas les bindings)
-
-`/inference/planifier` → `/inference/charger` → poll `/inference/etat` → `curl -N` SSE sur
-`/inference/generer` :
-
-| modèle | couches GPU | contexte | chargement | TTFT | flux |
-|---|---|---|---|---|---|
-| Qwen3-4B-Instruct-2507 Q8_0 | 36/36 | 8192 | 38,2 s | 0,40 s | 6 morceaux, « Bonjour ! 😊 » |
-| Qwen3.6-35B-A3B (IQ2_XXS, MoE, 7 groupes d'experts déportés) | 40/40 | 8192 | ~0 s (déjà chaud) | 0,63 s | 151 morceaux en 3,9 s |
-
-Backend redémarré deux fois pendant l'investigation (`docker restart`, puis
-`--force-recreate` après régénération du spec CDI) — les deux fois annoncées et vérifiées revenues
-avant de continuer. Modèle déchargé en fin de session, `etat=inactif`.
 
 ## Résumé de l'état antérieur (2026-08-17)
 

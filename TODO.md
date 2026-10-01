@@ -19,9 +19,12 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 - [ ] **Aperçu de l'app générée dans l'interface** : proxy `/projets/{nom}/apercu/{port}/…` vers le
       serveur de dev de l'atelier. Écueil : une app Vite/SPA à chemins absolus (`/assets/…`) casse sous
       un préfixe — il faudra soit un sous-domaine local, soit imposer `base` relatif au modèle.
-- [ ] **Le modèle rend la main sur une annonce** (« je vais lancer pytest ») au lieu d'appeler l'outil,
-      mesuré pendant l'essai todo-app sur le 35B. Rejoint le point 0 bis ci-dessous.
-- [ ] **llama-server orphelin à chaque reload du backend natif** : le processus survit (re-parenté à
+- [ ] **Dernière ligne droite du modèle** : relances sur annonce/pause/reste faisable en place
+      (`fin_projet.py`), mais sur `todo-final` il finit à 8/9 en épuisant ses 6 relances en pauses sans
+      appel. Pistes : consigne de relance qui NOMME le prochain appel attendu (dernier échec vu) ; modèle
+      plus fort en agentique ; mesurer le quota optimal.
+- [ ] Le choix du modèle « par défaut » reste le favori mudler dans l'UI : passer le huihui en favori.
+- [x] **llama-server orphelin à chaque reload du backend natif** (corrigé : `_arreter_moteur` au shutdown) : le processus survit (re-parenté à
       systemd --user), garde le port 8081 et la VRAM, et le nouveau backend se croit « inactif ».
       Mesuré trois fois le 2026-10-01. Le stopper au `shutdown` du lifespan.
 - [ ] **Reload natif qui gèle l'API** : `--reload` attend la fin de la génération en cours avant de
