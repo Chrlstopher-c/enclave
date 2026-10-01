@@ -30,6 +30,16 @@ _ACTION_FAISABLE = re.compile(
     re.IGNORECASE,
 )
 
+# Dernière phrase au futur proche, première personne, quel que soit le verbe. La liste de verbes de
+# `reprise` en ratait toujours un (« Je vais essayer une approche plus directe », 2026-10-01) ; en
+# mode projet, finir sur ce que l'on VA faire n'est jamais un bilan.
+_FUTUR_PROCHE = re.compile(
+    r"^(?:je vais|je dois|il (?:me )?faut que je|on va|nous allons|laissez-moi|laisse-moi|"
+    r"i will|i'll|i need to|i'm going to|let me|let's)\b",
+    re.IGNORECASE,
+)
+_FIN_DE_PHRASE = re.compile(r"(?<=[.!?…])\s+|\n+")
+
 CONSIGNE_SUITE_PROJET = (
     "You stopped without calling a tool, and what you wrote is not a final report. You are working "
     "on the project: call the next tool NOW (run the command, write the file). Only if the whole "
@@ -53,6 +63,11 @@ def pause_sans_bilan(texte: str) -> bool:
     return len(visible(texte)) < BILAN_PROJET_MIN_CARACTERES
 
 
+def finit_sur_futur_proche(texte: str) -> bool:
+    phrases = [p.strip(" *_-—>") for p in _FIN_DE_PHRASE.split(visible(texte)) if p.strip(" *_-—>")]
+    return bool(phrases) and _FUTUR_PROCHE.match(phrases[-1]) is not None
+
+
 def reste_faisable(texte: str) -> bool:
     """Le bilan rend-il à l'utilisateur une action que le modèle pouvait jouer lui-même ?"""
     texte_visible = visible(texte)
@@ -65,6 +80,7 @@ __all__ = [
     "CONSIGNE_RESTE_FAISABLE",
     "CONSIGNE_SUITE_PROJET",
     "RELANCES_RESTE_MAX",
+    "finit_sur_futur_proche",
     "pause_sans_bilan",
     "reste_faisable",
 ]

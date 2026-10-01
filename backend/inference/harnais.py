@@ -60,6 +60,7 @@ from backend.inference.fin_projet import (
     CONSIGNE_RESTE_FAISABLE,
     CONSIGNE_SUITE_PROJET,
     RELANCES_RESTE_MAX,
+    finit_sur_futur_proche,
     pause_sans_bilan,
     reste_faisable,
 )
@@ -336,7 +337,7 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         logger.warning("Texte répété à l'identique sur {} tours : relance {}.",
                        etat.harnais.radotage_tours, etat.relances)
         return CONSIGNE_RADOTAGE
-    if promesse_non_tenue(texte):
+    if promesse_non_tenue(texte) or (etat.mode_projet and _a_travaille(etat) and finit_sur_futur_proche(texte)):
         return _relance_promesse(etat)
     return _relance_projet(texte, etat)
 

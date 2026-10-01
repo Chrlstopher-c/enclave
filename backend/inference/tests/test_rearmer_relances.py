@@ -23,7 +23,7 @@ def test_quota_epuise_sans_appel_puis_reamorce_apres_un_appel() -> None:
 def test_mode_projet_une_pause_courte_apres_travail_est_relancee() -> None:
     etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
     etat.aboutis = 2
-    pause = "<think>…</think>Je dois réinstaller les dépendances dans le venv correctement."
+    pause = "<think>…</think>Les dépendances sont installées, mais le venv reste incomplet."
     assert harnais.consigne_de_relance(pause, etat, avec_outils=True) == harnais.CONSIGNE_SUITE_PROJET
 
 
@@ -80,3 +80,11 @@ def test_mode_projet_pause_apres_un_appel_echoue_est_relancee() -> None:
     etat.echecs_vus.add("lire_fichier:todo-final/main.py")
     pause = "Les fichiers sont dans le bac mais pas à l'endroit supposé. Laissez-moi les retrouver."
     assert harnais.consigne_de_relance(pause, etat, avec_outils=True) is not None
+
+
+def test_mode_projet_fin_au_futur_proche_est_une_annonce() -> None:
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
+    etat.aboutis = 12
+    texte = ("L'erreur est bien `no such table` dans `test_create`. " * 8
+             + "Je vais essayer une approche plus directe : appeler init_db() au niveau du module.")
+    assert harnais.consigne_de_relance(texte, etat, avec_outils=True) is not None

@@ -202,6 +202,7 @@ class AdaptateurVllm(AdaptateurMoteur):
         self,
         messages: Sequence[MessageChat],
         options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
     ) -> AsyncIterator[MorceauGeneration]:
         if self._etat is None:
             raise EchecChargement(
@@ -211,15 +212,16 @@ class AdaptateurVllm(AdaptateurMoteur):
                     remediation="Charger un modèle avant de générer.",
                 )
             )
-        return self._flux(messages, options)
+        return self._flux(messages, options, outils)
 
     async def _flux(
         self,
         messages: Sequence[MessageChat],
         options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
     ) -> AsyncIterator[MorceauGeneration]:
         """Relaie le flux SSE de vLLM, borné par le contexte servi : un flux sans fin est un bug."""
-        charge_utile = self._charge_utile(messages, options)
+        charge_utile = self._charge_utile(messages, options, outils)
         plafond = options.max_tokens or (self._etat.contexte if self._etat else 0)
         emis = 0
         raison: str | None = None
@@ -253,7 +255,12 @@ class AdaptateurVllm(AdaptateurMoteur):
         diagnostic = qualifier(corps, source_verifiee=True)
         raise EchecChargement(diagnostic, details={"statut": reponse.status_code})
 
-    def _charge_utile(self, messages: Sequence[MessageChat], options: OptionsGeneration) -> dict[str, Any]:
+    def _charge_utile(
+        self,
+        messages: Sequence[MessageChat],
+        options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
+    ) -> dict[str, Any]:
         charge: dict[str, Any] = {
             "model": self._etat.modele if self._etat else "",
             "messages": [message.model_dump() for message in messages],
@@ -271,6 +278,12 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["stop"] = list(options.stop)
         if options.graine is not None:
             charge["seed"] = options.graine
+        # Outils au format OpenAI, comme l'adaptateur llama-server. `tool_choice: "auto"` exige les
+        # options de lancement `--enable-auto-tool-choice`/`--tool-call-parser` (cf. processus_vllm) ;
+        # transmis seulement s'il y a des outils, une liste vide ferait refuser certains modèles.
+        if outils:
+            charge["tools"] = list(outils)
+            charge["tool_choice"] = "auto"
         return charge
 
 

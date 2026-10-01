@@ -24,8 +24,10 @@ from backend.inference.planner.budget import (
     PAS_CONTEXTE,
     aligner,
     contexte_maximal,
+    contexte_maximal_vllm,
     couches_gpu_maximales,
     poids_par_couche_octets,
+    reserve_graphes_cuda_octets,
 )
 from backend.inference.planner.entrees import (
     MetadonneesModele,
@@ -86,6 +88,10 @@ class Repartition(BaseModel):
     # dense, vLLM, ou stratégie écartée) ; tuple vide = MoE dont tous les experts tiennent en VRAM.
     experts_deportes: ValeurJustifiee[tuple[int, ...]] | None = None
     octets_experts_hote: int = 0
+
+    # vLLM uniquement : la capture de graphes CUDA a-t-elle dû être abandonnée faute de VRAM ? Décidé
+    # ici parce que c'est la répartition qui arbitre contexte contre place laissée aux graphes.
+    mode_eager: bool = False
 
 
 def resoudre_type_kv(preferences: PreferencesUtilisateur, palier: Palier) -> ValeurJustifiee[TypeCacheKV]:
@@ -421,44 +427,71 @@ def _repartition_tout_cpu(contexte: ValeurJustifiee[int], batch: ValeurJustifiee
 
 def _repartition_vllm(cadre: CadreCalcul, contexte: ValeurJustifiee[int],
                       batch: ValeurJustifiee[int]) -> Repartition:
-    """vLLM ne sait pas déporter une partie des couches : c'est tout en VRAM, ou pas de plan."""
-    total = cadre.metadonnees.nombre_couches
-    plafond_ctx = contexte_maximal(
+    """vLLM ne sait pas déporter une partie des couches : c'est tout en VRAM, ou pas de plan.
+
+    Deux passes. D'abord en RÉSERVANT la VRAM des graphes CUDA : on accepte un contexte plus court
+    pour les garder, car ils multiplient la vitesse de décodage (mesuré : 22 tok/s en eager contre
+    150+ avec graphes sur un 2B). Si même le contexte plancher n'y tient pas avec cette réserve,
+    seconde passe SANS réserve (mode eager) : toute la VRAM va au contexte, plus lent mais ça charge.
+
+    Le solveur est PROPRE à vLLM (`contexte_maximal_vllm`) : les tampons du graphe d'attention y
+    grandissent avec le contexte servi, pas avec le plafond d'entraînement — sinon faux refus sur un
+    modèle à contexte natif énorme.
+    """
+    plancher = min(CONTEXTE_PLANCHER, contexte.valeur)
+    plafond_graphes = _contexte_vllm(cadre, batch, reserve_graphes_cuda_octets(cadre.metadonnees))
+    if plafond_graphes >= plancher:
+        return _repartition_vllm_pour(cadre, contexte, batch, plafond_graphes, mode_eager=False)
+
+    plafond_eager = _contexte_vllm(cadre, batch, 0)
+    if plafond_eager < plancher:
+        raise RessourceInsuffisante(
+            f"vLLM exige les {cadre.metadonnees.nombre_couches} couches en VRAM ; le modèle n'y tient "
+            "pas, même au contexte plancher.",
+            requis_octets=int(cadre.metadonnees.taille_octets),
+            disponible_octets=cadre.vram_disponible_octets,
+            remediation="Choisir une quantification plus basse, ou un modèle GGUF chargeable par llama.cpp.",
+        )
+    return _repartition_vllm_pour(cadre, contexte, batch, plafond_eager, mode_eager=True)
+
+
+def _contexte_vllm(cadre: CadreCalcul, batch: ValeurJustifiee[int], reserve_octets: int) -> int:
+    """Contexte vLLM maximal pour la VRAM du cadre, une réserve de graphes CUDA déduite si demandée."""
+    return contexte_maximal_vllm(
         cadre.metadonnees,
-        couches_gpu=total,
         batch=batch.valeur,
         type_kv=cadre.type_kv,
         flash_attention=cadre.flash_attention,
         vram_disponible_octets=cadre.vram_disponible_octets,
         ratio_fragmentation=cadre.preferences.ratio_fragmentation,
+        reserve_octets=reserve_octets,
     )
-    if plafond_ctx < min(CONTEXTE_PLANCHER, contexte.valeur):
-        raise RessourceInsuffisante(
-            f"vLLM exige les {total} couches en VRAM ; le modèle n'y tient pas, même au contexte plancher.",
-            requis_octets=int(cadre.metadonnees.taille_octets),
-            disponible_octets=cadre.vram_disponible_octets,
-            remediation="Choisir une quantification plus basse, ou un modèle GGUF chargeable par llama.cpp.",
+
+
+def _repartition_vllm_pour(cadre: CadreCalcul, contexte: ValeurJustifiee[int],
+                           batch: ValeurJustifiee[int], plafond: int, *, mode_eager: bool) -> Repartition:
+    """Répartition vLLM pour un plafond de contexte donné et un mode (graphes CUDA, ou eager)."""
+    total = cadre.metadonnees.nombre_couches
+    if plafond >= contexte.valeur:
+        return Repartition(
+            contexte=contexte, batch=batch,
+            couches_gpu=_couches_vllm(total, contexte.valeur), mode_eager=mode_eager,
         )
-    if plafond_ctx >= contexte.valeur:
-        return Repartition(contexte=contexte, batch=batch, couches_gpu=_couches_vllm(total, contexte.valeur))
-    return _repartition_vllm_reduite(cadre, contexte, plafond_ctx)
-
-
-def _repartition_vllm_reduite(cadre: CadreCalcul, contexte: ValeurJustifiee[int], reduit: int) -> Repartition:
-    """Les poids sont incompressibles sous vLLM : seul le contexte peut absorber le manque de VRAM."""
+    reserve = "" if mode_eager else " ; une réserve pour les graphes CUDA est gardée, pour la vitesse"
     contexte_reduit = ValeurJustifiee[int](
-        valeur=reduit,
+        valeur=plafond,
         justification=(
-            f"Raccourci de {contexte.valeur} à {reduit} tokens : vLLM prééalloue la totalité du modèle, "
-            "le contexte est ce qu'il reste de VRAM une fois les poids placés."
+            f"Raccourci de {contexte.valeur} à {plafond} tokens : vLLM prééalloue la totalité du modèle, "
+            f"le contexte est ce qu'il reste de VRAM une fois les poids placés{reserve}."
         ),
         plafonnee=True,
         valeur_demandee=contexte.valeur,
     )
     return Repartition(
         contexte=contexte_reduit,
-        batch=resoudre_batch(cadre.preferences, cadre.palier, reduit),
-        couches_gpu=_couches_vllm(cadre.metadonnees.nombre_couches, reduit),
+        batch=resoudre_batch(cadre.preferences, cadre.palier, plafond),
+        couches_gpu=_couches_vllm(total, plafond),
+        mode_eager=mode_eager,
     )
 
 
