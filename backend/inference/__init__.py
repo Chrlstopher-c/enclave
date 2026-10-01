@@ -46,6 +46,7 @@ from backend.inference.harnais import (
     relancer,
 )
 from backend.inference.reprise import CONSIGNE_CLOTURE_PROMESSE
+from backend.inference.fin_projet import DernierAppel
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -303,6 +304,8 @@ async def _jouer_appels(
         if isinstance(etape.get("texte"), str):
             yield {"texte": etape["texte"]}
         etat.aboutis += 1 if etape.get("succes") else 0
+        if isinstance(etape.get("nom"), str):
+            etat.dernier_appel = DernierAppel(etape["nom"], bool(etape.get("succes")), etape.get("sortie", ""))
     if etat.aboutis > avant:
         # Un outil a abouti : l'ardoise des relances est effacée, comme celle des redites.
         # MESURÉ le 2026-08-16 : relancé une fois, le modèle écrit bien son fichier — puis referme
@@ -342,7 +345,7 @@ async def _executer_appels(
                 echecs_vus.clear()
             else:
                 echecs_vus.add(signature)
-        yield {"texte": _bloc_sortie(texte, succes), "succes": succes}
+        yield {"texte": _bloc_sortie(texte, succes), "succes": succes, "nom": nom, "sortie": texte}
         # Rôle `tool`, contenu NU. Le gabarit l'enveloppe lui-même dans `<tool_response>` : c'est
         # le canal que le modèle a appris à l'entraînement, et il ne le confond pas avec sa propre
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un

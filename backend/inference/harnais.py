@@ -60,8 +60,10 @@ from backend.inference.fin_projet import (
     CONSIGNE_RESTE_FAISABLE,
     CONSIGNE_SUITE_PROJET,
     RELANCES_RESTE_MAX,
+    DernierAppel,
     finit_sur_futur_proche,
     pause_sans_bilan,
+    rappel_dernier_appel,
     reste_faisable,
 )
 from backend.inference.harnais_outils import _sans_appels_outils
@@ -280,6 +282,8 @@ class EtatBoucle:
     mode_projet: bool = False
     # Relances sur un bilan qui rend à l'utilisateur un reste faisable : jamais réarmées.
     relances_reste: int = 0
+    # Mode projet : cité dans les relances, pour qu'elles nomment l'appel à faire.
+    dernier_appel: DernierAppel | None = None
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
@@ -330,7 +334,7 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         etat.tours_muets += 1
         etat.relances += 1
         logger.warning("Tour muet ({} car.) : relance {}.", len(texte.strip()), etat.relances)
-        return CONSIGNE_TOUR_MUET
+        return CONSIGNE_TOUR_MUET + (rappel_dernier_appel(etat.dernier_appel) if etat.mode_projet else "")
     etat.textes.append(texte)
     if radote(etat.textes, etat.harnais):
         etat.relances += 1
@@ -351,7 +355,7 @@ def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
         etat.relances_promesse += 1
         logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
                        len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
-        return CONSIGNE_SUITE_PROJET
+        return CONSIGNE_SUITE_PROJET + rappel_dernier_appel(etat.dernier_appel)
     if not etat.mode_projet or not _a_travaille(etat) or etat.relances_reste >= RELANCES_RESTE_MAX:
         return None
     if not reste_faisable(texte):
@@ -360,7 +364,7 @@ def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
     etat.relances_reste += 1
     logger.warning("Mode projet : bilan avec un reste faisable : relance {}/{}.",
                    etat.relances_reste, RELANCES_RESTE_MAX)
-    return CONSIGNE_RESTE_FAISABLE
+    return CONSIGNE_RESTE_FAISABLE + rappel_dernier_appel(etat.dernier_appel)
 
 
 def _relance_promesse(etat: EtatBoucle) -> str | None:
@@ -376,7 +380,8 @@ def _relance_promesse(etat: EtatBoucle) -> str | None:
     etat.relances_promesse += 1
     logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
                    etat.relances_promesse, quota_promesse(etat))
-    return consigne_promesse(etat.relances_promesse)
+    rappel = rappel_dernier_appel(etat.dernier_appel) if etat.mode_projet else ""
+    return consigne_promesse(etat.relances_promesse) + rappel
 
 
 def budget_epuise(etat: EtatBoucle) -> bool:

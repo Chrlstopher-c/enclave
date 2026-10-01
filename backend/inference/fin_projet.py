@@ -10,6 +10,7 @@ Deux façons, mesurées le 2026-10-01 sur le 35B, de rendre la main trop tôt :
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 # Sous cette longueur (raisonnement retiré), un texte sans appel n'est pas un bilan : un bilan réel
 # (construit, lancé, vérifié, reste) dépasse 400 caractères.
@@ -17,6 +18,9 @@ BILAN_PROJET_MIN_CARACTERES = 400
 # Le faux bilan a droit à peu de relances, sans réarmement : un reste qui dépend vraiment de
 # l'utilisateur (une clé d'API, un choix) ne doit pas faire tourner la boucle.
 RELANCES_RESTE_MAX = 2
+# Fin de sortie citée dans la relance : la queue d'une sortie d'erreur (résumé pytest, dernière ligne
+# d'un traceback) est ce qui dit quoi corriger.
+EXTRAIT_ECHEC_MAX = 400
 
 _RAISONNEMENT = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL)
 _SECTION_RESTE = re.compile(
@@ -55,6 +59,30 @@ CONSIGNE_RESTE_FAISABLE = (
 )
 
 
+@dataclass(frozen=True)
+class DernierAppel:
+    """Le dernier outil joué, pour que la relance NOMME la suite au lieu de la laisser deviner.
+
+    Mesuré sur `todo-final` (2026-10-01) : relancé d'une consigne générique, le modèle répondait par
+    une nouvelle pause, six fois de suite, alors que le dernier `pytest` venait d'échouer sur une
+    erreur précise. Lui rappeler cette erreur lui donne l'appel à faire.
+    """
+
+    nom: str
+    succes: bool
+    sortie: str
+
+
+def rappel_dernier_appel(dernier: DernierAppel | None) -> str:
+    if dernier is None:
+        return ""
+    if dernier.succes:
+        return f" Your last tool call (`{dernier.nom}`) succeeded: go on with the next step from there."
+    extrait = " ".join(dernier.sortie.split())[-EXTRAIT_ECHEC_MAX:]
+    return (f" Your last tool call (`{dernier.nom}`) FAILED with: «{extrait}». Your next call must deal "
+            "with that error: read the file it points to, fix it, then rerun the same check.")
+
+
 def visible(texte: str) -> str:
     return _RAISONNEMENT.sub("", texte).strip()
 
@@ -79,8 +107,10 @@ __all__ = [
     "BILAN_PROJET_MIN_CARACTERES",
     "CONSIGNE_RESTE_FAISABLE",
     "CONSIGNE_SUITE_PROJET",
+    "DernierAppel",
     "RELANCES_RESTE_MAX",
     "finit_sur_futur_proche",
     "pause_sans_bilan",
+    "rappel_dernier_appel",
     "reste_faisable",
 ]
