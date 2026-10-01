@@ -20,6 +20,13 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 - [ ] Aperçu : WebSocket (HMR Vite) non relayé ; un seul aperçu pour tout l'atelier ; joignable sur la
       tour seulement (127.0.0.1), comme le reste de l'UI.
 - [ ] Exporter un projet fini : bouton/commande (rsync sans `.echohub/`, `.venv/`, `node_modules/`).
+- [ ] **Budget de 10 appels qui casse l'autonomie** (demandé par Chris le 2026-10-01, NE PAS commencer sans
+      son signal). Aujourd'hui : `FORGE.tours_outils_max=10`, prolongation sans plafond MAIS seulement si,
+      averti au 9ᵉ appel (`CONSIGNE_AVERTISSEMENT`), le modèle continue ; rien ne le lui dit au départ.
+      Voulu : le prompt de l'agent annonce la limite et lui permet de l'AUGMENTER lui-même selon son
+      travail (ex. outil/déclaration « j'ai besoin de N appels de plus, pour X »), au moins en mode projet.
+      Garde-fou de sûreté conservé : `tours_absolus_max` (200) et la détection de boucle/radotage.
+      Fichiers : `backend/inference/harnais.py` (budget, avertissements), `backend/outils/socle.py` (prompt).
 - [ ] **Dernière ligne droite du modèle** : relances sur annonce/pause/reste faisable en place
       (`fin_projet.py`), mais sur `todo-final` il finit à 8/9 en épuisant ses 6 relances en pauses sans
       appel. Pistes : consigne de relance qui NOMME le prochain appel attendu (dernier échec vu) ; modèle
