@@ -260,6 +260,19 @@ def harnais_demande(options: OptionsGeneration) -> str | None:
     return valeur if isinstance(valeur, str) else None
 
 
+def rearmer_relances(etat: EtatBoucle) -> None:
+    """Un appel d'outil vient d'être joué : les relances ont servi, leur quota se réarme.
+
+    Le quota était consommé sur TOUTE la génération : un modèle qui annonce avant chaque étape (le
+    35B en mode projet, mesuré le 2026-10-01) épuisait ses trois relances en trois étapes réussies,
+    et la quatrième annonce clôturait un travail en plein élan. Le quota borne l'annonce SANS appel ;
+    une annonce suivie d'un appel est du progrès. La boucle reste bornée par `tours_absolus_max`.
+    """
+    etat.relances = 0
+    etat.relances_promesse = 0
+    etat.tours_muets = 0
+
+
 def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str | None:
     """Consigne à renvoyer au modèle quand un tour n'a demandé AUCUN outil, ou `None` pour finir.
 
@@ -400,6 +413,7 @@ __all__ = [
     "relancer",
     "CONSIGNE_TOUR_MUET",
     "DEFAUT",
+    "rearmer_relances",
     "ECHOHUB",
     "FORGE",
     "Harnais",

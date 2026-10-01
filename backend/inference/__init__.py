@@ -540,6 +540,7 @@ class MoteurChat:
             # pas la réponse. On le signale au lieu de le laisser passer pour telle. Le balisage de
             # l'appel, lui, ne repart PAS au moteur — sinon il lui sert de modèle à recopier.
             yield {"texte": BALISE_FIN_ETAPE}
+            harnais.rearmer_relances(etat)
             messages = list(messages) + [
                 MessageChat(role="assistant", content=_sans_appels_outils(texte))
             ]
