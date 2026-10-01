@@ -331,13 +331,18 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         return CONSIGNE_RADOTAGE
     if promesse_non_tenue(texte):
         return _relance_promesse(etat)
-    if fin_de_projet_prematuree(texte, etat) and etat.relances_promesse < RELANCES_PROMESSE_MAX:
-        etat.relances += 1
-        etat.relances_promesse += 1
-        logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
-                       len(texte.strip()), etat.relances_promesse, RELANCES_PROMESSE_MAX)
-        return CONSIGNE_SUITE_PROJET
-    return None
+    return _relance_projet(texte, etat)
+
+
+def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
+    """Mode projet : une pause sans bilan est relancée, dans le même quota que les annonces."""
+    if not fin_de_projet_prematuree(texte, etat) or etat.relances_promesse >= RELANCES_PROMESSE_MAX:
+        return None
+    etat.relances += 1
+    etat.relances_promesse += 1
+    logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
+                   len(texte.strip()), etat.relances_promesse, RELANCES_PROMESSE_MAX)
+    return CONSIGNE_SUITE_PROJET
 
 
 def _relance_promesse(etat: EtatBoucle) -> str | None:
