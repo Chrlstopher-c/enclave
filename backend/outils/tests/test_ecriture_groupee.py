@@ -64,3 +64,12 @@ def test_lecture_d_une_plage_de_lignes(contexte: ContexteExecution) -> None:
               contexte)
     extrait = asyncio.run(OUTIL_LIRE.executer({"chemin": "long.py", "ligne_debut": 10, "ligne_fin": 12}, contexte))
     assert extrait == "[lignes 10-12 sur 50]\nligne 10\nligne 11\nligne 12\n"
+
+
+def test_une_erreur_de_syntaxe_est_signalee_a_l_ecriture(contexte: ContexteExecution) -> None:
+    sortie = _executer({"fichiers": [{"chemin": "casse.py", "contenu": "def f(:\n    pass\n"},
+                                     {"chemin": "ok.py", "contenu": "x = 1\n"},
+                                     {"chemin": "conf.json", "contenu": "{\"a\": }"}]}, contexte)
+    assert "SYNTAX ERROR in casse.py, line 1" in sortie
+    assert "INVALID JSON in conf.json" in sortie
+    assert "ok.py" in sortie and sortie.count("ERROR") + sortie.count("INVALID") == 2

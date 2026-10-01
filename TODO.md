@@ -20,13 +20,17 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 - [ ] Aperçu : WebSocket (HMR Vite) non relayé ; un seul aperçu pour tout l'atelier ; joignable sur la
       tour seulement (127.0.0.1), comme le reste de l'UI.
 - [ ] Exporter un projet fini : bouton/commande (rsync sans `.echohub/`, `.venv/`, `node_modules/`).
-- [ ] **Budget de 10 appels qui casse l'autonomie** (demandé par Chris le 2026-10-01, NE PAS commencer sans
-      son signal). Aujourd'hui : `FORGE.tours_outils_max=10`, prolongation sans plafond MAIS seulement si,
-      averti au 9ᵉ appel (`CONSIGNE_AVERTISSEMENT`), le modèle continue ; rien ne le lui dit au départ.
-      Voulu : le prompt de l'agent annonce la limite et lui permet de l'AUGMENTER lui-même selon son
-      travail (ex. outil/déclaration « j'ai besoin de N appels de plus, pour X »), au moins en mode projet.
-      Garde-fou de sûreté conservé : `tours_absolus_max` (200) et la détection de boucle/radotage.
-      Fichiers : `backend/inference/harnais.py` (budget, avertissements), `backend/outils/socle.py` (prompt).
+- [x] **Budget de 10 appels** (2026-10-02) : plus de compte à rebours sous FORGE, le socle annonce l'absence
+      de petite borne ; garde-fou absolu 200 conservé.
+- [x] **Écriture groupée, recherche avant lecture, tâches, avis de syntaxe** (2026-10-02) : `ecrire_fichiers`,
+      `lire_fichier` par plage, `suivre_taches` (fin de tour refusée sur tâche ouverte), méthodes dans le socle.
+- [x] **Panneau Fichiers du chat** (2026-10-02) : arborescence, lecture, modifications + diff depuis l'instantané.
+- [ ] **Mesurer** ce que ces changements font sur le modèle (essai `notes-app` ou `spoofer`) — réservé à Chris.
+- [ ] Radotage par paraphrase : non détecté (essai par similarité retiré, il remplaçait les relances
+      escaladées). Si la boucle d'annonces revient malgré la fin du compte à rebours, borner plutôt le
+      nombre de relances consécutives sans appel, quel qu'en soit le motif.
+- [ ] Panneau Fichiers : liste de tâches de l'agent affichable dans le panneau (aujourd'hui : dans le fil).
+- [ ] `backend/inference/__init__.py` dépasse 500 lignes (669) : à découper (boucle d'outils à part).
 - [ ] **Dernière ligne droite du modèle** : relances sur annonce/pause/reste faisable en place
       (`fin_projet.py`), mais sur `todo-final` il finit à 8/9 en épuisant ses 6 relances en pauses sans
       appel. Pistes : consigne de relance qui NOMME le prochain appel attendu (dernier échec vu) ; modèle

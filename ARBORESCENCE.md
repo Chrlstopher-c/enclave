@@ -74,6 +74,9 @@ côté consommateur · `adaptation_inference.py` branchement du domaine voisin �
 | `socle.py` | Prompt système posé **avant** celui de la conversation — en anglais |
 | `recherche_web.py` | Recherche, adossée au domaine `recherche` |
 | `fichiers_bac.py` | `ecrire_fichier`, `lire_fichier`, `modifier_fichier` — la boucle de travail |
+| `ecriture_groupee.py` | `ecrire_fichiers` : plusieurs fichiers indépendants en un appel |
+| `verif_syntaxe.py` | Avis de syntaxe Python / JSON rendu à l'écriture même |
+| `suivre_taches.py` | `suivre_taches` : la liste de tâches de l'agent, remplacée en entier |
 | `executer_python.py` | Exécution réelle, par `fichier` de préférence, par `code` pour un jetable |
 | `bac_a_sable.py` | Lanceur confiné : rlimits → setgid → setuid, résolution de chemin bornée au bac |
 | `balayage_bac.py` | Enregistre dans le magasin `fichiers` ce que le bac contient de nouveau |
@@ -143,7 +146,9 @@ docker run --rm --gpus all --entrypoint /app/backend/.venv/bin/python \
 | `backend/outils/executer_commande.py` | Outil `executer_commande` — une commande shell réelle, confinée dans le bac |
 | `backend/outils/recuperer_page.py` | Outil `recuperer_page` — lit une page web dont on a l'adresse |
 | `backend/outils/explorer_bac.py` | Outils `lister_fichiers` et `chercher_dans_fichiers` |
-| `backend/inference/fin_projet.py` | Mode projet : pause, faux bilan, fin au futur proche |
+| `backend/inference/fin_projet.py` | Mode projet : pause, faux bilan, code montré, fin au futur proche, rappel du dernier appel |
+| `backend/inference/budget_outils.py` | Budget de tours d'outils : borne, avertissements, prolongations |
+| `backend/inference/suivi_taches.py` | Relance d'un tour qui finit sur une tâche ouverte |
 | `backend/inference/harnais.py` | Conduite de la boucle d'outils : tours, relances, budget, radotage |
 | `backend/inference/engines_adapters/processus_llama_server.py` | Pilotage du sous-processus `llama-server` |
 | `backend/inference/engines_adapters/adaptateur_llama_server.py` | Adaptateur `llama-server` — même plan, HTTP au lieu de bindings |
@@ -161,13 +166,16 @@ Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation
 | `backend/projets/modeles.py` | Projet, catalogue, instantané, liaison |
 | `backend/projets/racine.py` | Racine des projets : lister, créer, résoudre sans jamais en sortir |
 | `backend/projets/apercu.py` | Aperçu : pointer le relais de l'atelier sur un port, rendre l'URL |
-| `backend/projets/instantanes.py` | Instantanés git séparés, pris avant chaque tour, restauration annulable |
+| `backend/projets/contenu.py` | Arborescence et lecture d'un fichier du projet (lecture seule, disque de l'hôte) |
+| `backend/projets/instantanes.py` | Instantanés git séparés, restauration annulable, modifications et diff depuis le dernier |
 | `backend/projets/routes.py` | `/projets` : catalogue, création, instantanés, restauration |
 | `backend/projets/tests/test_apercu.py` | Aperçu : pointage, port réservé, atelier injoignable |
 | `backend/projets/tests/test_projets.py` | Racine confinée, git réel, restauration |
 | `backend/outils/garde_fous.py` | Refus lexical des commandes dangereuses ou hors dossier |
 | `backend/outils/serveur_fond.py` | Outil `serveur_fond` : serveurs de dev en arrière-plan |
 | `backend/outils/tests/test_garde_fous.py` | Ce qui passe, ce qui est refusé |
+| `backend/outils/tests/test_ecriture_groupee.py` | Écriture groupée, lecture par plage, avis de syntaxe |
+| `backend/outils/tests/test_suivre_taches.py` | Liste de tâches : rendu, ouvertes, raison exigée |
 | `backend/outils/tests/test_mode_projet.py` | Outils dans le dossier du projet, élagage, lecture par tranches |
 | `atelier/apercu.py` | Relais d'aperçu (port 8090) vers le serveur de dev choisi, servi à la racine |
 | `atelier/processus.py` | Processus de fond de l'atelier (lancer, journal, arrêter, lister) |
@@ -175,5 +183,11 @@ Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation
 | `frontend/src/chat/projet/useProjetConversation.ts` | Liaison, catalogue, instantanés, gestes |
 | `frontend/src/chat/projet/SectionApercu.tsx` | Section « Aperçu de l'app » : ports en écoute, ouvrir |
 | `frontend/src/chat/projet/useApercuProjet.ts` | Hook : lire les ports, pointer et ouvrir l'onglet |
+| `frontend/src/chat/projet/PanneauFichiers.tsx` | Panneau « Fichiers » du chat : onglets arborescence / modifications, lecture |
+| `frontend/src/chat/projet/ArbreFichiers.tsx` | Arborescence repliable, fichiers colorés selon leur modification |
+| `frontend/src/chat/projet/VueFichier.tsx` | Contenu numéroté d'un fichier, ou son diff coloré |
+| `frontend/src/chat/projet/arbre.ts` | Arbre reconstruit depuis la liste plate des chemins |
+| `frontend/src/chat/projet/useFichiersProjet.ts` | Hook : arbre, modifications et sélection, relus toutes les 4 s |
+| `frontend/src/chat/projet/useProjetEcran.ts` | Câblage projet de l'écran : modale, panneau, actions d'en-tête |
 | `frontend/src/chat/projet/ModaleProjet.tsx` | Modale : confier / créer un projet, règles, restaurer |
 | `frontend/src/chat/projet/index.ts` | Exports du module |

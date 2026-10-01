@@ -135,8 +135,17 @@ travailler dans son bac de conversation.
   sert À LA RACINE le port qu'on lui désigne — les chemins absolus d'une SPA marchent. Le backend
   ne relaie aucun octet : il pointe le relais (`POST /projets/{nom}/apercu`) et rend l'URL
   (`ATELIER_APERCU_URL`). Un seul aperçu pour tout l'atelier ; pas de WebSocket (HMR de Vite absent).
-- **Socle** : bloc `_MODE_PROJET` (règles + méthode de travail : regarder, planifier, étapes VÉRIFIÉES,
-  commandes non interactives, README, bilan honnête).
+- **Socle** : bloc `_MODE_PROJET` (règles + méthode de travail : regarder, planifier en tâches
+  `suivre_taches`, CHERCHER avant de lire, corriger partout, écrire groupé, étapes VÉRIFIÉES, tout lancer
+  soi-même, commandes non interactives, README, bilan honnête). Le socle dit aussi qu'il n'y a pas de
+  petite borne d'appels : sous FORGE, aucun compte à rebours (`budget_outils`), seul le garde-fou absolu
+  (200 tours) est annoncé.
+- **Conduite de fin de tour** (`inference/fin_projet.py`, `suivi_taches.py`) : un tour sans appel est
+  relancé s'il est une pause, une annonce, un faux bilan, un fichier recopié dans le chat, ou s'il
+  laisse une tâche ouverte ; chaque relance en mode projet cite le dernier appel et son erreur.
+- **Panneau Fichiers** (`backend/projets/contenu.py`, `instantanes.modifications/diff`,
+  `chat/projet/PanneauFichiers.tsx`) : arborescence et lecture lues sur le disque de l'hôte ;
+  modifications et diff calculés dans l'atelier contre le dernier instantané (donc le tour courant).
 - **Propriétaire** : l'agent est root dans l'atelier ; `ATELIER_PROPRIETAIRE=uid:gid` rétrocède ce
   qu'il crée (`find ! -user … -exec chown`) pour que le backend natif et l'utilisateur gardent la main.
 

@@ -36,6 +36,7 @@ from backend.core import EchoHubError
 from backend.fichiers import deposer_fichier
 from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
+from backend.outils.verif_syntaxe import avis_syntaxe
 
 # Un fichier relu repart dans le contexte du modèle. Au-delà, la fenêtre se remplit d'un seul
 # fichier et l'historique de la conversation disparaît. `ResultatOutil.tronque()` s'applique de
@@ -214,7 +215,8 @@ async def _ecrire(arguments: dict[str, Any], contexte: ContexteExecution) -> str
     cible.write_bytes(octets)
     mention = _enregistrer(contexte, chemin_demande, cible)
     lignes = str(contenu).count("\n") + 1
-    return f"Écrit « {chemin_demande} » ({len(octets)} octets, {lignes} lignes). {mention}"
+    avis = avis_syntaxe(chemin_demande, str(contenu))
+    return f"Écrit « {chemin_demande} » ({len(octets)} octets, {lignes} lignes). {mention}{avis}"
 
 
 # --- lire_fichier ------------------------------------------------------------------------------
@@ -373,9 +375,11 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
     refus = _verdict_occurrences(texte.count(str(ancien)), str(ancien))
     if refus is not None:
         raise EchecOutil(refus)
-    cible.write_text(texte.replace(str(ancien), str(nouveau), 1), encoding="utf-8")
+    nouveau_texte = texte.replace(str(ancien), str(nouveau), 1)
+    cible.write_text(nouveau_texte, encoding="utf-8")
     mention = _enregistrer(contexte, chemin_demande, cible)
-    return f"Modifié « {chemin_demande} » : un fragment remplacé, le reste du fichier est intact. {mention}"
+    avis = avis_syntaxe(chemin_demande, nouveau_texte)
+    return f"Modifié « {chemin_demande} » : un fragment remplacé, le reste du fichier est intact. {mention}{avis}"
 
 
 OUTIL_ECRIRE = Outil(description=DESCRIPTION_ECRIRE, executer=_ecrire)
