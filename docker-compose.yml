@@ -146,7 +146,7 @@ services:
   # --- Recherche web, désormais active ------------------------------------------------------
   # Le profil `recherche-web` qui laissait ce service éteint a été retiré : il démarre avec la
   # pile. Toujours aucun port publié — `expose` ne l'ouvre que sur le réseau interne, où le
-  # backend l'atteint sur http://searxng:8080. Rien n'est joignable depuis l'hôte ni l'extérieur.
+  # backend l'atteint sur http://searxng:8080. Publié sur 127.0.0.1 seulement, jamais à l'extérieur.
   #
   # Pas de `depends_on` côté echohub, volontairement : le backend doit démarrer et servir même si
   # la recherche est indisponible. Son domaine `recherche` rend alors une erreur métier explicite
@@ -174,6 +174,10 @@ services:
       SEARXNG_LIMITER: "false"
     expose:
       - "8080"
+    # Backend natif (hors Docker) : il ne résout pas `searxng`, il passe par ce port, en boucle
+    # locale seulement (SEARXNG_URL=http://127.0.0.1:37925 dans le .env du poste).
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT_HOTE:-37925}:8080"
 
   # --- Atelier d'exécution ------------------------------------------------------------------
   # Conteneur de dev persistant, unique et partagé par TOUTES les conversations (option B). L'agent
