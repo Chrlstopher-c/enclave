@@ -205,6 +205,8 @@ def _commande_montree(bloc: re.Match[str], fin: str) -> bool:
         return False
     intro = fin[: bloc.start()].rstrip()
     derniere = intro.rsplit("\n", 1)[-1]
+    if not intro:
+        return True  # un message réduit à un bloc shell n'est jamais un bilan : c'est un appel montré
     if _MODE_D_EMPLOI.search(derniere) is not None:
         return False
     return (intro.endswith(":") or _ANNONCE.search(derniere) is not None
