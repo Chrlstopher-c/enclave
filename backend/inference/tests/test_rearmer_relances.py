@@ -45,3 +45,31 @@ def test_mode_projet_quota_porte_a_six() -> None:
     etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
     assert all(_relance(etat, i) is not None for i in range(6))
     assert _relance(etat, 6) is None
+
+
+FAUX_BILAN = (
+    "## Ce qui a été fait\n- Remplacement de `TemplateResponse` par un `jinja2.Environment` classique.\n"
+    "- Ajout d'un appel à `init_db()` dans chaque route API.\n" * 4
+    + "\n## Ce qui reste à faire\n4 tests sur 9 passent. La commande suivante règle ce dernier point :\n"
+    "```bash\nrm -f todos.db && .venv/bin/pytest tests/test_api.py -x\n```\n"
+    "\n| Symptôme | Remède |\n|---|---|\n| Données persistantes | `rm -f todos.db` avant pytest |\n"
+)
+
+
+def test_mode_projet_bilan_avec_reste_faisable_est_relance_deux_fois() -> None:
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
+    etat.aboutis = 27
+    bilans = [f"Tour {i} — {FAUX_BILAN}" for i in range(3)]
+    assert harnais.consigne_de_relance(bilans[0], etat, avec_outils=True) == harnais.CONSIGNE_RESTE_FAISABLE
+    harnais.rearmer_relances(etat)
+    assert harnais.consigne_de_relance(bilans[1], etat, avec_outils=True) == harnais.CONSIGNE_RESTE_FAISABLE
+    harnais.rearmer_relances(etat)
+    assert harnais.consigne_de_relance(bilans[2], etat, avec_outils=True) is None, "le quota ne se réarme pas"
+
+
+def test_mode_projet_reste_qui_depend_de_l_utilisateur_termine() -> None:
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
+    etat.aboutis = 8
+    bilan = ("L'app est construite, 9 tests verts, serveur vérifié au curl sur le port 8000. " * 6
+             + "\nCe qui reste à faire : renseigner ta clé Stripe dans `.env` (je ne l'ai pas).")
+    assert harnais.consigne_de_relance(bilan, etat, avec_outils=True) is None

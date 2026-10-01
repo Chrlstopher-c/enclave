@@ -56,6 +56,13 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.inference.engines_adapters.contrat import MessageChat, OptionsGeneration
+from backend.inference.fin_projet import (
+    CONSIGNE_RESTE_FAISABLE,
+    CONSIGNE_SUITE_PROJET,
+    RELANCES_RESTE_MAX,
+    pause_sans_bilan,
+    reste_faisable,
+)
 from backend.inference.harnais_outils import _sans_appels_outils
 from backend.inference.reprise import (
     RELANCES_PROMESSE_MAX,
@@ -152,20 +159,6 @@ CONSIGNE_DERNIER_TOUR = (
     "to take."
 )
 
-# Mode projet : sous cette longueur (raisonnement retiré), un texte sans appel n'est pas un bilan.
-# Mesuré le 2026-10-01 : le 35B clôt ses tours sur « Je dois réinstaller les dépendances dans le
-# venv correctement. » (95 car.) ; un bilan réel (construit, lancé, vérifié, reste) dépasse 400.
-BILAN_PROJET_MIN_CARACTERES = 400
-_RAISONNEMENT = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL)
-
-CONSIGNE_SUITE_PROJET = (
-    "You stopped without calling a tool, and what you wrote is not a final report. You are working "
-    "on the project: call the next tool NOW (run the command, write the file). Only if the whole "
-    "task is really finished, write the final report instead: what was built, how to run it, what "
-    "you actually verified, and what remains."
-)
-
-
 # Mode projet : le 35B a besoin de 2 à 3 relances avant presque chaque appel (mesuré le 2026-10-01) ;
 # à 3, la quatrième annonce consécutive clôturait le travail. Le quota se réarme à chaque appel joué.
 RELANCES_PROMESSE_PROJET_MAX = 6
@@ -177,10 +170,7 @@ def quota_promesse(etat: EtatBoucle) -> int:
 
 def fin_de_projet_prematuree(texte: str, etat: EtatBoucle) -> bool:
     """En mode projet, après du travail réel, un texte court sans appel est une pause, pas une fin."""
-    if not etat.mode_projet or etat.aboutis == 0:
-        return False
-    visible = _RAISONNEMENT.sub("", texte).strip()
-    return len(visible) < BILAN_PROJET_MIN_CARACTERES
+    return etat.mode_projet and etat.aboutis > 0 and pause_sans_bilan(texte)
 
 
 CONSIGNE_TOUR_MUET = (
@@ -281,6 +271,8 @@ class EtatBoucle:
     # Mode projet : la conversation construit une application dans un dossier confié. Un tour sans
     # appel n'y est une fin que s'il porte un vrai bilan (voir `fin_de_projet_prematuree`).
     mode_projet: bool = False
+    # Relances sur un bilan qui rend à l'utilisateur un reste faisable : jamais réarmées.
+    relances_reste: int = 0
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
@@ -344,14 +336,24 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
 
 
 def _relance_projet(texte: str, etat: EtatBoucle) -> str | None:
-    """Mode projet : une pause sans bilan est relancée, dans le même quota que les annonces."""
-    if not fin_de_projet_prematuree(texte, etat) or etat.relances_promesse >= quota_promesse(etat):
+    """Mode projet : une pause sans bilan, ou un bilan qui rend un reste faisable, est relancé."""
+    if fin_de_projet_prematuree(texte, etat):
+        if etat.relances_promesse >= quota_promesse(etat):
+            return None
+        etat.relances += 1
+        etat.relances_promesse += 1
+        logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
+                       len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
+        return CONSIGNE_SUITE_PROJET
+    if not etat.mode_projet or etat.aboutis == 0 or etat.relances_reste >= RELANCES_RESTE_MAX:
+        return None
+    if not reste_faisable(texte):
         return None
     etat.relances += 1
-    etat.relances_promesse += 1
-    logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
-                   len(texte.strip()), etat.relances_promesse, quota_promesse(etat))
-    return CONSIGNE_SUITE_PROJET
+    etat.relances_reste += 1
+    logger.warning("Mode projet : bilan avec un reste faisable : relance {}/{}.",
+                   etat.relances_reste, RELANCES_RESTE_MAX)
+    return CONSIGNE_RESTE_FAISABLE
 
 
 def _relance_promesse(etat: EtatBoucle) -> str | None:
