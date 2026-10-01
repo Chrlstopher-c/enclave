@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS chat_reglages (
     parametres              TEXT NOT NULL,
     historique_max_messages INTEGER,
     maj_le                  TEXT NOT NULL,
-    outils_actifs           TEXT
+    outils_actifs           TEXT,
+    projet                  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS chat_meta_messages (
@@ -174,6 +175,7 @@ class _LigneReglages(BaseModel):
     historique_max_messages: int | None = None
     # Document JSON, ou NULL pour « tous les outils » — voir `_decoder_outils`.
     outils_actifs: str | None = None
+    projet: str | None = None
 
 
 class _LigneFeuille(BaseModel):
@@ -316,7 +318,7 @@ def lire_reglages(conversation_id: str) -> ReglagesConversation:
     """Réglages de la conversation, ou les valeurs par défaut si aucune ligne n'a été écrite."""
     ligne = fetch_one(
         _LigneReglages,
-        "SELECT prompt_systeme, parametres, historique_max_messages, outils_actifs"
+        "SELECT prompt_systeme, parametres, historique_max_messages, outils_actifs, projet"
         " FROM chat_reglages WHERE conversation_id = ?",
         (conversation_id,),
     )
@@ -327,6 +329,7 @@ def lire_reglages(conversation_id: str) -> ReglagesConversation:
         parametres=_decoder_parametres(conversation_id, ligne.parametres),
         historique_max_messages=ligne.historique_max_messages,
         outils_actifs=_decoder_outils(conversation_id, ligne.outils_actifs),
+        projet=ligne.projet,
     )
 
 
@@ -367,16 +370,17 @@ def ecrire_reglages(conversation_id: str, reglages: ReglagesConversation) -> Reg
     exiger_conversation(conversation_id)
     execute(
         "INSERT INTO chat_reglages (conversation_id, prompt_systeme, parametres,"
-        " historique_max_messages, outils_actifs, maj_le) VALUES (?, ?, ?, ?, ?, ?)"
+        " historique_max_messages, outils_actifs, projet, maj_le) VALUES (?, ?, ?, ?, ?, ?, ?)"
         " ON CONFLICT(conversation_id) DO UPDATE SET prompt_systeme = excluded.prompt_systeme,"
         " parametres = excluded.parametres, historique_max_messages = excluded.historique_max_messages,"
-        " outils_actifs = excluded.outils_actifs, maj_le = excluded.maj_le",
+        " outils_actifs = excluded.outils_actifs, projet = excluded.projet, maj_le = excluded.maj_le",
         (
             conversation_id,
             reglages.prompt_systeme,
             reglages.parametres.model_dump_json(),
             reglages.historique_max_messages,
             None if reglages.outils_actifs is None else json.dumps(reglages.outils_actifs),
+            reglages.projet,
             maintenant(),
         ),
     )

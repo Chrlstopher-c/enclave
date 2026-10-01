@@ -42,7 +42,8 @@ def test_executer_commande_envoie_url_jeton_et_corps(
     reponse = atelier.executer_commande("echo ok", "conv-42", 600)
 
     assert captures["url"] == "http://echohub-atelier:8080/executer/commande"
-    assert captures["json"] == {"commande": "echo ok", "sous_dossier": "conv-42", "timeout_s": 600}
+    assert captures["json"] == {"commande": "echo ok", "sous_dossier": "conv-42", "timeout_s": 600,
+                                "racine": "workspace"}
     assert captures["headers"]["X-Atelier-Jeton"] == jeton_configure
     assert "jeton" not in captures["json"], "le jeton ne doit jamais partir dans le corps"
     assert reponse.code_retour == 0 and reponse.sortie == "ok"

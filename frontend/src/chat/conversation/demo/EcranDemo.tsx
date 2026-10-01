@@ -239,6 +239,8 @@ function EchangeDemo({ donnees, tiroirs, capacites, onOutils }: EchangeDemoProps
         pret
         onReglages={() => undefined}
         onOutils={onOutils}
+        projet="demo-app"
+        onProjet={() => undefined}
         onOuvrirConversations={() => tiroirs.ouvrir('conversations')}
         onOuvrirPlan={() => tiroirs.ouvrir('plan')}
       />

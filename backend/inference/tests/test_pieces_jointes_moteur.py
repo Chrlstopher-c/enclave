@@ -9,6 +9,8 @@ ne doit apparaître à ce stade : seul l'adaptateur llama.cpp encode, plus tard.
 
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
@@ -27,6 +29,15 @@ from backend.inference.engines_adapters.contrat import (
 )
 
 CONVERSATION_ID = "conversation-multimodale"
+
+@pytest.fixture(autouse=True)
+def _harnais_d_origine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ces cas décrivent la conduite d'origine (6 tours puis couperet, sans relance) : ils la figent,
+    le défaut étant passé à FORGE (prolongations illimitées, relance des tours muets)."""
+    from backend.inference import harnais
+
+    monkeypatch.setattr(harnais, "DEFAUT", harnais.ECHOHUB)
+
 
 
 class SuperviseurCapture:

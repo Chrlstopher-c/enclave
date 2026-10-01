@@ -75,6 +75,11 @@ class RequeteGeneration(BaseModel):
     parametres: ParametresEchantillonnage
     modele_id: str | None = None
     conversation_id: str = Field(min_length=1)
+    # Sélection d'outils de la conversation (`None` = tous) : sans elle, le moteur déclarait TOUS les
+    # outils au modèle quelle que soit la sélection, seul le socle la respectait.
+    outils_actifs: list[str] | None = None
+    # Projet confié : l'exécution des outils se fait dans son dossier.
+    projet: str | None = None
 
 
 class OccupationContexte(BaseModel):

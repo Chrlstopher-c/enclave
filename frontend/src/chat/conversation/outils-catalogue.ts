@@ -84,6 +84,12 @@ export const CATALOGUE_OUTILS: readonly OutilDisponible[] = [
     tokens_definition: null,
   },
   {
+    nom: 'serveur_fond',
+    description: 'lance un serveur de dev en arrière-plan, lit son journal, l’arrête',
+    groupe: 'execution',
+    tokens_definition: null,
+  },
+  {
     nom: 'presenter_fichier',
     description: 'affiche un fichier existant dans le fil',
     groupe: 'presentation',

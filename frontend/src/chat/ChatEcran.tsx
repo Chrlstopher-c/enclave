@@ -17,6 +17,7 @@ import { ListeConversations } from './conversation/ListeConversations';
 import { PanneauOutils } from './conversation/PanneauOutils';
 import { useSelectionOutils } from './conversation/useSelectionOutils';
 import { EnTeteChat } from './EnTeteChat';
+import { ModaleProjet, useProjetConversation } from './projet';
 import { ModaleReglages } from './reglages';
 import { PanneauPlan } from './plan/PanneauPlan';
 import type { CibleChargement } from './plan/cible';
@@ -79,9 +80,12 @@ interface ColonneEchangeProps extends ColonneProps {
   tiroirs: EtatTiroirsChat;
   capacites: CapacitesAtelier;
   onOutils: () => void;
+  projet: string | null;
+  onProjet: () => void;
 }
 
-function ColonneEchange({ etat, cible, fil, tiroirs, capacites, onOutils }: ColonneEchangeProps): ReactElement {
+function ColonneEchange(props: ColonneEchangeProps): ReactElement {
+  const { etat, cible, fil, tiroirs, capacites, onOutils } = props;
   const { courante, moteurPret } = etat;
   // Deux flux peuvent alimenter le fil : le composeur et un rejeu lancé depuis un message. Le
   // moteur n'en sert qu'un à la fois (le backend refuse le second), donc l'écran n'en montre qu'un.
@@ -94,6 +98,8 @@ function ColonneEchange({ etat, cible, fil, tiroirs, capacites, onOutils }: Colo
         pret={moteurPret}
         onReglages={() => etat.ouvrirReglages(true)}
         onOutils={onOutils}
+        projet={props.projet}
+        onProjet={props.onProjet}
         onOuvrirConversations={() => tiroirs.ouvrir('conversations')}
         onOuvrirPlan={() => tiroirs.ouvrir('plan')}
       />
@@ -417,6 +423,8 @@ function useAtelierEcran(
 export function ChatEcran({ cible }: ChatEcranProps): ReactElement {
   const etat = useEcranChat(cible);
   const [outilsOuverts, setOutilsOuverts] = useState<boolean>(false);
+  const [projetOuvert, setProjetOuvert] = useState<boolean>(false);
+  const projet = useProjetConversation(etat.conversationActive);
   // `courante.genere` est passé au fil de branche : c'est le seul signal qui dit qu'un tour occupe
   // déjà le moteur, et sa fin est le moment où la feuille active a pu changer sans qu'on l'ait
   // demandé — donc le moment où la vue de branche doit être relue.
@@ -434,6 +442,8 @@ export function ChatEcran({ cible }: ChatEcranProps): ReactElement {
         tiroirs={tiroirs}
         capacites={capacites}
         onOutils={() => setOutilsOuverts(true)}
+        projet={projet.projet}
+        onProjet={() => setProjetOuvert(true)}
       />
       <CoteDroit etat={etat} cible={cible} atelier={atelier} tiroirs={tiroirs} grandEcran={grandEcran} />
       <ModaleOutils
@@ -441,6 +451,7 @@ export function ChatEcran({ cible }: ChatEcranProps): ReactElement {
         ouvert={outilsOuverts}
         onFermer={() => setOutilsOuverts(false)}
       />
+      <ModaleProjet etat={projet} ouvert={projetOuvert} onFermer={() => setProjetOuvert(false)} />
       <PanneauDeReglages etat={etat} />
     </div>
   );

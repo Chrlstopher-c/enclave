@@ -272,7 +272,10 @@ def _prolonger_si_demande(etat: EtatBoucle) -> None:
 def _restants_nuls(etat: EtatBoucle) -> bool:
     """Le budget courant est-il consommé, alors qu'une extension reste possible ?"""
     accorde = etat.harnais.tours_outils_max * (1 + etat.extensions)
-    return etat.tours_faits >= accorde and etat.extensions < etat.harnais.extensions_max
+    plafond = etat.harnais.extensions_max
+    # `None` = prolongations illimitées (harnais FORGE) : comparer à None levait TypeError au
+    # dixième tour d'outils, et tuait exactement les longues tâches que ce harnais doit permettre.
+    return etat.tours_faits >= accorde and (plafond is None or etat.extensions < plafond)
 
 
 def _bloc_sortie(texte: str, succes: bool) -> str:
@@ -623,6 +626,11 @@ def _contexte_execution(requete: object) -> ContexteExecution:
     conversation_id = getattr(requete, "conversation_id", None)
     if not conversation_id:
         raise ValueError("RequeteGeneration sans conversation_id : contrat du port violé.")
+    projet = getattr(requete, "projet", None)
+    if projet:
+        from backend.projets import chemin_projet
+
+        return ContexteExecution(conversation_id=conversation_id, racine_bac=chemin_projet(projet), projet=projet)
     return ContexteExecution(
         conversation_id=conversation_id,
         racine_bac=get_settings().atelier_workspace / conversation_id,

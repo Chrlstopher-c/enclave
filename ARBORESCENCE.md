@@ -150,3 +150,24 @@ docker run --rm --gpus all --entrypoint /app/backend/.venv/bin/python \
 
 Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation/`,
 `chat/raisonnement/`, `chat/artefacts/`) : voir `STATE.md`, section du 2026-08-26.
+
+## Ajouts du 2026-10-01 — mode projet
+
+| Fichier | Rôle |
+|---|---|
+| `backend/conftest.py` | Isole les tests du `.env` du poste (les chemins réels fuyaient dans les tests) |
+| `backend/projets/__init__.py` | Interface publique du domaine `projets` |
+| `backend/projets/modeles.py` | Projet, catalogue, instantané, liaison |
+| `backend/projets/racine.py` | Racine des projets : lister, créer, résoudre sans jamais en sortir |
+| `backend/projets/instantanes.py` | Instantanés git séparés, pris avant chaque tour, restauration annulable |
+| `backend/projets/routes.py` | `/projets` : catalogue, création, instantanés, restauration |
+| `backend/projets/tests/test_projets.py` | Racine confinée, git réel, restauration |
+| `backend/outils/garde_fous.py` | Refus lexical des commandes dangereuses ou hors dossier |
+| `backend/outils/serveur_fond.py` | Outil `serveur_fond` : serveurs de dev en arrière-plan |
+| `backend/outils/tests/test_garde_fous.py` | Ce qui passe, ce qui est refusé |
+| `backend/outils/tests/test_mode_projet.py` | Outils dans le dossier du projet, élagage, lecture par tranches |
+| `atelier/processus.py` | Processus de fond de l'atelier (lancer, journal, arrêter, lister) |
+| `frontend/src/chat/projet/api-projet.ts` | Client des routes projet |
+| `frontend/src/chat/projet/useProjetConversation.ts` | Liaison, catalogue, instantanés, gestes |
+| `frontend/src/chat/projet/ModaleProjet.tsx` | Modale : confier / créer un projet, règles, restaurer |
+| `frontend/src/chat/projet/index.ts` | Exports du module |

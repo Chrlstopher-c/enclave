@@ -101,6 +101,10 @@ class ContexteExecution(BaseModel):
 
     conversation_id: str
     racine_bac: Path
+    # Nom du projet confié à la conversation, `None` hors mode projet. En mode projet, `racine_bac`
+    # pointe sur le dossier du projet, et les fichiers écrits ne sont PAS rattachés à la conversation :
+    # une app de cinquante fichiers ne doit pas produire cinquante cartes.
+    projet: str | None = None
 
 
 class EchecOutil(Exception):

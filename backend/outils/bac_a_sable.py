@@ -34,6 +34,7 @@ from pydantic import BaseModel
 from backend.core import get_settings
 from backend.outils.atelier import (
     AtelierInjoignable,
+    Racine,
     ReponseAtelier,
     executer_commande as _executer_commande_atelier,
     executer_python as _executer_python_atelier,
@@ -45,6 +46,8 @@ from backend.outils.atelier import (
 # mais il laisse le temps d'une vraie installation. L'atelier applique ce délai côté serveur et
 # rend un résultat propre ; le client HTTP attend un peu plus (voir `atelier.MARGE_CLIENT_SECONDES`).
 TIMEOUT_COMMANDE_SECONDES = 600
+# Dossier des instantanés d'un projet (dépôt git séparé), intouchable par le modèle.
+DOSSIER_RESERVE = ".echohub"
 TIMEOUT_PYTHON_SECONDES = 600
 
 LIMITES_REELLES_TEXTE = (
@@ -55,8 +58,9 @@ LIMITES_REELLES_TEXTE = (
     "paquets avec « apt-get install » ou « pip install » : ils restent disponibles pour la suite. "
     "Les fichiers et les paquets installés PERSISTENT d'un message à l'autre. Chaque conversation a "
     "son dossier de travail, où atterrissent les fichiers produits — ils deviennent des fichiers de "
-    "la conversation — mais tu peux te déplacer partout dans l'atelier. Cet atelier étant isolé, tu "
-    "n'as pas à craindre d'abîmer la machine de l'utilisateur : agis comme sur ta propre machine de dev."
+    "la conversation. Reste dans ce dossier : ceux des autres conversations et des projets te sont "
+    "interdits, et le harnais refuse les commandes destructrices hors de ton dossier ou tournées vers "
+    "l'extérieur (git push, publication, ssh). Pour le reste, agis comme sur ta propre machine de dev."
 )
 
 
@@ -72,6 +76,27 @@ class ResultatExecution(BaseModel):
 
 class CheminHorsBac(Exception):
     """Le chemin demandé par le modèle sort du bac de sa conversation."""
+
+
+def emplacement_atelier(racine_bac: Path) -> tuple[Racine, str]:
+    """(racine, sous-dossier) de l'atelier correspondant à `racine_bac`.
+
+    Un bac situé sous la racine des projets (`ECHOHUB_PROJETS_RACINE`) est un PROJET : l'atelier le
+    voit sous `/projets/<nom>`. Sinon c'est le dossier de travail d'une conversation.
+    """
+    projets = get_settings().projets_racine
+    if projets is not None:
+        try:
+            return "projets", str(racine_bac.resolve().relative_to(projets.resolve()))
+        except ValueError:
+            pass
+    return "workspace", _sous_dossier(racine_bac)
+
+
+def chemin_dans_atelier(racine_bac: Path) -> str:
+    """Le dossier de travail tel que le shell de l'atelier le voit — base des garde-fous."""
+    racine, sous_dossier = emplacement_atelier(racine_bac)
+    return f"/{racine}/{sous_dossier}"
 
 
 def _sous_dossier(racine_bac: Path) -> str:
@@ -136,6 +161,8 @@ def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
     demande = Path(chemin_demande)
     if demande.is_absolute():
         raise CheminHorsBac(f"Chemin absolu refusé : « {chemin_demande} ». Utiliser un chemin relatif au bac.")
+    if DOSSIER_RESERVE in demande.parts:
+        raise CheminHorsBac(f"« {DOSSIER_RESERVE} » est réservé aux instantanés du harnais : chemin refusé.")
     racine = racine_bac.resolve()
     cible = (racine / demande).resolve()
     if cible != racine and racine not in cible.parents:
@@ -151,7 +178,8 @@ def executer_code_confine(code: str, racine_bac: Path) -> ResultatExecution:
     """
     preparer_bac(racine_bac)
     try:
-        reponse = _executer_python_atelier(code, _sous_dossier(racine_bac), TIMEOUT_PYTHON_SECONDES)
+        racine, sous_dossier = emplacement_atelier(racine_bac)
+        reponse = _executer_python_atelier(code, sous_dossier, TIMEOUT_PYTHON_SECONDES, racine)
     except AtelierInjoignable as exc:
         return _repli(exc)
     return _depuis_reponse(reponse)
@@ -164,7 +192,8 @@ def executer_commande_confinee(commande: str, racine_bac: Path) -> ResultatExecu
     """
     preparer_bac(racine_bac)
     try:
-        reponse = _executer_commande_atelier(commande, _sous_dossier(racine_bac), TIMEOUT_COMMANDE_SECONDES)
+        racine, sous_dossier = emplacement_atelier(racine_bac)
+        reponse = _executer_commande_atelier(commande, sous_dossier, TIMEOUT_COMMANDE_SECONDES, racine)
     except AtelierInjoignable as exc:
         return _repli(exc)
     return _depuis_reponse(reponse)

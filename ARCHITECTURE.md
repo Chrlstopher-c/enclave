@@ -58,7 +58,8 @@ backend/
   models/      recherche, téléchargement, métadonnées GGUF, registre
   inference/   planificateur, adaptateurs de moteurs, génération
   chat/        conversations et persistance
-  outils/      outils du modèle (exécution, fichiers, recherche) + pont vers l'atelier
+  outils/      outils du modèle (exécution, fichiers, recherche) + pont vers l'atelier + garde-fous
+  projets/     mode projet : dossiers de l'hôte confiés à une conversation, instantanés git
   core/        config, logging, erreurs, base de données
 atelier/       conteneur d'exécution root persistant (Dockerfile, serveur HTTP, README)
 frontend/src/
@@ -101,6 +102,42 @@ est vu du shell de l'atelier, et un fichier produit par une commande de l'atelie
 
 **Repli.** Atelier injoignable → les outils rendent un message actionnable (« démarrer avec
 `docker compose up -d echohub-atelier` »), journalisé (loguru), jamais un timeout muet ni un crash.
+
+## Le mode projet — un dossier de l'hôte confié à une conversation
+
+Une conversation peut recevoir un **projet** : un sous-dossier direct de la racine
+`ECHOHUB_PROJETS_RACINE` (dossier de l'hôte, monté dans l'atelier sous `/projets`). Le modèle y
+construit une application complète — fichiers, dépendances, build, tests, serveur de dev — au lieu de
+travailler dans son bac de conversation.
+
+- **Liaison** : colonne `chat_reglages.projet` (NULL = conversation ordinaire), routes
+  `GET/PATCH /chat/conversations/{id}/projet`. Le nom est validé par `projets.chemin_projet` (motif
+  `[a-z0-9][a-z0-9._-]*`, sous-dossier DIRECT de la racine, lien symbolique sortant refusé).
+- **Exécution** : `RequeteGeneration.projet` → `inference._contexte_execution` pose `racine_bac` sur le
+  dossier du projet. `bac_a_sable.emplacement_atelier` reconnaît un bac sous la racine des projets et
+  l'envoie à l'atelier en `racine="projets"`. En mode projet, ni balayage ni dépôt dans le magasin :
+  le projet sur disque EST le livrable (un `bun install` ne doit pas produire 30 000 cartes).
+- **Garde-fous** (`outils/garde_fous.py`, pur, testé) : appliqués à toute commande, tout code Python
+  et tout lancement de fond, avec ou sans projet. Refusent : sortie du dossier (`..`, `/projets/autre`,
+  `/workspace/autre`, `cd / && rm …`), suppressions globales (`rm -rf .`/`*`/`/`), le dossier réservé
+  `.echohub`, la publication (`git push`, `npm publish`), `ssh`/`scp`, `pkill`/`killall`/`kill 1`,
+  `shutdown`, `mkfs`, `dd of=/dev`, `docker`/`systemctl`. **Limite assumée** : analyse lexicale, une
+  indirection (`X=/projets; rm -rf $X/b`) passe. La frontière dure reste le conteneur (il ne voit que
+  son volume et la racine des projets) ; le filet, ce sont les instantanés.
+- **Instantanés** (`projets/instantanes.py`) : dépôt git SÉPARÉ `<projet>/.echohub/instantanes.git`
+  (le `.git` du projet n'est jamais touché), commit pris par le harnais **avant chaque tour**
+  (`chat.generation._instantane_projet`), dépendances et builds exclus. Restaurer prend d'abord un
+  instantané de l'état courant : une restauration s'annule.
+- **Processus de fond** (`atelier/processus.py`, outil `serveur_fond`) : serveurs de dev détachés dans
+  leur groupe de processus, journal hors du dossier de travail, 5 par dossier au plus.
+- **Socle** : bloc `_MODE_PROJET` (règles + méthode de travail : regarder, planifier, étapes VÉRIFIÉES,
+  commandes non interactives, README, bilan honnête).
+- **Propriétaire** : l'agent est root dans l'atelier ; `ATELIER_PROPRIETAIRE=uid:gid` rétrocède ce
+  qu'il crée (`find ! -user … -exec chown`) pour que le backend natif et l'utilisateur gardent la main.
+
+**Mode natif.** Même en natif, l'exécution passe par le conteneur atelier, publié sur `127.0.0.1`
+seulement (`ATELIER_URL=http://127.0.0.1:37923`, jeton obligatoire) et démarré par `start.sh`.
+Workspace et projets y sont des chemins de l'hôte (`ECHOHUB_ATELIERS_HOTE`, `ECHOHUB_PROJETS_HOTE`).
 
 ## L'auto-compaction du contexte — non destructive, réduit ce qui part AU MOTEUR
 

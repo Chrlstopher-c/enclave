@@ -85,6 +85,9 @@ class ReglagesConversation(BaseModel):
     # l'enregistrement — un réglage écrit hier ne doit pas devenir invalide parce qu'un outil a été
     # renommé depuis.
     outils_actifs: list[str] | None = None
+    # Projet confié à la conversation (dossier de la racine des projets) : le modèle y travaille
+    # au lieu de son bac. `None` = conversation ordinaire.
+    projet: str | None = None
 
 
 class InfoCompaction(BaseModel):

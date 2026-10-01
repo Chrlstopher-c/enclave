@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # llama-cpp-python est exclu : sa compilation prend de longues minutes et aucun test ne charge
+      # de modèle réel (le moteur est remplacé à sa frontière).
+      - name: Dépendances
+        run: |
+          python -m venv .venv
+          grep -v '^llama-cpp-python' backend/requirements.txt > /tmp/requirements-ci.txt
+          .venv/bin/pip install -q -r /tmp/requirements-ci.txt
+      - name: Tests
+        run: .venv/bin/python -m pytest -q backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Typecheck et build
+        run: bun run build

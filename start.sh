@@ -30,6 +30,7 @@ reinitialiser_logs() {
     mkdir -p "$LOGS"
     : > "$LOGS/backend.log"
     : > "$LOGS/frontend.log"
+    : > "$LOGS/atelier.log"
     journal "journaux remis à zéro dans $LOGS"
 }
 
@@ -91,6 +92,27 @@ attendre_api() {
     journal "AVERTISSEMENT : API muette après 60s — voir $LOGS/backend.log"
 }
 
+# Mode natif : les commandes du modèle s'exécutent quand même dans le conteneur atelier, publié sur
+# 127.0.0.1. Sans lui, les outils d'exécution rendent un repli « atelier indisponible ». Non fatal :
+# l'application reste utilisable sans exécution.
+demarrer_atelier() {
+    case "${ATELIER_URL:-}" in
+        http://127.0.0.1:*|http://localhost:*) ;;
+        *) return 0 ;;
+    esac
+    if ! command -v docker >/dev/null 2>&1; then
+        journal "AVERTISSEMENT : docker absent — atelier d'exécution non démarré"
+        return 0
+    fi
+    [ -z "${ECHOHUB_PROJETS_HOTE:-}" ] || mkdir -p "$ECHOHUB_PROJETS_HOTE"
+    [ -z "${ECHOHUB_ATELIERS_HOTE:-}" ] || mkdir -p "$ECHOHUB_ATELIERS_HOTE"
+    if (cd "$RACINE" && docker compose up -d --build echohub-atelier >>"$LOGS/atelier.log" 2>&1); then
+        journal "atelier d'exécution démarré ($ATELIER_URL)"
+    else
+        journal "AVERTISSEMENT : atelier non démarré — voir $LOGS/atelier.log"
+    fi
+}
+
 demarrer_natif() {
     # Distincts des défauts v1 (37821/37822) : les deux versions peuvent tourner en même temps
     # sur le même hôte sans se disputer un port (mesuré : bind KO côté v2, servi par la v1).
@@ -113,7 +135,8 @@ demarrer_natif() {
     # son worker enfant (--reload en lance un second) survit à un arrêt normal, port toujours en
     # écoute — mesuré.
     (set -m; cd "$RACINE" && PYTHONPATH="$RACINE" "$py" -m uvicorn backend.main:app \
-        --host 127.0.0.1 --port "$port_api" --reload >>"$LOGS/backend.log" 2>&1 &
+        --host 127.0.0.1 --port "$port_api" --reload \
+        --reload-dir backend --reload-exclude '*/tests/*' >>"$LOGS/backend.log" 2>&1 &
         echo $! > "$LOGS/backend.pid")
 
     journal "frontend sur 127.0.0.1:$port_front"

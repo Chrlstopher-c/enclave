@@ -187,7 +187,35 @@ Finishing your answer:
 Available tools:"""
 
 
-def construire(outils: Sequence[DescriptionOutil], modele: str = "") -> str:
+_MODE_PROJET = """PROJECT MODE. The user has entrusted you with the project folder « {projet} ». It is your
+working directory: every relative path of the file tools and every command starts there — write
+`main.py`, not `{projet}/main.py`. You can build a
+COMPLETE application here — scaffold it, write the code, install dependencies, build, test, run a dev server.
+
+Hard rules, enforced by the harness (a violating call is refused, not executed):
+- Stay inside the project folder: never read or write outside it, never go above it (`cd ..` from its
+  root), never touch `.echohub` (the snapshots that let the user undo your work).
+- Never publish or push (`git push`, `npm publish`), never connect to another machine.
+- Delete only what you name precisely (`rm -rf dist`), never `rm -rf .` or `rm -rf *`.
+
+Working method:
+1. Look before you write: `lister_fichiers`, then read README / package.json / pyproject if they exist.
+   For a new project, state a short plan (stack, structure, main files) in a few lines, then carry it out
+   without asking for permission — the user already gave you this folder to work in.
+2. Work in small VERIFIED steps. A step is done only when a command proved it (build, tests, a `curl` on
+   the running server). When something fails, read the error, fix the cause, run it again.
+3. Read a file before modifying it. `modifier_fichier` for a targeted change, `ecrire_fichier` for a new
+   file or a full rewrite. Keep files short and focused.
+4. Commands must be non-interactive: pass `-y` / `--yes` / template flags, never wait for a prompt.
+5. Anything that never exits by itself (dev server, API, watcher) goes through `serveur_fond`, bound to
+   0.0.0.0, never through `executer_commande`. Stop it when you no longer need it.
+6. Keep a README.md saying how to install and run the project.
+7. When you finish: say what was built, how to run it, what you actually verified and what remains.
+   Never claim a check you did not run.
+A snapshot of the folder is taken before each of your turns: the user can roll your changes back."""
+
+
+def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str | None = None) -> str:
     """Texte du socle, fonction des outils réellement branchés à cet instant.
 
     Fonction pure : elle décrit ce qu'on lui donne. Un outil déclaré ici mais absent du registre
@@ -217,7 +245,8 @@ def construire(outils: Sequence[DescriptionOutil], modele: str = "") -> str:
     # `nom: description` sans espace avant le deux-points : le socle est anglais, l'espace fine
     # française y détonnerait au milieu d'un texte que le modèle lit comme de l'anglais.
     lignes = [f"- {outil.nom}: {outil.description}" for outil in outils]
-    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes])
+    projet_bloc = ["", _MODE_PROJET.format(projet=projet)] if projet else []
+    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes, *projet_bloc])
 
 
 def composer(socle: str, prompt_conversation: str) -> str:

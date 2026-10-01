@@ -55,7 +55,8 @@ def racine_bac(conversation: ResumeConversation) -> Path:
     return get_settings().atelier_workspace / conversation.id
 
 
-def _executer_local(argv: list[str], sous_dossier: str, timeout_s: int) -> atelier.ReponseAtelier:
+def _executer_local(argv: list[str], sous_dossier: str, timeout_s: int,
+                    racine: str = "workspace") -> atelier.ReponseAtelier:
     """Exécute `argv` en local dans le dossier de travail, à la place de l'atelier distant.
 
     L'atelier est un conteneur : on ne l'exige pas en test unitaire. On mocke à la FRONTIÈRE (le
@@ -63,7 +64,9 @@ def _executer_local(argv: list[str], sous_dossier: str, timeout_s: int) -> ateli
     balayage les rattache comme en production. Le dossier est `atelier_workspace/<sous_dossier>`,
     exactement ce que `bac_a_sable._sous_dossier` renvoie.
     """
-    cwd = get_settings().atelier_workspace / sous_dossier
+    reglages = get_settings()
+    base = reglages.projets_racine if racine == "projets" and reglages.projets_racine else reglages.atelier_workspace
+    cwd = base / sous_dossier
     cwd.mkdir(parents=True, exist_ok=True)
     try:
         proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout_s)
@@ -83,15 +86,17 @@ def atelier_local(monkeypatch: pytest.MonkeyPatch) -> None:
     `atelier` lui-même : les tests du client réel (`test_atelier.py`) continuent d'exercer le vrai
     `atelier.executer_commande`, intact.
     """
-    def _commande(commande: str, sous_dossier: str, timeout_s: int) -> atelier.ReponseAtelier:
-        return _executer_local(["bash", "-lc", commande], sous_dossier, timeout_s)
+    def _commande(commande: str, sous_dossier: str, timeout_s: int,
+                  racine: str = "workspace") -> atelier.ReponseAtelier:
+        return _executer_local(["bash", "-lc", commande], sous_dossier, timeout_s, racine)
 
-    def _python(code: str, sous_dossier: str, timeout_s: int) -> atelier.ReponseAtelier:
+    def _python(code: str, sous_dossier: str, timeout_s: int,
+                racine: str = "workspace") -> atelier.ReponseAtelier:
         fichier = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
         fichier.write(code)
         fichier.close()
         try:
-            return _executer_local(["python3", fichier.name], sous_dossier, timeout_s)
+            return _executer_local(["python3", fichier.name], sous_dossier, timeout_s, racine)
         finally:
             Path(fichier.name).unlink(missing_ok=True)
 

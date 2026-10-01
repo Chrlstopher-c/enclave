@@ -267,6 +267,8 @@ class _ContexteConstruit:
     entete: str
     ancres: list[MessageAncre]
     messages: list[MessageInference]
+    outils_actifs: list[str] | None = None
+    projet: str | None = None
 
 
 def _preparation(
@@ -283,7 +285,7 @@ def _preparation(
     """Assemble la préparation. Un seul endroit construit la requête envoyée au moteur."""
     requete = RequeteGeneration(
         messages=contexte.messages, parametres=parametres, modele_id=modele_id,
-        conversation_id=conversation_id,
+        conversation_id=conversation_id, outils_actifs=contexte.outils_actifs, projet=contexte.projet,
     )
     return PreparationGeneration(
         conversation_id=conversation_id,
@@ -342,7 +344,8 @@ def _construire_contexte(
         # Le port exige au moins un message : une erreur métier lisible vaut mieux qu'une
         # ValidationError remontée en 500 depuis la couche HTTP.
         raise BrancheInvalide("Aucun contenu exploitable en amont de ce point.")
-    return _ContexteConstruit(entete=entete, ancres=ancres, messages=messages)
+    return _ContexteConstruit(entete=entete, ancres=ancres, messages=messages,
+                              outils_actifs=reglages.outils_actifs, projet=reglages.projet)
 
 
 def _socle_outils(reglages: ReglagesConversation) -> str:
@@ -356,7 +359,8 @@ def _socle_outils(reglages: ReglagesConversation) -> str:
     try:
         from backend.outils import prompt_systeme
 
-        return prompt_systeme(reglages.prompt_systeme, _modele_charge() or "", reglages.outils_actifs)
+        return prompt_systeme(reglages.prompt_systeme, _modele_charge() or "", reglages.outils_actifs,
+                              reglages.projet)
     except Exception as exc:  # noqa: BLE001 — le socle est un plus, jamais une condition
         logger.warning("Socle d'outils indisponible ({}) : prompt de conversation seul.", exc)
         return reglages.prompt_systeme
@@ -423,6 +427,7 @@ async def _produire(
     """
     erreur: EvenementErreur | None = None
     try:
+        await _instantane_projet(preparation)
         await _compacter_si_besoin(preparation, file)
         async for texte in _fragments(preparation, etat):
             await file.put(EvenementFragment(texte=texte))
@@ -444,6 +449,16 @@ async def _produire(
             await file.put(erreur)
         await file.put(_evenement_fin(preparation, etat))
         await file.put(None)
+
+
+async def _instantane_projet(preparation: PreparationGeneration) -> None:
+    """Instantané du projet AVANT que le modèle n'y touche : c'est ce qui rend son tour annulable."""
+    projet = preparation.requete.projet
+    if projet is None:
+        return
+    from backend.projets import instantane_avant_tour
+
+    await asyncio.to_thread(instantane_avant_tour, projet, f"avant le tour {preparation.message_id}")
 
 
 async def _compacter_si_besoin(

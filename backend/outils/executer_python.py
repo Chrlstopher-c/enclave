@@ -14,6 +14,7 @@ from typing import Any
 from loguru import logger
 
 from backend.outils.bac_a_sable import (
+    chemin_dans_atelier,
     LIMITES_REELLES_TEXTE,
     CheminHorsBac,
     executer_code_confine,
@@ -21,7 +22,8 @@ from backend.outils.bac_a_sable import (
     resoudre_dans_bac,
 )
 from backend.outils.balayage_bac import balayer_et_enregistrer, etat_bac
-from backend.outils.contrat import ContexteExecution, DescriptionOutil, Outil
+from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
+from backend.outils.garde_fous import CommandeRefusee, verifier_code_python
 
 NOM = "executer_python"
 
@@ -157,10 +159,14 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
         code = _source_a_executer(arguments, contexte)
     except CheminHorsBac as exc:
         return f"Échec : {exc}"
+    try:
+        verifier_code_python(code, chemin_dans_atelier(contexte.racine_bac))
+    except CommandeRefusee as exc:
+        raise EchecOutil(str(exc)) from exc
 
-    avant = etat_bac(contexte.racine_bac)
+    avant = etat_bac(contexte.racine_bac) if contexte.projet is None else frozenset()
     resultat = await asyncio.to_thread(executer_code_confine, code, contexte.racine_bac)
-    fichiers = balayer_et_enregistrer(contexte.conversation_id, contexte.racine_bac, avant)
+    fichiers = [] if contexte.projet else balayer_et_enregistrer(contexte.conversation_id, contexte.racine_bac, avant)
     logger.info(
         "executer_python : code_retour={} durée={:.2f}s fichiers_produits={}",
         resultat.code_retour, resultat.duree_s, len(fichiers),

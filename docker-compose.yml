@@ -66,7 +66,11 @@ services:
       # sur /workspace là-bas). C'est ce partage qui fait qu'un fichier écrit par `ecrire_fichier`
       # est visible du shell de l'atelier, et qu'un fichier produit par une commande est balayé et
       # rattaché à la conversation. Distinct de userdata : l'atelier ne voit ni la base ni les secrets.
-      - echohub_ateliers:/data/ateliers
+      - ${ECHOHUB_ATELIERS_HOTE:-echohub_ateliers}:/data/ateliers
+      # Racine des PROJETS confiables à une conversation (mode projet), montée au MÊME endroit
+      # logique dans l'atelier (/projets). Dossier de l'hôte choisi dans le .env ; le défaut reste
+      # sous ce dépôt (ignoré par git) pour ne jamais exposer un dossier que personne n'a désigné.
+      - ${ECHOHUB_PROJETS_HOTE:-./projets}:/projets
 
       # Modèles des bancs d'agent-forge, en LECTURE SEULE, montés comme un dépôt supplémentaire.
       # Le nom de dossier suit la convention `<org>--<repo>` de storage.py::nom_dossier ; les GGUF
@@ -124,6 +128,7 @@ services:
       ATELIER_URL: ${ATELIER_URL:-http://echohub-atelier:8080}
       ATELIER_JETON: ${ATELIER_JETON:-}
       ATELIER_WORKSPACE: /data/ateliers
+      ECHOHUB_PROJETS_RACINE: /projets
       # GGML_CUDA_ENABLE_UNIFIED_MEMORY est volontairement ABSENTE : sous WSL2 elle immobilise
       # le modèle en RAM avec la VRAM figée à 2 Go (mesuré). ggml active le comportement sur la
       # simple présence de la variable — une valeur vide suffirait à nuire. L'entrypoint la
@@ -198,14 +203,27 @@ services:
       ATELIER_WORKSPACE: /workspace
       # Jeton partagé avec le backend : sans lui, l'exécution est refusée (repli fermé, cf. serveur.py).
       ATELIER_JETON: ${ATELIER_JETON:-}
+      ATELIER_PROJETS: /projets
+      # « uid:gid » de l'utilisateur de l'hôte : ce que l'agent (root) crée dans un dossier monté
+      # lui est rétrocédé. Indispensable en mode natif, où le backend n'est pas root.
+      ATELIER_PROPRIETAIRE: ${ATELIER_PROPRIETAIRE:-}
     volumes:
-      - echohub_ateliers:/workspace
+      # Nom de volume par défaut ; en mode NATIF, chemin de l'hôte = celui du backend natif
+      # (ATELIER_WORKSPACE), pour que les deux voient les mêmes fichiers.
+      - ${ECHOHUB_ATELIERS_HOTE:-echohub_ateliers}:/workspace
+      # La SEULE fenêtre sur l'hôte : la racine des projets. Un projet confié à une conversation
+      # y est un sous-dossier ; les garde-fous refusent d'en sortir.
+      - ${ECHOHUB_PROJETS_HOTE:-./projets}:/projets
     # Garde-fous : une commande de l'agent ne doit pas pouvoir asphyxier l'hôte. Généreux mais bornés.
     mem_limit: 4g
     cpus: 4.0
     pids_limit: 512
     expose:
       - "8080"
+    # Publié sur 127.0.0.1 SEULEMENT, pour le backend en mode natif (ATELIER_URL=http://127.0.0.1:…).
+    # Jamais joignable depuis le réseau local, et chaque exécution reste gardée par le jeton.
+    ports:
+      - "127.0.0.1:${ATELIER_PORT_HOTE:-37923}:8080"
 
 volumes:
   echohub_models:

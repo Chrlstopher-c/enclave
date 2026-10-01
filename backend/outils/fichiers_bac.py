@@ -90,6 +90,8 @@ def _enregistrer(contexte: ContexteExecution, chemin_relatif: str, cible: Path) 
     existe bel et bien dans le bac et le code confiné peut s'en servir. On le dit, sans transformer
     un refus d'affichage en échec d'écriture.
     """
+    if contexte.projet is not None:
+        return f"Fichier du projet « {contexte.projet} »."
     type_mime = _type_mime_devine(chemin_relatif, cible)
     try:
         fichier = deposer_fichier(
@@ -225,9 +227,31 @@ DESCRIPTION_LIRE = DescriptionOutil(
         "you wrote is not the file. Also use it after an error, to see the real state rather than "
         "guessing."
     ),
-    parametres={"type": "object", "properties": {"chemin": _CHEMIN}, "required": ["chemin"]},
+    parametres={
+        "type": "object",
+        "properties": {
+            "chemin": _CHEMIN,
+            "ligne_debut": {
+                "type": "integer",
+                "description": "Optional 1-based line to start from, to read a long file in pieces.",
+            },
+        },
+        "required": ["chemin"],
+    },
     alias=dict(_ALIAS_CHEMIN),
 )
+
+
+def _depuis_ligne(texte: str, ligne_debut: object) -> tuple[str, str]:
+    """Texte à partir de `ligne_debut` (1-based) et l'en-tête qui situe l'extrait. Sans valeur : tout."""
+    try:
+        debut = max(1, int(str(ligne_debut))) if ligne_debut not in (None, "") else 1
+    except ValueError:
+        debut = 1
+    if debut == 1:
+        return texte, ""
+    lignes = texte.splitlines(keepends=True)
+    return "".join(lignes[debut - 1:]), f"[à partir de la ligne {debut} sur {len(lignes)}]\n"
 
 
 async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
@@ -244,10 +268,13 @@ async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
         texte = cible.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise EchecOutil(f"Échec : « {chemin_demande} » illisible en texte ({exc}).") from exc
+    texte, entete = _depuis_ligne(texte, arguments.get("ligne_debut"))
     if len(texte) > LONGUEUR_LECTURE_MAX:
         coupe = texte[:LONGUEUR_LECTURE_MAX]
-        return f"{coupe}\n\n[lecture tronquée à {LONGUEUR_LECTURE_MAX} caractères sur {len(texte)}]"
-    return texte
+        suite = coupe.count("\n") + 1
+        return (f"{entete}{coupe}\n\n[lecture tronquée à {LONGUEUR_LECTURE_MAX} caractères sur {len(texte)} — "
+                f"relire la suite avec `ligne_debut` (≈ {suite} lignes lues)]")
+    return f"{entete}{texte}"
 
 
 # --- modifier_fichier --------------------------------------------------------------------------

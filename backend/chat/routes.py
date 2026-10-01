@@ -45,6 +45,7 @@ from backend.chat.modeles import (
     fusionner_reglages,
 )
 from backend.core import EchoHubError
+from backend.projets import LiaisonProjet, chemin_projet
 
 PREFIXE = "/chat"
 
@@ -192,6 +193,27 @@ async def modifier_outils(conversation_id: str, corps: SelectionOutils) -> Selec
     ecrits = depot.ecrire_reglages(
         conversation_id, actuels.model_copy(update={"outils_actifs": corps.outils_actifs}))
     return SelectionOutils(outils_actifs=ecrits.outils_actifs)
+
+
+@routeur.get("/conversations/{conversation_id}/projet")
+@_traduire_erreurs
+async def lire_projet(conversation_id: str) -> LiaisonProjet:
+    """Projet confié à la conversation, `null` si aucun."""
+    depot.exiger_conversation(conversation_id)
+    return LiaisonProjet(projet=depot.lire_reglages(conversation_id).projet)
+
+
+@routeur.patch("/conversations/{conversation_id}/projet")
+@_traduire_erreurs
+async def modifier_projet(conversation_id: str, corps: LiaisonProjet) -> LiaisonProjet:
+    """Confie un projet existant à la conversation (`null` le lui retire). Un nom inconnu est refusé."""
+    projet = corps.projet
+    if projet is not None:
+        chemin_projet(projet)
+    actuels = depot.lire_reglages(conversation_id)
+    ecrits = depot.ecrire_reglages(conversation_id, actuels.model_copy(update={"projet": projet}))
+    logger.info("Conversation {} : projet {}", conversation_id, ecrits.projet or "retiré")
+    return LiaisonProjet(projet=ecrits.projet)
 
 
 @routeur.get("/conversations/{conversation_id}/messages", response_model=list[MessageChat])

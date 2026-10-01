@@ -30,6 +30,13 @@ commande ou du code ; il l'exécute dans `/workspace/<sous_dossier>` et rend le 
 | `GET /sante` | — | `{"statut":"ok","jeton_configure":...}` (ouverte, sert au healthcheck) |
 | `POST /executer/commande` | `{commande, sous_dossier, timeout_s}` | `{code_retour, sortie, erreur, duree_s, tue}` |
 | `POST /executer/python` | `{code, sous_dossier, timeout_s}` | idem |
+| `POST /processus/{lancer,journal,arreter,lister}` | `{sous_dossier, racine, nom, commande?, lignes?}` | état du processus (+ fin du journal) |
+
+Chaque requête porte `racine` : `workspace` (dossier de conversation, `/workspace/<id>`) ou `projets`
+(dossier de projet de l'hôte, `/projets/<nom>`, qui doit exister). Avec `ATELIER_PROPRIETAIRE=uid:gid`,
+ce que root crée est rétrocédé à cet utilisateur après chaque exécution. En mode natif, le service est
+publié sur `127.0.0.1:${ATELIER_PORT_HOTE:-37923}` uniquement. Toolchain : Node 22, Bun, Python 3,
+gcc, git, ripgrep, sqlite3.
 
 Les deux routes d'exécution exigent l'en-tête `X-Atelier-Jeton`, comparé à `ATELIER_JETON`. Repli
 **fermé** : jeton absent de l'environnement = toute exécution refusée (jamais ouverte par défaut).

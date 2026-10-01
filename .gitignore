@@ -36,3 +36,6 @@ logs/
 .DS_Store
 
 .pytest_cache/
+
+# Projets générés en mode projet (racine par défaut du docker-compose)
+/projets/

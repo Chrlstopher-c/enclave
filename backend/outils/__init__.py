@@ -32,24 +32,24 @@ from backend.outils.registre import (
 from backend.outils.socle import composer, construire
 
 
-def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None) -> str:
+def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: str | None = None) -> str:
     """Socle correspondant aux outils réellement enregistrés à cet instant.
 
     `modele` est l'identifiant du modèle RÉELLEMENT chargé, transmis par l'appelant : le domaine
     `outils` ne connaît pas `inference` et n'a pas à le découvrir. Vide, le socle n'affirme aucune
     identité — mieux vaut qu'il se taise que de nommer un modèle qui n'est pas celui qui répond.
     """
-    return construire(descriptions(actifs), modele)
+    return construire(descriptions(actifs), modele, projet)
 
 
 def prompt_systeme(prompt_conversation: str, modele: str = "",
-                   actifs: Sequence[str] | None = None) -> str:
+                   actifs: Sequence[str] | None = None, projet: str | None = None) -> str:
     """Prompt système complet : socle d'abord, prompt de la conversation ensuite.
 
     C'est le seul point d'entrée que la génération doit utiliser. Composer ailleurs ferait exister
     un chemin où le socle est oublié — et ce chemin serait justement celui où le modèle affabule.
     """
-    return composer(prompt_socle(modele, actifs), prompt_conversation)
+    return composer(prompt_socle(modele, actifs, projet), prompt_conversation)
 
 
 __all__ = [

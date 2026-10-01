@@ -19,7 +19,9 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Literal
 
+import processus
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 from loguru import logger
@@ -29,6 +31,14 @@ from pydantic import BaseModel, Field
 # son sous-dossier ; l'agent peut se déplacer ailleurs dans le conteneur, mais son point de départ
 # est toujours là.
 WORKSPACE = Path(os.environ.get("ATELIER_WORKSPACE", "/workspace"))
+# Racine des PROJETS : dossier de l'hôte monté ici, où une conversation liée à un projet travaille.
+PROJETS = Path(os.environ.get("ATELIER_PROJETS", "/projets"))
+# « uid:gid » de l'utilisateur de l'hôte. L'agent est root ici : sans cette rétrocession, tout ce
+# qu'il crée sur un dossier de l'hôte appartient à root, et le backend natif comme l'utilisateur ne
+# peuvent plus y écrire. Vide = rien n'est rétrocédé (backend lui-même root, en conteneur).
+PROPRIETAIRE = os.environ.get("ATELIER_PROPRIETAIRE", "").strip()
+
+Racine = Literal["workspace", "projets"]
 
 # Sortie bornée : une compilation bavarde ou un `apt install` verbeux dépasse vite le raisonnable.
 # Le backend retronque pour le modèle ; cette borne-ci protège la mémoire du service.
@@ -41,12 +51,22 @@ class RequeteCommande(BaseModel):
     commande: str = Field(min_length=1)
     sous_dossier: str = Field(min_length=1)
     timeout_s: int = Field(gt=0, le=3600)
+    racine: Racine = "workspace"
 
 
 class RequetePython(BaseModel):
     code: str = Field(min_length=1)
     sous_dossier: str = Field(min_length=1)
     timeout_s: int = Field(gt=0, le=3600)
+    racine: Racine = "workspace"
+
+
+class RequeteProcessus(BaseModel):
+    sous_dossier: str = Field(min_length=1)
+    racine: Racine = "workspace"
+    nom: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9_.-]*$")
+    commande: str = ""
+    lignes: int = Field(default=80, gt=0, le=400)
 
 
 class Resultat(BaseModel):
@@ -63,17 +83,36 @@ def verifier_jeton(x_atelier_jeton: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="Jeton d'atelier absent ou invalide.")
 
 
-def _dossier_travail(sous_dossier: str) -> Path:
+def _dossier_travail(sous_dossier: str, racine: Racine = "workspace") -> Path:
     """Résout `/workspace/<sous_dossier>`, refuse toute sortie de la racine, crée le dossier.
 
     Le sous-dossier vient du backend (donc de confiance), mais il est validé quand même : un `..`
     ou un chemin absolu ne doit jamais faire écrire hors du volume partagé.
     """
-    cible = (WORKSPACE / sous_dossier).resolve()
-    if cible != WORKSPACE.resolve() and WORKSPACE.resolve() not in cible.parents:
-        raise HTTPException(status_code=400, detail=f"Sous-dossier hors workspace : « {sous_dossier} ».")
+    base = (PROJETS if racine == "projets" else WORKSPACE).resolve()
+    cible = (base / sous_dossier).resolve()
+    if cible == base or base not in cible.parents:
+        raise HTTPException(status_code=400, detail=f"Sous-dossier hors {racine} : « {sous_dossier} ».")
+    if racine == "projets" and not cible.is_dir():
+        raise HTTPException(status_code=404, detail=f"Projet absent : « {sous_dossier} ».")
     cible.mkdir(parents=True, exist_ok=True)
     return cible
+
+
+def _retroceder(dossier: Path) -> None:
+    """Rend à l'utilisateur de l'hôte ce que root vient de créer dans `dossier`. Jamais fatal.
+
+    `find ! -user` ne touche que ce qui n'est pas déjà à lui : un `node_modules` de 30 000 fichiers
+    ne coûte qu'une fois, pas à chaque commande.
+    """
+    if not PROPRIETAIRE:
+        return
+    uid = PROPRIETAIRE.split(":")[0]
+    try:
+        subprocess.run(["find", str(dossier), "!", "-user", uid, "-exec", "chown", "-h", PROPRIETAIRE, "{}", "+"],
+                       capture_output=True, timeout=120, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Rétrocession de {} impossible : {}", dossier, exc)
 
 
 def _tronquer(flux: str | bytes | None) -> str:
@@ -128,16 +167,46 @@ def sante() -> dict[str, str]:
 
 @app.post("/executer/commande", response_model=Resultat, dependencies=[Depends(verifier_jeton)])
 def executer_commande(requete: RequeteCommande) -> Resultat:
-    cwd = _dossier_travail(requete.sous_dossier)
-    logger.info("commande dans {} (timeout {}s)", requete.sous_dossier, requete.timeout_s)
-    return _lancer(["bash", "-lc", requete.commande], cwd, requete.timeout_s)
+    cwd = _dossier_travail(requete.sous_dossier, requete.racine)
+    logger.info("commande dans {}:{} (timeout {}s)", requete.racine, requete.sous_dossier, requete.timeout_s)
+    resultat = _lancer(["bash", "-lc", requete.commande], cwd, requete.timeout_s)
+    _retroceder(cwd)
+    return resultat
 
 
 @app.post("/executer/python", response_model=Resultat, dependencies=[Depends(verifier_jeton)])
 def executer_python(requete: RequetePython) -> Resultat:
-    cwd = _dossier_travail(requete.sous_dossier)
-    logger.info("python dans {} (timeout {}s)", requete.sous_dossier, requete.timeout_s)
-    return _executer_python(requete.code, cwd, requete.timeout_s)
+    cwd = _dossier_travail(requete.sous_dossier, requete.racine)
+    logger.info("python dans {}:{} (timeout {}s)", requete.racine, requete.sous_dossier, requete.timeout_s)
+    resultat = _executer_python(requete.code, cwd, requete.timeout_s)
+    _retroceder(cwd)
+    return resultat
+
+
+@app.post("/processus/{action}", dependencies=[Depends(verifier_jeton)])
+def piloter_processus(action: str, requete: RequeteProcessus) -> dict[str, object]:
+    """Processus de fond (serveur de dev…) : lancer, journal, arreter, lister."""
+    cwd = _dossier_travail(requete.sous_dossier, requete.racine)
+    try:
+        if action == "lister":
+            return {"processus": processus.lister(cwd)}
+        if not requete.nom:
+            raise HTTPException(status_code=422, detail="Nom de processus requis.")
+        if action == "lancer":
+            if not requete.commande.strip():
+                raise HTTPException(status_code=422, detail="Commande requise.")
+            return processus.lancer(cwd, requete.nom, requete.commande)
+        if action == "journal":
+            return processus.journal(cwd, requete.nom, requete.lignes)
+        if action == "arreter":
+            resultat = processus.arreter(cwd, requete.nom)
+            _retroceder(cwd)
+            return resultat
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Aucun processus « {requete.nom} » ici.") from exc
+    raise HTTPException(status_code=404, detail=f"Action inconnue : {action}.")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,9 @@ export interface EnTeteChatProps {
   readonly pret: boolean;
   readonly onReglages: () => void;
   readonly onOutils: () => void;
+  /** Projet confié à la conversation (mode projet), `null` si aucun. */
+  readonly projet: string | null;
+  readonly onProjet: () => void;
   readonly onOuvrirConversations: () => void;
   readonly onOuvrirPlan: () => void;
 }
@@ -40,15 +43,46 @@ function IconePlan(): ReactElement {
   );
 }
 
-function ActionsEntete({ pret, onOutils, onReglages, onOuvrirPlan }: Pick<
+function IconeDossier(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" fill="none" aria-hidden="true">
+      <path
+        d="M2 4.5c0-.6.4-1 1-1h3l1.5 1.5H13c.6 0 1 .4 1 1v6c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1v-7.5Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/* Le projet confié est visible en permanence : savoir que le modèle peut écrire dans un dossier de
+   l'hôte ne doit pas dépendre de l'ouverture d'une modale. */
+function BoutonProjet({ projet, onProjet }: Pick<EnTeteChatProps, 'projet' | 'onProjet'>): ReactElement {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onProjet}
+      aria-label={projet === null ? 'Projet' : `Projet ${projet}`}
+      className={projet === null ? undefined : 'text-accent'}
+    >
+      <IconeDossier />
+      <span className="hidden max-w-[10rem] truncate font-mono text-2xs sm:inline">{projet ?? 'Projet'}</span>
+    </Button>
+  );
+}
+
+function ActionsEntete({ pret, onOutils, onReglages, onOuvrirPlan, projet, onProjet }: Pick<
   EnTeteChatProps,
-  'pret' | 'onOutils' | 'onReglages' | 'onOuvrirPlan'
+  'pret' | 'onOutils' | 'onReglages' | 'onOuvrirPlan' | 'projet' | 'onProjet'
 >): ReactElement {
   return (
     <div className="flex shrink-0 items-center gap-1 lg:gap-2">
       <Badge tone={pret ? 'ok' : 'neutral'} dot>
         {pret ? 'moteur prêt' : 'moteur inactif'}
       </Badge>
+      <BoutonProjet projet={projet} onProjet={onProjet} />
       {/* « Outils » vit à côté de « Réglages » : les deux disent ce que la conversation met à
           disposition du modèle — l'un les capacités, l'autre les paramètres. */}
       <Button variant="ghost" size="sm" onClick={onOutils}>
@@ -84,6 +118,8 @@ export function EnTeteChat(props: EnTeteChatProps): ReactElement {
       <ActionsEntete
         pret={props.pret}
         onOutils={props.onOutils}
+        projet={props.projet}
+        onProjet={props.onProjet}
         onReglages={props.onReglages}
         onOuvrirPlan={props.onOuvrirPlan}
       />

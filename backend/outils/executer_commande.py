@@ -30,12 +30,14 @@ from typing import Any
 from loguru import logger
 
 from backend.outils.bac_a_sable import (
+    chemin_dans_atelier,
     TIMEOUT_COMMANDE_SECONDES,
     executer_commande_confinee,
     preparer_bac,
 )
 from backend.outils.balayage_bac import balayer_et_enregistrer, etat_bac
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
+from backend.outils.garde_fous import CommandeRefusee, verifier_commande
 
 NOM = "executer_commande"
 
@@ -132,10 +134,17 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
             "No command given. Send the `commande` argument with the full shell line, "
             'for example: {"commande": "gcc hello.c -o hello && ./hello"}'
         )
+    try:
+        verifier_commande(commande, chemin_dans_atelier(contexte.racine_bac))
+    except CommandeRefusee as exc:
+        logger.warning("executer_commande refusée par les garde-fous : {}", exc)
+        raise EchecOutil(str(exc)) from exc
     preparer_bac(contexte.racine_bac)
-    avant = etat_bac(contexte.racine_bac)
+    # En mode projet, pas de balayage : un `bun install` crée des milliers de fichiers, qui ne sont
+    # pas des livrables de la conversation — le projet sur disque EST le livrable.
+    avant = etat_bac(contexte.racine_bac) if contexte.projet is None else frozenset()
     resultat = await asyncio.to_thread(executer_commande_confinee, commande, contexte.racine_bac)
-    fichiers = balayer_et_enregistrer(contexte.conversation_id, contexte.racine_bac, avant)
+    fichiers = [] if contexte.projet else balayer_et_enregistrer(contexte.conversation_id, contexte.racine_bac, avant)
     logger.info(
         "executer_commande : code_retour={} durée={:.2f}s fichiers_produits={}",
         resultat.code_retour, resultat.duree_s, len(fichiers),

@@ -15,6 +15,8 @@ ponctuel, mutualiser un client persistant imposerait un cycle de vie pour un gai
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 import httpx
 from loguru import logger
 from pydantic import BaseModel
@@ -27,6 +29,9 @@ from backend.core import get_settings
 MARGE_CLIENT_SECONDES = 30
 
 _ENTETE_JETON = "X-Atelier-Jeton"
+
+Racine = Literal["workspace", "projets"]
+TIMEOUT_PROCESSUS_SECONDES = 20
 
 
 class ReponseAtelier(BaseModel):
@@ -53,6 +58,34 @@ def _message_repli(cause: str) -> str:
     )
 
 
+def _poster(chemin: str, charge: dict[str, object], timeout_s: int) -> httpx.Response:
+    reglages = get_settings()
+    jeton = reglages.atelier_jeton.get_secret_value() if reglages.atelier_jeton else ""
+    url = f"{reglages.atelier_url.rstrip('/')}{chemin}"
+    return httpx.post(url, json=charge, headers={_ENTETE_JETON: jeton}, timeout=timeout_s + MARGE_CLIENT_SECONDES)
+
+
+class RefusProcessus(Exception):
+    """L'atelier a refusé une opération de processus (nom inconnu, borne atteinte). Message lisible."""
+
+
+def piloter_processus(action: str, charge: dict[str, object]) -> dict[str, Any]:
+    """Lancer / journal / arreter / lister un processus de fond. Lève `AtelierInjoignable` ou `RefusProcessus`."""
+    try:
+        reponse = _poster(f"/processus/{action}", charge, TIMEOUT_PROCESSUS_SECONDES)
+    except httpx.HTTPError as exc:
+        logger.error("Atelier injoignable (processus {}) : {}", action, exc)
+        raise AtelierInjoignable(_message_repli("service non joignable")) from exc
+    if reponse.status_code in (404, 409, 422):
+        detail = reponse.json().get("detail", reponse.text) if reponse.content else reponse.reason_phrase
+        raise RefusProcessus(str(detail))
+    if reponse.status_code != 200:
+        logger.error("Atelier a refusé processus/{} : {}", action, reponse.status_code)
+        raise AtelierInjoignable(_message_repli(f"réponse {reponse.status_code}"))
+    corps: dict[str, Any] = reponse.json()
+    return corps
+
+
 def _requete(chemin: str, charge: dict[str, object], timeout_s: int) -> ReponseAtelier:
     """Envoie une charge à l'atelier et rend sa réponse typée. Lève `AtelierInjoignable` sur échec.
 
@@ -60,14 +93,8 @@ def _requete(chemin: str, charge: dict[str, object], timeout_s: int) -> ReponseA
     traitée comme un atelier injoignable : du point de vue de l'appelant, le service n'a pas fait
     le travail, la nuance HTTP ne l'aide pas.
     """
-    reglages = get_settings()
-    jeton = reglages.atelier_jeton.get_secret_value() if reglages.atelier_jeton else ""
-    url = f"{reglages.atelier_url.rstrip('/')}{chemin}"
     try:
-        reponse = httpx.post(
-            url, json=charge, headers={_ENTETE_JETON: jeton},
-            timeout=timeout_s + MARGE_CLIENT_SECONDES,
-        )
+        reponse = _poster(chemin, charge, timeout_s)
         reponse.raise_for_status()
         return ReponseAtelier.model_validate(reponse.json())
     except httpx.HTTPStatusError as exc:
@@ -78,18 +105,23 @@ def _requete(chemin: str, charge: dict[str, object], timeout_s: int) -> ReponseA
         raise AtelierInjoignable(_message_repli("service non joignable sur le réseau interne")) from exc
 
 
-def executer_commande(commande: str, sous_dossier: str, timeout_s: int) -> ReponseAtelier:
-    """Exécute une commande shell dans l'atelier, sous `/workspace/<sous_dossier>`. Peut lever."""
+def executer_commande(commande: str, sous_dossier: str, timeout_s: int,
+                      racine: Racine = "workspace") -> ReponseAtelier:
+    """Exécute une commande shell dans l'atelier, sous `<racine>/<sous_dossier>`. Peut lever."""
     return _requete("/executer/commande",
-                    {"commande": commande, "sous_dossier": sous_dossier, "timeout_s": timeout_s},
+                    {"commande": commande, "sous_dossier": sous_dossier, "timeout_s": timeout_s,
+                     "racine": racine},
                     timeout_s)
 
 
-def executer_python(code: str, sous_dossier: str, timeout_s: int) -> ReponseAtelier:
-    """Exécute du code Python dans l'atelier, sous `/workspace/<sous_dossier>`. Peut lever."""
+def executer_python(code: str, sous_dossier: str, timeout_s: int,
+                    racine: Racine = "workspace") -> ReponseAtelier:
+    """Exécute du code Python dans l'atelier, sous `<racine>/<sous_dossier>`. Peut lever."""
     return _requete("/executer/python",
-                    {"code": code, "sous_dossier": sous_dossier, "timeout_s": timeout_s},
+                    {"code": code, "sous_dossier": sous_dossier, "timeout_s": timeout_s,
+                     "racine": racine},
                     timeout_s)
 
 
-__all__ = ["ReponseAtelier", "AtelierInjoignable", "executer_commande", "executer_python"]
+__all__ = ["ReponseAtelier", "AtelierInjoignable", "RefusProcessus", "Racine", "executer_commande",
+           "executer_python", "piloter_processus"]

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,11 @@ from backend.inference.engines_adapters.contrat import (
 
 
 # --------------------------------------------------------------- texte_de : forme simple (str)
+
+
+# La CI n'installe pas llama-cpp-python (compilation trop longue) : ces cas construisent un vrai handler.
+_AVEC_LLAMA_CPP = pytest.mark.skipif(importlib.util.find_spec("llama_cpp") is None,
+                                     reason="llama-cpp-python absent")
 
 
 def test_texte_de_sur_un_contenu_simple_le_rend_tel_quel() -> None:
@@ -175,6 +181,7 @@ def test_handler_vision_sans_projecteur_rend_none(tmp_path: Path, monkeypatch: p
     assert adaptateur._handler_vision(tmp_path / "modele.gguf", None) is None
 
 
+@_AVEC_LLAMA_CPP
 def test_handler_vision_avec_projecteur_construit_le_handler(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -197,6 +204,7 @@ def test_handler_vision_avec_projecteur_construit_le_handler(
     assert construits == [str(projecteur)]
 
 
+@_AVEC_LLAMA_CPP
 def test_handler_vision_qui_leve_a_la_construction_rend_none_sans_bloquer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,6 +225,7 @@ def test_handler_vision_qui_leve_a_la_construction_rend_none_sans_bloquer(
 # ------------------------------------------ journal de chargement : reste servable avec vision
 
 
+@_AVEC_LLAMA_CPP
 def test_journal_de_chargement_avec_vision_reste_serialisable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

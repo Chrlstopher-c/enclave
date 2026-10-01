@@ -17,6 +17,8 @@ quoi lui repasser à chaque tour, via `backend.outils.registre` (le vrai) pour l
 
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -30,6 +32,15 @@ from backend.outils import registre
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, Outil
 
 CONVERSATION_ATTENDUE = "conversation-boucle-42"
+
+@pytest.fixture(autouse=True)
+def _harnais_d_origine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ces cas décrivent la conduite d'origine (6 tours puis couperet, sans relance) : ils la figent,
+    le défaut étant passé à FORGE (prolongations illimitées, relance des tours muets)."""
+    from backend.inference import harnais
+
+    monkeypatch.setattr(harnais, "DEFAUT", harnais.ECHOHUB)
+
 
 
 class SuperviseurBoucleFactice:

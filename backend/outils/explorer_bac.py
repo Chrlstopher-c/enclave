@@ -18,6 +18,9 @@ route pour tout le reste — c'est ce que disent les descriptions.
 from __future__ import annotations
 
 import asyncio
+import fnmatch
+import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -94,15 +97,29 @@ DESCRIPTION_RECHERCHE = DescriptionOutil(
 )
 
 
+# Dossiers de dépendances et de build : jamais parcourus. Dans un projet, `node_modules` seul pèse
+# des dizaines de milliers de fichiers — les lister noierait le modèle et gèlerait l'outil.
+DOSSIERS_IGNORES = frozenset({"node_modules", "__pycache__", "venv", "dist", "build", "target", "coverage"})
+
+
+def _parcourir(racine: Path) -> Iterator[Path]:
+    """Fichiers sous `racine`, en élaguant dossiers cachés et dossiers de dépendances SANS y descendre."""
+    for dossier, sous_dossiers, fichiers in os.walk(racine):
+        sous_dossiers[:] = [d for d in sous_dossiers if not d.startswith(".") and d not in DOSSIERS_IGNORES]
+        for nom in fichiers:
+            if not nom.startswith("."):
+                yield Path(dossier) / nom
+
+
 def _fichiers(racine: Path, motif: str) -> list[Path]:
-    """Fichiers du bac correspondant au motif, triés, hors dossiers cachés."""
+    """Fichiers du bac correspondant au motif, triés, hors dossiers cachés et de dépendances."""
     try:
-        trouves = racine.rglob(motif or "*")
+        motif_effectif = motif or "*"
+        retenus = [c for c in _parcourir(racine)
+                   if c.relative_to(racine).match(motif_effectif) or fnmatch.fnmatch(c.name, motif_effectif)]
     except (OSError, ValueError) as exc:
         raise EchecOutil(f"Pattern « {motif} » cannot be used: {exc}") from exc
-    return sorted(
-        chemin for chemin in trouves
-        if chemin.is_file() and not any(part.startswith(".") for part in chemin.parts))
+    return sorted(retenus)
 
 
 def _lister(racine: Path, motif: str) -> str:

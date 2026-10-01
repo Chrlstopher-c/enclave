@@ -26,6 +26,7 @@ from backend.outils.fichiers_bac import OUTIL_ECRIRE, OUTIL_LIRE, OUTIL_MODIFIER
 from backend.outils.presenter_fichier import OUTIL as OUTIL_PRESENTER
 from backend.outils.recherche_web import OUTIL as OUTIL_RECHERCHE
 from backend.outils.recuperer_page import OUTIL as OUTIL_PAGE
+from backend.outils.serveur_fond import OUTIL as OUTIL_SERVEUR_FOND
 
 # Ordre significatif : c'est celui dans lequel les outils sont présentés au modèle, et le premier
 # est celui vers lequel il se tourne le plus volontiers. La recherche web est en tête parce que
@@ -62,6 +63,7 @@ _OUTILS: dict[str, Outil] = {
     OUTIL_CHERCHER.nom: OUTIL_CHERCHER,
     OUTIL_PYTHON.nom: OUTIL_PYTHON,
     OUTIL_COMMANDE.nom: OUTIL_COMMANDE,
+    OUTIL_SERVEUR_FOND.nom: OUTIL_SERVEUR_FOND,
     OUTIL_PRESENTER.nom: OUTIL_PRESENTER,
     # `creer_artefact` ferme la marche, juste après la présentation : les deux montrent quelque
     # chose à l'utilisateur, et les voisiner rend leur différence lisible dans le socle —
@@ -82,6 +84,7 @@ _GROUPES: dict[str, str] = {
     "chercher_dans_fichiers": "fichiers",
     "executer_python": "execution",
     "executer_commande": "execution",
+    "serveur_fond": "execution",
     "presenter_fichier": "presentation",
     "creer_artefact": "presentation",
 }

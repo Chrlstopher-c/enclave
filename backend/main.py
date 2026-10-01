@@ -59,6 +59,7 @@ _DOMAINES = (
     "backend.fichiers.routes",
     "backend.outils.api",
     "backend.recherche.api",
+    "backend.projets.routes",
 )
 
 
