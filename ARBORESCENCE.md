@@ -143,6 +143,7 @@ docker run --rm --gpus all --entrypoint /app/backend/.venv/bin/python \
 | `backend/outils/executer_commande.py` | Outil `executer_commande` — une commande shell réelle, confinée dans le bac |
 | `backend/outils/recuperer_page.py` | Outil `recuperer_page` — lit une page web dont on a l'adresse |
 | `backend/outils/explorer_bac.py` | Outils `lister_fichiers` et `chercher_dans_fichiers` |
+| `backend/inference/fin_projet.py` | Mode projet : pause, faux bilan, fin au futur proche |
 | `backend/inference/harnais.py` | Conduite de la boucle d'outils : tours, relances, budget, radotage |
 | `backend/inference/engines_adapters/processus_llama_server.py` | Pilotage du sous-processus `llama-server` |
 | `backend/inference/engines_adapters/adaptateur_llama_server.py` | Adaptateur `llama-server` — même plan, HTTP au lieu de bindings |
@@ -159,15 +160,20 @@ Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation
 | `backend/projets/__init__.py` | Interface publique du domaine `projets` |
 | `backend/projets/modeles.py` | Projet, catalogue, instantané, liaison |
 | `backend/projets/racine.py` | Racine des projets : lister, créer, résoudre sans jamais en sortir |
+| `backend/projets/apercu.py` | Aperçu : pointer le relais de l'atelier sur un port, rendre l'URL |
 | `backend/projets/instantanes.py` | Instantanés git séparés, pris avant chaque tour, restauration annulable |
 | `backend/projets/routes.py` | `/projets` : catalogue, création, instantanés, restauration |
+| `backend/projets/tests/test_apercu.py` | Aperçu : pointage, port réservé, atelier injoignable |
 | `backend/projets/tests/test_projets.py` | Racine confinée, git réel, restauration |
 | `backend/outils/garde_fous.py` | Refus lexical des commandes dangereuses ou hors dossier |
 | `backend/outils/serveur_fond.py` | Outil `serveur_fond` : serveurs de dev en arrière-plan |
 | `backend/outils/tests/test_garde_fous.py` | Ce qui passe, ce qui est refusé |
 | `backend/outils/tests/test_mode_projet.py` | Outils dans le dossier du projet, élagage, lecture par tranches |
+| `atelier/apercu.py` | Relais d'aperçu (port 8090) vers le serveur de dev choisi, servi à la racine |
 | `atelier/processus.py` | Processus de fond de l'atelier (lancer, journal, arrêter, lister) |
 | `frontend/src/chat/projet/api-projet.ts` | Client des routes projet |
 | `frontend/src/chat/projet/useProjetConversation.ts` | Liaison, catalogue, instantanés, gestes |
+| `frontend/src/chat/projet/SectionApercu.tsx` | Section « Aperçu de l'app » : ports en écoute, ouvrir |
+| `frontend/src/chat/projet/useApercuProjet.ts` | Hook : lire les ports, pointer et ouvrir l'onglet |
 | `frontend/src/chat/projet/ModaleProjet.tsx` | Modale : confier / créer un projet, règles, restaurer |
 | `frontend/src/chat/projet/index.ts` | Exports du module |

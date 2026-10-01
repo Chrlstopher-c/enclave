@@ -9,6 +9,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { Badge, Button, Modal, cn } from '../../shared/design';
 import { MOTIF_NOM_PROJET, type Instantane, type Projet } from './api-projet';
+import { SectionApercu } from './SectionApercu';
 import type { EtatProjetConversation } from './useProjetConversation';
 
 const DATE = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
@@ -171,6 +172,7 @@ function ContenuActif({ etat }: { readonly etat: EtatProjetConversation }): Reac
         <NouveauProjet occupe={etat.occupe} onCreer={etat.creerEtConfier} />
         <p className="font-mono text-2xs text-text-3">{etat.catalogue?.racine}</p>
       </section>
+      {etat.projet !== null && <SectionApercu projet={etat.projet} />}
       {etat.projet !== null && <SectionInstantanes etat={etat} />}
     </div>
   );

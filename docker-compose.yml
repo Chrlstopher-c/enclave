@@ -220,10 +220,13 @@ services:
     pids_limit: 512
     expose:
       - "8080"
+      - "8090"
     # Publié sur 127.0.0.1 SEULEMENT, pour le backend en mode natif (ATELIER_URL=http://127.0.0.1:…).
     # Jamais joignable depuis le réseau local, et chaque exécution reste gardée par le jeton.
     ports:
       - "127.0.0.1:${ATELIER_PORT_HOTE:-37923}:8080"
+      # Relais d'aperçu (`atelier/apercu.py`) : l'app que l'agent fait tourner, ouverte dans le navigateur.
+      - "127.0.0.1:${ATELIER_APERCU_PORT_HOTE:-37924}:8090"
 
 volumes:
   echohub_models:

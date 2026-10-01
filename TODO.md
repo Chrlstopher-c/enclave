@@ -16,9 +16,10 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
 
 ### Mode projet (2026-10-01) — suites
 
-- [ ] **Aperçu de l'app générée dans l'interface** : proxy `/projets/{nom}/apercu/{port}/…` vers le
-      serveur de dev de l'atelier. Écueil : une app Vite/SPA à chemins absolus (`/assets/…`) casse sous
-      un préfixe — il faudra soit un sous-domaine local, soit imposer `base` relatif au modèle.
+- [x] **Aperçu de l'app générée** (2026-10-01) : relais atelier sur 37924, section « Aperçu » de la modale.
+- [ ] Aperçu : WebSocket (HMR Vite) non relayé ; un seul aperçu pour tout l'atelier ; joignable sur la
+      tour seulement (127.0.0.1), comme le reste de l'UI.
+- [ ] Exporter un projet fini : bouton/commande (rsync sans `.echohub/`, `.venv/`, `node_modules/`).
 - [ ] **Dernière ligne droite du modèle** : relances sur annonce/pause/reste faisable en place
       (`fin_projet.py`), mais sur `todo-final` il finit à 8/9 en épuisant ses 6 relances en pauses sans
       appel. Pistes : consigne de relance qui NOMME le prochain appel attendu (dernier échec vu) ; modèle

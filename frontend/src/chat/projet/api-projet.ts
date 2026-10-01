@@ -6,6 +6,8 @@
  *   POST  /projets/{nom}/instantanes/{sha}/restaurer
  *   GET   /chat/conversations/{id}/projet            -> { projet: string | null }
  *   PATCH /chat/conversations/{id}/projet            <- { projet: string | null }
+ *   GET   /projets/{nom}/apercu                      -> EtatApercu
+ *   POST  /projets/{nom}/apercu                      <- { port }
  */
 
 import { getJson, patchJson, postJson } from '../api/client';
@@ -26,6 +28,12 @@ export interface Instantane {
   readonly sha: string;
   readonly date: number;
   readonly message: string;
+}
+
+export interface EtatApercu {
+  readonly port: number | null;
+  readonly ports: readonly number[];
+  readonly url: string;
 }
 
 interface Liaison {
@@ -58,4 +66,12 @@ export async function lireProjetConversation(conversationId: string, signal?: Ab
 export async function lierProjet(conversationId: string, projet: string | null): Promise<string | null> {
   const liaison = await patchJson<Liaison>(`/chat/conversations/${conversationId}/projet`, { projet });
   return liaison.projet;
+}
+
+export function lireApercu(nom: string, signal?: AbortSignal): Promise<EtatApercu> {
+  return getJson<EtatApercu>(`/projets/${encodeURIComponent(nom)}/apercu`, signal);
+}
+
+export function pointerApercu(nom: string, port: number): Promise<EtatApercu> {
+  return postJson<EtatApercu>(`/projets/${encodeURIComponent(nom)}/apercu`, { port });
 }

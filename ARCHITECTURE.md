@@ -130,6 +130,11 @@ travailler dans son bac de conversation.
   instantané de l'état courant : une restauration s'annule.
 - **Processus de fond** (`atelier/processus.py`, outil `serveur_fond`) : serveurs de dev détachés dans
   leur groupe de processus, journal hors du dossier de travail, 5 par dossier au plus.
+- **Aperçu** (`atelier/apercu.py`, `backend/projets/apercu.py`, `chat/projet/SectionApercu.tsx`) : un
+  relais dans l'atelier écoute sur 8090 (publié `127.0.0.1:${ATELIER_APERCU_PORT_HOTE:-37924}`) et
+  sert À LA RACINE le port qu'on lui désigne — les chemins absolus d'une SPA marchent. Le backend
+  ne relaie aucun octet : il pointe le relais (`POST /projets/{nom}/apercu`) et rend l'URL
+  (`ATELIER_APERCU_URL`). Un seul aperçu pour tout l'atelier ; pas de WebSocket (HMR de Vite absent).
 - **Socle** : bloc `_MODE_PROJET` (règles + méthode de travail : regarder, planifier, étapes VÉRIFIÉES,
   commandes non interactives, README, bilan honnête).
 - **Propriétaire** : l'agent est root dans l'atelier ; `ATELIER_PROPRIETAIRE=uid:gid` rétrocède ce

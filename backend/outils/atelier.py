@@ -58,11 +58,17 @@ def _message_repli(cause: str) -> str:
     )
 
 
-def _poster(chemin: str, charge: dict[str, object], timeout_s: int) -> httpx.Response:
+def _entetes() -> dict[str, str]:
     reglages = get_settings()
-    jeton = reglages.atelier_jeton.get_secret_value() if reglages.atelier_jeton else ""
-    url = f"{reglages.atelier_url.rstrip('/')}{chemin}"
-    return httpx.post(url, json=charge, headers={_ENTETE_JETON: jeton}, timeout=timeout_s + MARGE_CLIENT_SECONDES)
+    return {_ENTETE_JETON: reglages.atelier_jeton.get_secret_value() if reglages.atelier_jeton else ""}
+
+
+def _url(chemin: str) -> str:
+    return f"{get_settings().atelier_url.rstrip('/')}{chemin}"
+
+
+def _poster(chemin: str, charge: dict[str, object], timeout_s: int) -> httpx.Response:
+    return httpx.post(_url(chemin), json=charge, headers=_entetes(), timeout=timeout_s + MARGE_CLIENT_SECONDES)
 
 
 class RefusProcessus(Exception):
@@ -81,6 +87,26 @@ def piloter_processus(action: str, charge: dict[str, object]) -> dict[str, Any]:
         raise RefusProcessus(str(detail))
     if reponse.status_code != 200:
         logger.error("Atelier a refusé processus/{} : {}", action, reponse.status_code)
+        raise AtelierInjoignable(_message_repli(f"réponse {reponse.status_code}"))
+    corps: dict[str, Any] = reponse.json()
+    return corps
+
+
+def piloter_apercu(port: int | None = None) -> dict[str, Any]:
+    """Lit le relais d'aperçu (`port` absent) ou le pointe sur `port`. Lève `AtelierInjoignable` ou
+    `RefusProcessus`. Rend `{port, ports}` : le port servi et les ports en écoute dans l'atelier."""
+    try:
+        if port is None:
+            reponse = httpx.get(_url("/apercu"), headers=_entetes(), timeout=TIMEOUT_PROCESSUS_SECONDES)
+        else:
+            reponse = _poster("/apercu", {"port": port}, TIMEOUT_PROCESSUS_SECONDES)
+    except httpx.HTTPError as exc:
+        logger.error("Atelier injoignable (aperçu) : {}", exc)
+        raise AtelierInjoignable(_message_repli("service non joignable")) from exc
+    if reponse.status_code in (409, 422):
+        raise RefusProcessus(str(reponse.json().get("detail", reponse.text)))
+    if reponse.status_code != 200:
+        logger.error("Atelier a refusé l'aperçu : {}", reponse.status_code)
         raise AtelierInjoignable(_message_repli(f"réponse {reponse.status_code}"))
     corps: dict[str, Any] = reponse.json()
     return corps
@@ -124,4 +150,4 @@ def executer_python(code: str, sous_dossier: str, timeout_s: int,
 
 
 __all__ = ["ReponseAtelier", "AtelierInjoignable", "RefusProcessus", "Racine", "executer_commande",
-           "executer_python", "piloter_processus"]
+           "executer_python", "piloter_apercu", "piloter_processus"]

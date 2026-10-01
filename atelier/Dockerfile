@@ -38,7 +38,7 @@ WORKDIR /opt/atelier
 COPY requirements.txt .
 RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
-COPY serveur.py processus.py ./
+COPY serveur.py processus.py apercu.py ./
 
 # Sonde locale, jamais publiée sur l'hôte : le healthcheck Docker interroge la route ouverte /sante.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \

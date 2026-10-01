@@ -113,6 +113,8 @@ class Settings(BaseSettings):
     # dur ni journalisé — c'est le seul rempart devant un service qui exécute du shell root.
     atelier_url: str = Field(default=_URL_ATELIER_DEFAUT, validation_alias="ATELIER_URL")
     atelier_jeton: SecretStr | None = Field(default=None, validation_alias="ATELIER_JETON")
+    # Relais d'aperçu de l'atelier, tel que le NAVIGATEUR l'atteint : l'app du projet y est servie.
+    atelier_apercu_url: str = Field(default="http://127.0.0.1:37924", validation_alias="ATELIER_APERCU_URL")
     # Racine des PROJETS que l'on peut confier à une conversation (dossier de l'hôte, monté aussi
     # dans l'atelier sous /projets). Absente = mode projet désactivé, jamais une racine devinée.
     projets_racine: Path | None = Field(default=None, validation_alias="ECHOHUB_PROJETS_RACINE")

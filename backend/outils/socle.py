@@ -209,7 +209,8 @@ Working method:
    file or a full rewrite. Keep files short and focused.
 4. Commands must be non-interactive: pass `-y` / `--yes` / template flags, never wait for a prompt.
 5. Anything that never exits by itself (dev server, API, watcher) goes through `serveur_fond`, bound to
-   0.0.0.0, never through `executer_commande`. Stop it when you no longer need it.
+   0.0.0.0 on a port above 1023 (8080 and 8090 are taken), never through `executer_commande`. Leave
+   the final app running: the user opens it from the project window (« Aperçu »). Give its port.
 6. Keep a README.md saying how to install and run the project.
 7. When you finish: say what was built, how to run it, what you actually verified and what remains.
    Never claim a check you did not run.

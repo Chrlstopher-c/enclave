@@ -21,6 +21,9 @@ import time
 from pathlib import Path
 from typing import Literal
 
+import threading
+
+import apercu
 import processus
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -67,6 +70,10 @@ class RequeteProcessus(BaseModel):
     nom: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9_.-]*$")
     commande: str = ""
     lignes: int = Field(default=80, gt=0, le=400)
+
+
+class RequeteApercu(BaseModel):
+    port: int = Field(gt=1023, lt=65536)
 
 
 class Resultat(BaseModel):
@@ -209,7 +216,29 @@ def piloter_processus(action: str, requete: RequeteProcessus) -> dict[str, objec
     raise HTTPException(status_code=404, detail=f"Action inconnue : {action}.")
 
 
+@app.get("/apercu", dependencies=[Depends(verifier_jeton)])
+def lire_apercu() -> dict[str, object]:
+    """Port pointé par le relais d'aperçu, et ports en écoute qu'il peut servir."""
+    return {"port": apercu.port_cible(), "ports": apercu.ports_ecoutes()}
+
+
+@app.post("/apercu", dependencies=[Depends(verifier_jeton)])
+def pointer_apercu(requete: RequeteApercu) -> dict[str, object]:
+    try:
+        apercu.pointer(requete.port)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return lire_apercu()
+
+
+def _demarrer_relais() -> None:
+    serveur = uvicorn.Server(uvicorn.Config(apercu.app, host="0.0.0.0", port=apercu.PORT_APERCU,
+                                            log_level="warning"))
+    threading.Thread(target=serveur.run, name="relais-apercu", daemon=True).start()
+
+
 if __name__ == "__main__":
     if not _JETON:
         logger.warning("ATELIER_JETON absent : toutes les exécutions seront refusées (repli fermé).")
+    _demarrer_relais()
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")

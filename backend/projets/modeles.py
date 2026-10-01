@@ -39,3 +39,15 @@ class LiaisonProjet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     projet: str | None = None
+
+
+class EtatApercu(BaseModel):
+    """Port servi par le relais d'aperçu, ports en écoute dans l'atelier, URL à ouvrir."""
+
+    port: int | None
+    ports: list[int]
+    url: str
+
+
+class DemandeApercu(BaseModel):
+    port: int = Field(gt=1023, lt=65536)
