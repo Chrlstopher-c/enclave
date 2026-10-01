@@ -48,6 +48,12 @@ export const CATALOGUE_OUTILS: readonly OutilDisponible[] = [
     tokens_definition: null,
   },
   {
+    nom: 'ecrire_fichiers',
+    description: 'écrit plusieurs fichiers en un seul appel',
+    groupe: 'fichiers',
+    tokens_definition: null,
+  },
+  {
     nom: 'lire_fichier',
     description: 'relit un fichier du bac',
     groupe: 'fichiers',

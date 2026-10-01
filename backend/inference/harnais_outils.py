@@ -147,6 +147,9 @@ CARACTERES_APERCU_LIGNE = 160
 
 def _apercu_valeur(valeur: object) -> str:
     """Valeur d'argument ramenée à un aperçu lisible — jamais tronquée en silence."""
+    if isinstance(valeur, list) and valeur and all(isinstance(e, dict) and "chemin" in e for e in valeur):
+        # `ecrire_fichiers` : les chemins, pas le contenu entier de chaque fichier.
+        return " · ".join(str(e["chemin"]) for e in valeur)
     texte = str(valeur)
     lignes = texte.splitlines()
     if len(lignes) <= LIGNES_APERCU_ARGUMENT and len(texte) <= CARACTERES_APERCU_LIGNE:

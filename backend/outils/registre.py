@@ -19,6 +19,7 @@ from loguru import logger
 
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil, ResultatOutil
 from backend.outils.creer_artefact import OUTIL as OUTIL_ARTEFACT
+from backend.outils.ecriture_groupee import OUTIL as OUTIL_ECRIRE_GROUPE
 from backend.outils.executer_commande import OUTIL as OUTIL_COMMANDE
 from backend.outils.executer_python import OUTIL as OUTIL_PYTHON
 from backend.outils.explorer_bac import OUTIL_CHERCHER, OUTIL_LISTER
@@ -57,6 +58,8 @@ _OUTILS: dict[str, Outil] = {
     OUTIL_RECHERCHE.nom: OUTIL_RECHERCHE,
     OUTIL_PAGE.nom: OUTIL_PAGE,
     OUTIL_ECRIRE.nom: OUTIL_ECRIRE,
+    # Juste après l'écriture simple, dont il est la forme groupée (2026-10-01).
+    OUTIL_ECRIRE_GROUPE.nom: OUTIL_ECRIRE_GROUPE,
     OUTIL_LIRE.nom: OUTIL_LIRE,
     OUTIL_MODIFIER.nom: OUTIL_MODIFIER,
     OUTIL_LISTER.nom: OUTIL_LISTER,
@@ -78,6 +81,7 @@ _GROUPES: dict[str, str] = {
     "recherche_web": "web",
     "recuperer_page": "web",
     "ecrire_fichier": "fichiers",
+    "ecrire_fichiers": "fichiers",
     "lire_fichier": "fichiers",
     "modifier_fichier": "fichiers",
     "lister_fichiers": "fichiers",

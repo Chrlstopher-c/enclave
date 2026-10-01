@@ -56,7 +56,7 @@ def test_lister_elague_les_dependances(contexte_projet: ContexteExecution) -> No
 def test_lire_par_tranches(contexte_projet: ContexteExecution) -> None:
     (contexte_projet.racine_bac / "long.txt").write_text("".join(f"ligne {i}\n" for i in range(1, 101)))
     extrait = _appel("lire_fichier", {"chemin": "long.txt", "ligne_debut": 95}, contexte_projet)
-    assert extrait.texte.startswith("[à partir de la ligne 95 sur 100]") and "ligne 94\n" not in extrait.texte
+    assert extrait.texte.startswith("[lignes 95-100 sur 100]") and "ligne 94\n" not in extrait.texte
 
 
 def test_chemin_prefixe_par_le_projet_est_ramene_au_bac(contexte_projet: ContexteExecution) -> None:

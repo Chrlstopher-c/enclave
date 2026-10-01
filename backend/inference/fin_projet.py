@@ -42,6 +42,11 @@ _FUTUR_PROCHE = re.compile(
     r"i will|i'll|i need to|i'm going to|let me|let's)\b",
     re.IGNORECASE,
 )
+# Bloc de code d'un langage source (pas une commande shell) : montré dans le chat au lieu d'être écrit.
+_BLOC_CODE = re.compile(r"```([\w+#.-]*)\n(.*?)```", re.DOTALL)
+_LANGAGES_COMMANDE = frozenset({"bash", "sh", "shell", "console", "zsh", "text", "txt", "plaintext"})
+# Au-delà, ce n'est plus un exemple d'usage dans un bilan mais un fichier recopié dans la réponse.
+LIGNES_CODE_MONTRE_MAX = 8
 _FIN_DE_PHRASE = re.compile(r"(?<=[.!?…])\s+|\n+")
 
 CONSIGNE_SUITE_PROJET = (
@@ -49,6 +54,12 @@ CONSIGNE_SUITE_PROJET = (
     "on the project: call the next tool NOW (run the command, write the file). Only if the whole "
     "task is really finished, write the final report instead: what was built, how to run it, what "
     "you actually verified, and what remains."
+)
+
+CONSIGNE_CODE_MONTRE = (
+    "You displayed code in your message instead of writing it to the project. Code shown in the chat "
+    "changes nothing on disk. Write it NOW with `ecrire_fichier` / `ecrire_fichiers` (or fix the exact "
+    "lines with `modifier_fichier`), then run the check that proves it works."
 )
 
 CONSIGNE_RESTE_FAISABLE = (
@@ -96,6 +107,19 @@ def finit_sur_futur_proche(texte: str) -> bool:
     return bool(phrases) and _FUTUR_PROCHE.match(phrases[-1]) is not None
 
 
+def code_montre(texte: str) -> bool:
+    """Le tour finit-il sur un fichier recopié dans le chat plutôt qu'écrit ?
+
+    Mesuré le 2026-10-01 (projet `spoofer`) : « Je vais corriger les fichiers et réinstaller », puis un
+    bloc ```python de 25 lignes, `__init__.py` complet, et fin du tour. Plus de 400 caractères, pas
+    de section « reste » : rien ne le distinguait d'un bilan.
+    """
+    for langage, corps in _BLOC_CODE.findall(visible(texte)):
+        if langage.lower() not in _LANGAGES_COMMANDE and corps.count("\n") >= LIGNES_CODE_MONTRE_MAX:
+            return True
+    return False
+
+
 def reste_faisable(texte: str) -> bool:
     """Le bilan rend-il à l'utilisateur une action que le modèle pouvait jouer lui-même ?"""
     texte_visible = visible(texte)
@@ -105,10 +129,12 @@ def reste_faisable(texte: str) -> bool:
 
 __all__ = [
     "BILAN_PROJET_MIN_CARACTERES",
+    "CONSIGNE_CODE_MONTRE",
     "CONSIGNE_RESTE_FAISABLE",
     "CONSIGNE_SUITE_PROJET",
     "DernierAppel",
     "RELANCES_RESTE_MAX",
+    "code_montre",
     "finit_sur_futur_proche",
     "pause_sans_bilan",
     "rappel_dernier_appel",

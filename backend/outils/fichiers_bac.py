@@ -235,23 +235,36 @@ DESCRIPTION_LIRE = DescriptionOutil(
                 "type": "integer",
                 "description": "Optional 1-based line to start from, to read a long file in pieces.",
             },
+            "ligne_fin": {
+                "type": "integer",
+                "description": (
+                    "Optional last line to read (inclusive). With `ligne_debut`, reads only that range — "
+                    "the lines `chercher_dans_fichiers` pointed to, instead of the whole file."
+                ),
+            },
         },
         "required": ["chemin"],
     },
-    alias=dict(_ALIAS_CHEMIN),
+    alias={**_ALIAS_CHEMIN, "start_line": "ligne_debut", "debut": "ligne_debut", "offset": "ligne_debut",
+           "end_line": "ligne_fin", "fin": "ligne_fin"},
 )
 
 
-def _depuis_ligne(texte: str, ligne_debut: object) -> tuple[str, str]:
-    """Texte à partir de `ligne_debut` (1-based) et l'en-tête qui situe l'extrait. Sans valeur : tout."""
+def _entier(valeur: object) -> int | None:
     try:
-        debut = max(1, int(str(ligne_debut))) if ligne_debut not in (None, "") else 1
+        return max(1, int(str(valeur))) if valeur not in (None, "") else None
     except ValueError:
-        debut = 1
-    if debut == 1:
+        return None
+
+
+def _extrait(texte: str, ligne_debut: object, ligne_fin: object) -> tuple[str, str]:
+    """Lignes `ligne_debut`..`ligne_fin` (1-based, incluses) et l'en-tête qui les situe. Sans borne : tout."""
+    debut, fin = _entier(ligne_debut) or 1, _entier(ligne_fin)
+    if debut == 1 and fin is None:
         return texte, ""
     lignes = texte.splitlines(keepends=True)
-    return "".join(lignes[debut - 1:]), f"[à partir de la ligne {debut} sur {len(lignes)}]\n"
+    fin_effective = min(fin or len(lignes), len(lignes))
+    return "".join(lignes[debut - 1:fin_effective]), f"[lignes {debut}-{fin_effective} sur {len(lignes)}]\n"
 
 
 async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
@@ -268,7 +281,7 @@ async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
         texte = cible.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise EchecOutil(f"Échec : « {chemin_demande} » illisible en texte ({exc}).") from exc
-    texte, entete = _depuis_ligne(texte, arguments.get("ligne_debut"))
+    texte, entete = _extrait(texte, arguments.get("ligne_debut"), arguments.get("ligne_fin"))
     if len(texte) > LONGUEUR_LECTURE_MAX:
         coupe = texte[:LONGUEUR_LECTURE_MAX]
         suite = coupe.count("\n") + 1
