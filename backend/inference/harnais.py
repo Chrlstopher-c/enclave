@@ -152,6 +152,28 @@ CONSIGNE_DERNIER_TOUR = (
     "to take."
 )
 
+# Mode projet : sous cette longueur (raisonnement retiré), un texte sans appel n'est pas un bilan.
+# Mesuré le 2026-10-01 : le 35B clôt ses tours sur « Je dois réinstaller les dépendances dans le
+# venv correctement. » (95 car.) ; un bilan réel (construit, lancé, vérifié, reste) dépasse 400.
+BILAN_PROJET_MIN_CARACTERES = 400
+_RAISONNEMENT = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL)
+
+CONSIGNE_SUITE_PROJET = (
+    "You stopped without calling a tool, and what you wrote is not a final report. You are working "
+    "on the project: call the next tool NOW (run the command, write the file). Only if the whole "
+    "task is really finished, write the final report instead: what was built, how to run it, what "
+    "you actually verified, and what remains."
+)
+
+
+def fin_de_projet_prematuree(texte: str, etat: EtatBoucle) -> bool:
+    """En mode projet, après du travail réel, un texte court sans appel est une pause, pas une fin."""
+    if not etat.mode_projet or etat.aboutis == 0:
+        return False
+    visible = _RAISONNEMENT.sub("", texte).strip()
+    return len(visible) < BILAN_PROJET_MIN_CARACTERES
+
+
 CONSIGNE_TOUR_MUET = (
     "Your last turn produced nothing: no tool call, and no answer to the user — only reasoning, "
     "which the user does not see. Answer NOW, in French, with what you have. If you need a tool, "
@@ -247,6 +269,9 @@ class EtatBoucle:
     # doit CLÔTURER au lieu de rendre la main : sans ce drapeau, l'utilisateur reste devant une
     # phrase qui se termine par deux-points et rien derrière.
     promesse_en_suspens: bool = False
+    # Mode projet : la conversation construit une application dans un dossier confié. Un tour sans
+    # appel n'y est une fin que s'il porte un vrai bilan (voir `fin_de_projet_prematuree`).
+    mode_projet: bool = False
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
@@ -318,6 +343,12 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         logger.warning("Réponse close sur une annonce sans appel : relance {}/{}.",
                        etat.relances_promesse, RELANCES_PROMESSE_MAX)
         return consigne_promesse(etat.relances_promesse)
+    if fin_de_projet_prematuree(texte, etat) and etat.relances_promesse < RELANCES_PROMESSE_MAX:
+        etat.relances += 1
+        etat.relances_promesse += 1
+        logger.warning("Mode projet : pause sans bilan ({} car.) : relance {}/{}.",
+                       len(texte.strip()), etat.relances_promesse, RELANCES_PROMESSE_MAX)
+        return CONSIGNE_SUITE_PROJET
     return None
 
 

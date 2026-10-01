@@ -512,7 +512,7 @@ class MoteurChat:
         toucher au transport, et de comparer deux conduites à outils et modèle constants.
         """
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
-                          outils_declares=outils or None)
+                          outils_declares=outils or None, mode_projet=contexte.projet is not None)
         while not budget_epuise(etat):
             messages = _avec_avertissement(messages, etat)
             recu: list[str] = []
