@@ -64,3 +64,12 @@ def test_une_iteration_porte_son_rang(conversation: ResumeConversation) -> None:
     retour = service.noter(DemandeRetour(conversation_id=conversation.id, message_id=seconde.id, verdict="negatif",
                                          raisons=["ton"]))
     assert retour.tour == 1 and depot.lister(conversation.id)[0].raisons == ["ton"]
+
+
+def test_les_verdicts_de_claude_ne_remplacent_pas_ceux_de_chris(conversation: ResumeConversation) -> None:
+    _, reponse_id = _tour(conversation)
+    service.noter(DemandeRetour(conversation_id=conversation.id, message_id=reponse_id, verdict="positif"))
+    service.noter(DemandeRetour(conversation_id=conversation.id, message_id=reponse_id, verdict="negatif",
+                                source="claude"))
+    resume = service.resumer(conversation.id)
+    assert resume.par_message == {reponse_id: "positif"} and resume.claude_par_message == {reponse_id: "negatif"}

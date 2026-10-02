@@ -24,6 +24,9 @@ export interface ResumeRetours {
   comparaisons: number;
   par_message: Record<string, Verdict>;
   raisons_par_message: Record<string, Raison[]>;
+  /** Verdicts posés par Claude via le MCP accroche, affichés à part : ils ne remplacent jamais ceux de Chris. */
+  claude_par_message: Record<string, Verdict>;
+  par_source: Record<string, number>;
 }
 
 export interface DemandeRetour {

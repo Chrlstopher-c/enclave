@@ -40,21 +40,25 @@ def noter(demande: DemandeRetour) -> Retour:
         verdict=demande.verdict,
         correction=demande.correction if demande.verdict == "correction" else None,
         raisons=demande.raisons,
+        source=demande.source,
         cree_le="",
     )
     if demande.verdict in VERDICTS_COMPARATIFS:
-        depot.retirer_chez_les_freres(reponse.parent_id, demande.verdict, reponse.id)
+        depot.retirer_chez_les_freres(reponse.parent_id, demande.verdict, reponse.id, demande.source)
     return depot.enregistrer(retour)
 
 
 def resumer(conversation_id: str | None = None) -> ResumeRetours:
     retours = depot.lister(conversation_id)
+    chris = [r for r in retours if r.source == "chris"]
     return ResumeRetours(
         total=len(retours),
         positifs=sum(r.verdict == "positif" for r in retours),
         negatifs=sum(r.verdict == "negatif" for r in retours),
         corrections=sum(r.verdict == "correction" for r in retours),
         comparaisons=sum(r.verdict in VERDICTS_COMPARATIFS for r in retours),
-        par_message={r.message_id: r.verdict for r in retours},
-        raisons_par_message={r.message_id: r.raisons for r in retours if r.raisons},
+        par_source={s: sum(r.source == s for r in retours) for s in ("chris", "claude")},
+        par_message={r.message_id: r.verdict for r in chris},
+        raisons_par_message={r.message_id: r.raisons for r in chris if r.raisons},
+        claude_par_message={r.message_id: r.verdict for r in retours if r.source == "claude"},
     )

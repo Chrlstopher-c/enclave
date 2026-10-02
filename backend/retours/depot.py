@@ -1,4 +1,4 @@
-"""Persistance des retours : une ligne par message noté, le dernier verdict l'emporte.
+"""Persistance des retours : une ligne par message ET par source, le dernier verdict de chacun l'emporte.
 
 Table propre au domaine, créée de façon additive et idempotente. Chaque ligne est autonome
 (prompt système, historique, réponse) : supprimer la conversation ne fait pas perdre l'exemple.
@@ -12,11 +12,11 @@ from loguru import logger
 from pydantic import BaseModel
 
 from backend.core import execute, fetch_all, maintenant
-from backend.retours.modeles import Retour, TourHistorique, Verdict
+from backend.retours.modeles import Retour, Source, TourHistorique, Verdict
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS retours (
-    message_id      TEXT PRIMARY KEY,
+    message_id      TEXT NOT NULL,
     conversation_id TEXT NOT NULL,
     parent_id       TEXT,
     modele_id       TEXT,
@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS retours (
     verdict         TEXT NOT NULL,
     correction      TEXT,
     raisons         TEXT NOT NULL DEFAULT '[]',
-    cree_le         TEXT NOT NULL
+    source          TEXT NOT NULL DEFAULT 'chris',
+    cree_le         TEXT NOT NULL,
+    PRIMARY KEY (message_id, source)
 )
 """
 
@@ -46,6 +48,7 @@ class _Ligne(BaseModel):
     verdict: Verdict
     correction: str | None
     raisons: str
+    source: Source
     cree_le: str
 
 
@@ -59,11 +62,11 @@ def enregistrer(retour: Retour) -> Retour:
     retour = retour.model_copy(update={"cree_le": maintenant()})
     execute(
         "INSERT OR REPLACE INTO retours (message_id, conversation_id, parent_id, modele_id, prompt_systeme, "
-        "temperature, historique, tour, reponse, verdict, correction, raisons, cree_le) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "temperature, historique, tour, reponse, verdict, correction, raisons, source, cree_le) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (retour.message_id, retour.conversation_id, retour.parent_id, retour.modele_id, retour.prompt_systeme,
          retour.temperature, historique, retour.tour, retour.reponse, retour.verdict, retour.correction,
-         json.dumps(retour.raisons), retour.cree_le),
+         json.dumps(retour.raisons), retour.source, retour.cree_le),
     )
     logger.info("Retour {} enregistré sur le message {}", retour.verdict, retour.message_id)
     return retour
@@ -84,13 +87,13 @@ def lister(conversation_id: str | None = None) -> list[Retour]:
     return [_depuis_ligne(ligne) for ligne in lignes]
 
 
-def retirer_chez_les_freres(parent_id: str | None, verdict: Verdict, sauf: str) -> int:
-    """Un seul « meilleure » et un seul « pire » par tour : la nouvelle désignation remplace l'ancienne."""
+def retirer_chez_les_freres(parent_id: str | None, verdict: Verdict, sauf: str, source: Source) -> int:
+    """Un seul « meilleure » et un seul « pire » par tour et par source : la nouvelle désignation remplace l'ancienne."""
     assurer_schema()
-    return execute("DELETE FROM retours WHERE parent_id IS ? AND verdict = ? AND message_id != ?",
-                   (parent_id, verdict, sauf))
+    return execute("DELETE FROM retours WHERE parent_id IS ? AND verdict = ? AND message_id != ? AND source = ?",
+                   (parent_id, verdict, sauf, source))
 
 
-def supprimer(message_id: str) -> bool:
+def supprimer(message_id: str, source: Source = "chris") -> bool:
     assurer_schema()
-    return execute("DELETE FROM retours WHERE message_id = ?", (message_id,)) > 0
+    return execute("DELETE FROM retours WHERE message_id = ? AND source = ?", (message_id, source)) > 0

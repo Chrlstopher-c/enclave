@@ -26,6 +26,7 @@ function retoursDe(conversationId: string): Promise<ResumeRetours | null> {
 
 export interface EtatVerdict {
   verdict: Verdict | null;
+  verdictClaude: Verdict | null;
   raisons: Raison[];
   erreur: string | null;
   noter: (verdict: Verdict, options?: { correction?: string; raisons?: Raison[] }) => Promise<void>;
@@ -34,6 +35,7 @@ export interface EtatVerdict {
 export function useVerdict(conversationId: string, messageId: string): EtatVerdict {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [raisons, setRaisons] = useState<Raison[]>([]);
+  const [verdictClaude, setVerdictClaude] = useState<Verdict | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export function useVerdict(conversationId: string, messageId: string): EtatVerdi
       if (!actif || resume === null) return;
       setVerdict(resume.par_message[messageId] ?? null);
       setRaisons(resume.raisons_par_message[messageId] ?? []);
+      setVerdictClaude(resume.claude_par_message[messageId] ?? null);
     });
     return () => {
       actif = false;
@@ -66,5 +69,5 @@ export function useVerdict(conversationId: string, messageId: string): EtatVerdi
     [conversationId, messageId, verdict],
   );
 
-  return { verdict, raisons, erreur, noter };
+  return { verdict, verdictClaude, raisons, erreur, noter };
 }

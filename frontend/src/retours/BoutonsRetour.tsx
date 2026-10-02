@@ -29,6 +29,14 @@ const CLASSE_PANNEAU =
   'bg-overlay p-1.5 shadow-1';
 const CLASSE_PUCE = 'rounded-xs border border-border px-1.5 py-0.5 text-xs transition-colors duration-fast';
 
+const LIBELLES_CLAUDE: Record<Verdict, string> = {
+  positif: '👍',
+  negatif: '👎',
+  correction: 'corrigé',
+  meilleure: 'meilleure',
+  pire: 'pire',
+};
+
 const RAISONS: ReadonlyArray<readonly [Raison, string]> = [
   ['accroche_faible', 'Accroche faible'],
   ['ton', 'Ton à côté'],
@@ -116,7 +124,7 @@ export interface BoutonsRetourProps {
 }
 
 export function BoutonsRetour({ conversationId, messageId, contenu, comparaison }: BoutonsRetourProps): ReactElement {
-  const { verdict, raisons, erreur, noter } = useVerdict(conversationId, messageId);
+  const { verdict, verdictClaude, raisons, erreur, noter } = useVerdict(conversationId, messageId);
   const [correction, setCorrection] = useState(false);
   const [panneau, setPanneau] = useState(false);
   const [haut, bas]: [Verdict, Verdict] = comparaison ? ['meilleure', 'pire'] : ['positif', 'negatif'];
@@ -141,6 +149,11 @@ export function BoutonsRetour({ conversationId, messageId, contenu, comparaison 
       <BoutonRetour libelle="Corriger cette réponse" actif={verdict === 'correction'} onClic={() => setCorrection(true)}>
         <IconeCorriger />
       </BoutonRetour>
+      {verdictClaude !== null && (
+        <span className="ml-1 rounded-xs border border-border px-1 text-xs text-text-2" title="Note posée par Claude (MCP)">
+          Claude : {LIBELLES_CLAUDE[verdictClaude]}
+        </span>
+      )}
       {panneau && verdict === bas && (
         <PanneauRaisons choisies={raisons} onBasculer={basculer} onFermer={() => setPanneau(false)} />
       )}

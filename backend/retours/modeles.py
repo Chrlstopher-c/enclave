@@ -11,6 +11,9 @@ Verdict = Literal["positif", "negatif", "correction", "meilleure", "pire"]
 VERDICTS_COMPARATIFS = ("meilleure", "pire")
 # Raisons qu'aucun contrôle automatique ne peut établir. CTA absent, longueur, mots interdits et recopie
 # du brief ne figurent PAS ici : ils sont mesurés à l'export, pas étiquetés à la main.
+# Qui a noté : Chris dans l'interface, ou Claude via le MCP accroche. Les deux verdicts coexistent sur un
+# même message, pour mesurer l'accord ou n'entraîner que sur ceux de Chris.
+Source = Literal["chris", "claude"]
 Raison = Literal["accroche_faible", "ton", "fait_invente", "cliche_ia", "francais", "generique", "hors_brief",
                  "structure"]
 
@@ -25,6 +28,7 @@ class DemandeRetour(BaseModel):
     verdict: Verdict
     correction: str | None = Field(default=None, max_length=50_000)
     raisons: list[Raison] = Field(default_factory=list, max_length=8)
+    source: Source = "chris"
 
     @model_validator(mode="after")
     def _correction_coherente(self) -> DemandeRetour:
@@ -55,6 +59,7 @@ class Retour(BaseModel):
     verdict: Verdict
     correction: str | None
     raisons: list[Raison] = Field(default_factory=list)
+    source: Source = "chris"
     cree_le: str
 
 
@@ -64,5 +69,8 @@ class ResumeRetours(BaseModel):
     negatifs: int
     corrections: int
     comparaisons: int
+    par_source: dict[str, int]
+    # Verdicts de Chris (ce que l'interface affiche et modifie) et, à part, ceux de Claude.
     par_message: dict[str, Verdict]
     raisons_par_message: dict[str, list[Raison]]
+    claude_par_message: dict[str, Verdict]

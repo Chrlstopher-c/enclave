@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
 from backend.retours import depot, service
-from backend.retours.modeles import DemandeRetour, ResumeRetours, Retour
+from backend.retours.modeles import DemandeRetour, ResumeRetours, Retour, Source
 
 PREFIXE = "/retours"
 routeur = APIRouter(prefix=PREFIXE, tags=["retours"])
@@ -25,8 +25,8 @@ def resumer(conversation_id: str | None = Query(default=None)) -> ResumeRetours:
 
 
 @routeur.delete("/{message_id}")
-def retirer(message_id: str) -> dict[str, bool]:
-    if not depot.supprimer(message_id):
+def retirer(message_id: str, source: Source = Query(default="chris")) -> dict[str, bool]:
+    if not depot.supprimer(message_id, source):
         raise HTTPException(status_code=404, detail="Aucun retour sur ce message.")
     return {"supprime": True}
 
