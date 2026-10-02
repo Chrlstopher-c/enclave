@@ -5,10 +5,12 @@
 
 - **enclave en Docker** : `./start.sh --docker` → conteneur `echohub-v2` (healthy, GPU RTX 3060),
   interface sur `${ECHOHUB_PORT_WEB:-37920}` (nginx + auth basique). Image `echohub:v2`.
-- **Mobile** : URL stable `https://echohub-mobile.example.com` (vérifiée : 401 = écran
-  de connexion). Tunnel Cloudflare NOMMÉ, connecteur HORS tour (le Pi) : aucune config cloudflared
-  sur la tour. L'ingress existe déjà et pointe sur l'enclave de la tour (port 37920) ; il suffit
-  qu'enclave tourne en Docker pour que l'URL réponde. Ne PAS ouvrir de quick tunnel : inutile.
+- **Mobile** : l'app mobile passe par un RELAIS sur le Pi (`/opt/echohub-relais`, bun), publié par le
+  tunnel Cloudflare nommé du Pi (hostname dans `/etc/cloudflared/config.yml`). Le relais exige
+  `Authorization: Bearer <RELAIS_JETON>` (le « jeton relais » à coller dans l'app), puis transmet
+  `/api/*` à l'enclave de la tour avec `RELAIS_ECHOHUB_UTILISATEUR/MOTDEPASSE`. `/` rend 404 (normal),
+  `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
+  (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
 ## Session du 2026-10-02 — Autonomie de l'agent en mode projet (branche `agent-autonomie`)
 
