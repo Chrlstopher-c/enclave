@@ -275,3 +275,17 @@ la même demande : 4 appels d'outils contre 2, un fichier de 12,4 Ko contre 7,6 
 contre 28, les i-quants étant plus coûteux à déquantifier que les k-quants. Un échantillon chacun,
 sur un modèle dont la variance est forte : l'écart de comportement n'est pas une preuve, l'écart de
 vitesse l'est.
+
+**SC117 Qwen3.8-Flash-Next IQ2_XS (68 Go, 2026-10-02) : rejeté pour EchoHub.** llama.cpp récent hors
+Docker (`~/build/llama.cpp-recent`, archi qwen4exp), `-lm mmap --lazy-mode on --n-cpu-moe 42` →
+10,8 Go VRAM, sans mmproj. Le modèle dépasse la RAM (46 Go) : le SSD SATA relit des experts à chaque
+token. Mesuré sur la même tâche de rétro-ingénierie (FNV-1a + clé XOR `0x5A+7i` + `rol 5` + `>>16`) :
+
+| | Prompt | Génération | Résultat |
+|---|---|---|---|
+| SC117, réflexion | 5 tok/s | 6,6 tok/s | analyse juste, boucle sur `imul`, aucune réponse en 8 000 tokens |
+| SC117, sans réflexion | 5,6 tok/s | 4,6 tok/s | clé et rotation justes, mélange faux (`c ^= h`) |
+| huihui Q5_K, réflexion | 227 tok/s | 28,4 tok/s | 47 s, oublie la clé, prend `rol` pour du padding |
+| huihui Q5_K, sans réflexion | 26 tok/s | 28,1 tok/s | rotation juste, clé fausse |
+
+À 5 tok/s de prompt, un contexte d'agent de 16 k tokens coûte ~50 min avant le premier mot.
