@@ -163,6 +163,20 @@ Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation
 | Fichier | Rôle |
 |---|---|
 | `backend/conftest.py` | Isole les tests du `.env` du poste (les chemins réels fuyaient dans les tests) |
+| `backend/core/politique_compaction.py` | Règle de compaction de Quart (seuils étape / dur), partagée chat + inference |
+| `backend/inference/compaction_boucle.py` | Compaction PENDANT une tâche d'agent, entre deux tours d'outils |
+| `backend/agent/__init__.py` | Interface du domaine agent (maison partagée) |
+| `backend/agent/maison.py` | Dossier de l'agent, amorçage, droits d'écriture, rétrocession au propriétaire |
+| `backend/agent/catalogue.py` | Index de la mémoire et liste des skills (en-têtes) |
+| `backend/agent/frontmatter.py` | Lecture de l'en-tête `---` des fichiers de mémoire et de skills |
+| `backend/agent/socle_agent.py` | Bloc ajouté au socle : mode d'emploi, skills, index mémoire, SYSTEM.md |
+| `backend/agent/tests/test_maison.py` | ~agent/, écriture limitée, index, bloc, plan, awareness |
+| `backend/outils/awareness.py` | Génère AWARENESS.md depuis ce qui existe |
+| `backend/outils/plan_fichier.py` | Outil `plan_fichier` : structure d'un fichier et lignes de chaque section |
+| `backend/outils/mcp_client.py` | Client MCP minimal (HTTP streamable, stdio) |
+| `backend/outils/mcp_registre.py` | Serveurs de ~agent/mcp.json, outils `mcp_outils` / `mcp_appeler` |
+| `backend/outils/tests/test_mcp.py` | Serveur MCP stdio réel, erreurs, réponses SSE |
+| `backend/inference/tests/test_compaction_boucle.py` | Compaction de boucle, réflexion passée retirée |
 | `backend/projets/__init__.py` | Interface publique du domaine `projets` |
 | `backend/projets/modeles.py` | Projet, catalogue, instantané, liaison |
 | `backend/projets/racine.py` | Racine des projets : lister, créer, résoudre sans jamais en sortir |

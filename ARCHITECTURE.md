@@ -60,6 +60,9 @@ backend/
   chat/        conversations et persistance
   outils/      outils du modèle (exécution, fichiers, recherche) + pont vers l'atelier + garde-fous
   projets/     mode projet : dossiers de l'hôte confiés à une conversation, instantanés git
+  agent/       maison de l'agent PARTAGÉE entre ses conversations : SYSTEM.md, mémoire, skills,
+               AWARENESS.md, mcp.json — stockage et index seulement ; les OUTILS qui s'en servent
+               vivent dans outils/ (agent/ n'importe jamais outils/)
   core/        config, logging, erreurs, base de données
 atelier/       conteneur d'exécution root persistant (Dockerfile, serveur HTTP, README)
 frontend/src/
@@ -161,11 +164,16 @@ Prérequis d'un futur mode agent longue durée : sans elle, une session longue t
 contexte et perd sa tâche. La discipline est celle du harnais d'outils — **ce que l'utilisateur voit
 et ce qui est enregistré en base ne sont JAMAIS touchés** ; seul le flux envoyé au moteur est réduit.
 
-**Déclenchement.** Avant chaque génération (`backend/chat/generation.py::_compacter_si_besoin`), on
-mesure l'occupation de la fenêtre pour ce qui partirait au moteur (socle d'outils + définitions
-d'outils + historique). Si `tokens_mesures >= SEUIL_COMPACTION × contexte_total` — **une seule
-constante nommée, `SEUIL_COMPACTION = 0.90`** dans `backend/chat/compaction.py` — une compaction se
-déclenche. Une occupation non mesurable (pas de tokenizer, moteur occupé) ne déclenche rien.
+**Déclenchement (règle de Quart, 2026-10-02, `backend/core/politique_compaction.py`, source unique).**
+Seuil d'ÉTAPE min(120 k, 40 % de la fenêtre), seuil DUR min(350 k, 70 %). Deux points d'application :
+- au départ d'un message (`chat/generation.py::_compacter_si_besoin`) — un nouveau message suit un tour
+  terminé, donc le seuil d'étape s'applique ;
+- PENDANT une tâche d'agent (`inference/compaction_boucle.py`), après chaque tour d'outil : seuil
+  d'étape quand une tâche `suivre_taches` vient de se fermer, seuil dur sinon. Socle, demande (repérée
+  par identité, jamais une relance) et queue récente (coupée sur un tour d'assistant) restent intacts ;
+  la liste de tâches est réinjectée dans le résumé.
+Une occupation non mesurable ne déclenche rien. L'ancien seuil (90 %) ne se déclenchait jamais avant
+« fenêtre pleine » sur une fenêtre de 262 k.
 
 **Mesure.** Passe par le port d'inférence (`mesurer_occupation`), qui délègue à
 `superviseur.compter_contexte` : le tokenizer du modèle réellement chargé, jamais un ratio
@@ -210,6 +218,24 @@ messages récents gardés. Les messages compactés **restent en base** et dans c
 Le front pose la balise **juste avant** le message assistant `message_id`. La balise n'est PAS un
 message assistant : c'est un événement de système, rendu distinct et sobre
 (`frontend/src/chat/conversation/BaliseCompaction.tsx`).
+
+## L'agent maison — ce qui l'encadre comme Claude Code (2026-10-02)
+
+- **Maison** (`backend/agent/`, `ECHOHUB_AGENT_DIR`, Docker : `/data/agent` monté depuis l'hôte) :
+  `SYSTEM.md` (ses instructions permanentes, éditées par Chris, injectées bornées), `memoire/` (un fait
+  par fichier, en-tête `name`/`description`, index injecté), `skills/<nom>/SKILL.md` (liste injectée,
+  corps lu à la demande), `AWARENESS.md` (régénéré depuis ce qui existe : outils, MCP, skills,
+  projets, environnement ; JAMAIS injecté, lu par section), `mcp.json` (format Claude Code).
+- **Accès** : préfixe `~agent/` dans `resoudre_dans_bac` (même confinement) ; écriture limitée à
+  `memoire/`, `skills/`, `notes/` ; fichiers rendus à `ECHOHUB_AGENT_PROPRIETAIRE` (backend root).
+- **Lecture structurée** : `plan_fichier` (sections + lignes), puis `lire_fichier` par plage.
+- **MCP** (`outils/mcp_client.py`, `mcp_registre.py`) : client HTTP/stdio maison ; deux outils fixes
+  `mcp_outils` / `mcp_appeler` (outils « différés » : coût de prompt constant). Service
+  `echohub-navigateur` (Playwright MCP officiel) pour les tests e2e, snapshots texte.
+- **Socle** : bloc `HOW YOU WORK` (penser bref puis agir, contexte d'abord, preuves, finir) commun à
+  tous les modes outillés ; bloc maison ; bloc projet.
+- **Modèle** : défauts Qwen3.6 (top_k 20, min_p 0, rep 1.0, temp 0.6, presence 0.5) ; dans la
+  boucle, seule la réflexion du dernier tour est gardée (le gabarit purgeait tout à chaque relance).
 
 ## Stack
 

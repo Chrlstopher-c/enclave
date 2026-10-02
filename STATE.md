@@ -17,6 +17,16 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
+## Session du 2026-10-02 (suite) — Agent maison, branche `agent-maison` (NON appliquée)
+
+Demande de Chris : encadrer l'agent comme Claude Code sans exploser le contexte. Livré, testé (605
+verts), PAS activé (son agent travaillait) — voir TODO « APPLIQUER ». Détails : ARCHITECTURE § agent.
+- Autocompact règle de Quart, y compris pendant une tâche (compaction_boucle).
+- Maison partagée `~agent/` : SYSTEM.md, mémoire, skills, AWARENESS.md lu par section, mcp.json.
+- `plan_fichier` ; client MCP maison + outils différés ; service Playwright MCP vérifié en réel.
+- Méthode HOW YOU WORK ; réglages Qwen3.6 (recherche web sourcée) ; réflexion passée retirée en boucle.
+- Écarté : la consigne « ne jamais refuser une demande » dans le prompt.
+
 ## Session du 2026-10-02 — Autonomie de l'agent en mode projet (branche `agent-autonomie`)
 
 Né de captures de Chris (projet `spoofer`) : boucle « I keep announcing… let me batch », lecture de
@@ -109,49 +119,6 @@ le modèle pas encore mesuré.
 **Tests.** 568 verts (`backend/.venv/bin/python -m pytest -q backend`), build frontend OK, CI verte.
 
 *Dernière mise à jour : 2026-10-01*
-
-## Session du 2026-08-28 — Atelier d'exécution persistant (branche `atelier`)
-
-Remplacement du bac confiné (`setuid` + `rlimits` + PATH minimal) par un **conteneur atelier** de dev,
-persistant et unique, où l'agent est root avec réseau, PATH complet et `apt`/`pip`. Motivation : le
-confinement rendait l'outil inerte (mesuré le 2026-08-26 : `nasm: command not found`, pip sans droit
-d'écriture). Le confinement vis-à-vis de l'hôte n'a pas disparu, il s'est déplacé vers la **frontière
-du conteneur** (aucun chemin hôte monté, aucun `docker.sock`, ressources bornées par Compose).
-
-**Ce qui a été construit :**
-- `atelier/` : service HTTP FastAPI (`serveur.py`) + `Dockerfile` (Ubuntu 24.04, toolchain, sans
-  `nasm` — c'est le cas de preuve) + `README.md`. Service non publié, gardé par jeton `ATELIER_JETON`
-  (repli fermé : sans jeton, exécution refusée).
-- `docker-compose.yml` : service `echohub-atelier` (`restart: unless-stopped`, `mem_limit 4g`,
-  `cpus 4`, `pids_limit 512`), volume partagé `echohub_ateliers` monté dans le backend
-  (`/data/ateliers`) et l'atelier (`/workspace`).
-- Backend : `outils/atelier.py` (client HTTP), `bac_a_sable.py` réduit à un pont (traduit
-  `racine_bac`→`sous_dossier`, délègue, repli propre), `config.py` (réglages `atelier_*`),
-  `_contexte_execution` pointe `racine_bac` sur le workspace partagé. Descriptions d'outils + socle +
-  `LIMITES_REELLES_TEXTE` disent la vérité (root, persistance, install).
-
-**Choix du mécanisme :** HTTP interne + jeton plutôt que `docker.sock` — le socket Docker = root sur
-l'hôte, surface d'attaque inacceptable pour un backend qui exécute du texte de modèle.
-
-**Persistance :** le volume couvre `/workspace` (fichiers + venv). Les paquets `apt` (dans `/usr`)
-survivent aux `restart`/`stop`/`start`, sont perdus à un `build`/`down` (refaire un `apt install`
-alors est acceptable).
-
-**Preuve de bout en bout (chemin de chat réel) :** génération sur la conversation
-`4ec18f4d-…` avec le modèle `Qwen3.6-35B-A3B-…APEX-I-Nano.gguf`. Le modèle a émis
-`ecrire_fichier hello.asm` → `executer_commande: apt-get update && apt-get install -y nasm`
-(`Code de retour : 0`) → `nasm -f elf64 … && ld …` → `./hello` affichant `Hello, world!`. Le binaire
-`hello` (ELF 8872 o) atterrit dans `/data/ateliers/<conv>/` (vu du backend via le volume partagé).
-Balayage : `hello.asm` et un `.txt` de commande (`echo > rapport_commande.txt`) rattachés à la
-conversation (`origine=modele`). Le binaire ELF est filtré par la liste blanche MIME du magasin
-(politique préexistante, inchangée). Repli vérifié : atelier arrêté → message actionnable, pas de
-crash. nasm persiste après stop/start.
-
-**Tests :** 12 tests de contrat neufs verts (`test_bac_a_sable.py` réécrit, `test_atelier.py` neuf,
-mock à la frontière `atelier`). `test_contexte_execution_outil` adapté au nouveau `racine_bac`.
-Aucune régression (suite : 369 passés vs 360 sur `main`). *Réserve* : ~95 erreurs de suite
-préexistantes et identiques sur `main` — bug d'ordre dans `core/db.py` (`init_db` ALTER
-`chat_reglages` avant que la table chat existe) ; hors scope atelier, non corrigé.
 
 ## Résumé de l'état antérieur (2026-08-17)
 

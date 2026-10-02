@@ -7,19 +7,29 @@
 ### Chantier « agent maison » (branche `agent-maison`, demandé par Chris le 2026-10-02)
 Ne PAS appliquer pendant que l'agent de Chris travaille : coder et tester sur la branche, activer au
 redémarrage qu'il choisira. Ordre :
-- [ ] A. Autocompact à la Quart : DANS la boucle d'outils (fin d'étape = tâche `fait`, ou fin de tour
+- [x] A. Autocompact à la Quart : DANS la boucle d'outils (fin d'étape = tâche `fait`, ou fin de tour
       d'outil), seuils min(120k, 40 %) en fin d'étape / min(350k, 70 %) dur ; consigne alignée (commandes,
       git, pièges ; jeter sorties d'outils et code sur disque) ; liste de tâches réinjectée.
-- [ ] B. Maison de l'agent (dossier partagé entre sessions, `ECHOHUB_AGENT_DIR`) : SYSTEM.md (son
+- [x] B. Maison de l'agent (dossier partagé entre sessions, `ECHOHUB_AGENT_DIR`) : SYSTEM.md (son
       CLAUDE.md) chargé dans le socle ; mémoire (un fait par fichier + index) avec outils ; skills
       (liste dans le socle, corps chargé à la demande) ; AWARENESS.md (capacités, MCP, skills, API, projets),
       JAMAIS lu en entier : plan des sections + lecture par section + recherche.
-- [ ] C. Doctrine du socle : méthode Claude Code (chercher puis lire par plage, jamais un fichier entier
+- [x] C. Doctrine du socle (sans la consigne « ne jamais refuser », écartée) : méthode Claude Code (chercher puis lire par plage, jamais un fichier entier
       sans raison), aller au bout, ne pas refuser, tests unitaires + build + e2e (sans capture d'écran).
-- [ ] D. Client MCP (HTTP + stdio, `mcp.json`) exposant les outils des serveurs ; Playwright MCP
+- [x] D. Client MCP (HTTP + stdio, `mcp.json`) exposant les outils des serveurs ; Playwright MCP
       (snapshots d'accessibilité, texte) dans l'atelier pour les tests e2e des apps qu'il y lance.
-- [ ] E. Hygiène de contexte : outils de lecture structurée (`plan_fichier`, `lire_section`).
+- [x] E. Hygiène de contexte : outils de lecture structurée (`plan_fichier`, `lire_section`).
 
+- [x] F. Réglages Qwen3.6 officiels (min_p, presence_penalty ajoutés), réflexion passée retirée en boucle.
+- [ ] APPLIQUER (redémarrage choisi par Chris) : fusionner `agent-maison` ; `.env` : ECHOHUB_AGENT_HOTE
+      (même dossier que le natif), ECHOHUB_AGENT_PROPRIETAIRE=1000:1000 ; créer ~agent/mcp.json avec
+      playwright → http://echohub-navigateur:8931/mcp ; `./start.sh --docker` (démarre le navigateur).
+- [ ] MTP : llama-server récent compilé POUR l'image (22.04/CUDA 12) avec `--spec-type draft-mtp`
+      (~1,5× annoncé) — le binaire Docker actuel (26/08) ignore les couches nextn.
+- [ ] Conversations existantes : elles gardent leurs anciens réglages enregistrés (temp 0.8, top_k 40,
+      rep 1.1) ; seules les nouvelles prennent les défauts Qwen3.6. Ajuster dans Réglages.
+- [ ] UI : écran pour la mémoire / les skills / SYSTEM.md (aujourd'hui : fichiers du dossier hôte).
+- [ ] Mesurer sur un vrai projet : boucles de pensée, taux d'appels par tour, compactions déclenchées.
 Rien. Arbre git propre, application en ligne, accès distant opérationnel, 413 tests verts.
 
 **Services vivants à connaître en reprenant** : conteneurs `echohub-v2` et `echohub-searxng`, plus un
