@@ -7,11 +7,16 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # 3.10 = celui de l'image Docker (Ubuntu 22.04) : `StrEnum` (3.11+) y cassait l'import des outils
+    # alors que la CI, en 3.12 seulement, était verte (2026-10-02).
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       # llama-cpp-python est exclu : sa compilation prend de longues minutes et aucun test ne charge
       # de modèle réel (le moteur est remplacé à sa frontière).
       - name: Dépendances

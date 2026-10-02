@@ -13,7 +13,7 @@ Gardée en mémoire par conversation : elle sert pendant la génération, un red
 from __future__ import annotations
 
 import json
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 from loguru import logger
@@ -24,7 +24,8 @@ from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOut
 TACHES_MAX = 30
 
 
-class EtatTache(StrEnum):
+# `str, Enum` plutôt que `StrEnum` (3.11+) : l'image Docker tourne en Python 3.10.
+class EtatTache(str, Enum):
     A_FAIRE = "a_faire"
     EN_COURS = "en_cours"
     FAIT = "fait"
