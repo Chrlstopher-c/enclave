@@ -56,11 +56,12 @@ services:
     volumes:
       # Volumes nommés : MODELS_DIR et XDG_DATA_HOME pointent DEDANS (cf. Dockerfile). Tout ce
       # que le backend écrit ailleurs est perdu à la reconstruction de l'image.
-      - echohub_models:/data/models              # modèles téléchargés (des dizaines de Go)
-      # Lot L7 (MESURES-MOE.md) montait ici /mnt/models/echohub en lecture seule : c'est un chemin
-      # de la machine Arch Linux, inexistant sous Windows — Docker Desktop créerait un dossier vide
-      # et le registre de modèles se retrouverait sans rien. Le volume nommé reste la forme locale.
-      # - /mnt/models/echohub:/data/models:ro
+      # Modèles (des dizaines de Go). Défaut : volume nommé, la forme qui marche partout (sous
+      # Windows, un chemin Linux deviendrait un dossier vide). Sur une machine Linux qui a déjà ses
+      # modèles — ceux du mode natif —, ECHOHUB_MODELES_HOTE pointe sur ce dossier : sans lui, le
+      # conteneur démarrait avec un registre vide (2026-10-02). Le conteneur est root : un fichier
+      # existant garde son propriétaire, un modèle téléchargé depuis Docker appartiendra à root.
+      - ${ECHOHUB_MODELES_HOTE:-echohub_models}:/data/models
       - echohub_userdata:/data/user              # base SQLite, configuration, journaux
       # Espaces de travail des conversations, PARTAGÉS avec le conteneur atelier (même volume monté
       # sur /workspace là-bas). C'est ce partage qui fait qu'un fichier écrit par `ecrire_fichier`
@@ -104,6 +105,9 @@ services:
       # (mesuré : « GLIBC_2.38 not found »), il faut donc le compiler ici — 10 min de CUDA qu'on ne
       # veut pas payer à chaque reconstruction d'image pendant la mise au point.
       # Absent : le superviseur retombe seul sur les bindings Python, sans rien casser.
+      # Ce binaire doit être compilé POUR l'image (Ubuntu 22.04, glibc 2.35, CUDA 12) : celui du mode
+      # natif d'un hôte Arch exige glibc 2.43 et CUDA 13, et meurt au chargement (« libllama-server-
+      # impl.so: cannot open shared object file », 2026-10-02). Variable distincte d'ECHOHUB_LLAMA_SERVER.
       - "${ECHOHUB_LLAMA_SERVER_HOTE:-/mnt/models/echohub-bin/llama-server}:/opt/llama-server/llama-server:ro"
 
     environment:

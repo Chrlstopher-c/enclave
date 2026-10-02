@@ -167,7 +167,7 @@ demarrer_docker() {
     fi
     journal "construction et démarrage du conteneur (première fois : compilation CUDA, longue)"
     (cd "$RACINE" && docker compose up -d --build $recreer) || echec "docker compose up a échoué"
-    journal "interface : http://127.0.0.1:${ECHOHUB_PORT_WEB:-37820}"
+    journal "interface : http://127.0.0.1:${ECHOHUB_PORT_WEB:-37920}"
     journal "journaux : docker compose logs -f echohub"
 }
 
@@ -178,10 +178,12 @@ case "${1:-}" in
     *) echec "option inconnue : $1" ;;
 esac
 
-charger_env
+# En Docker, compose lit le `.env` lui-même : le sourcer ici transformait `$$` en PID dans
+# ECHOHUB_AUTH_HASH, et la variable exportée primait sur le fichier — auth et relais mobile cassés.
 if [ "$MODE" = "docker" ]; then
     demarrer_docker
 else
+    charger_env
     reinitialiser_logs
     demarrer_natif
 fi
