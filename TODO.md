@@ -21,7 +21,7 @@ redémarrage qu'il choisira. Ordre :
 - [x] E. Hygiène de contexte : outils de lecture structurée (`plan_fichier`, `lire_section`).
 
 - [x] F. Réglages Qwen3.6 officiels (min_p, presence_penalty ajoutés), réflexion passée retirée en boucle.
-- [ ] APPLIQUER (redémarrage choisi par Chris) : fusionner `agent-maison` ; `.env` : ECHOHUB_AGENT_HOTE
+- [x] APPLIQUER (fait le 2026-10-02) : fusionner `agent-maison` ; `.env` : ECHOHUB_AGENT_HOTE
       (même dossier que le natif), ECHOHUB_AGENT_PROPRIETAIRE=1000:1000, ECHOHUB_MCP_PTY_HOTE et
       ECHOHUB_MCP_LOGWATCHER_HOTE (dossiers echo-os/mcp/pty-mcp et log-watcher-mcp) ; ~agent/mcp.json :
       playwright → http://echohub-navigateur:8931/mcp ; pty → http://echohub-atelier:8932/mcp et

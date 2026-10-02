@@ -17,10 +17,13 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
-## Session du 2026-10-02 (suite) — Agent maison, branche `agent-maison` (NON appliquée)
+## Session du 2026-10-02 (suite) — Agent maison (appliqué le 2026-10-02 à 16 h 40)
 
-Demande de Chris : encadrer l'agent comme Claude Code sans exploser le contexte. Livré, testé (605
-verts), PAS activé (son agent travaillait) — voir TODO « APPLIQUER ». Détails : ARCHITECTURE § agent.
+Demande de Chris : encadrer l'agent comme Claude Code sans exploser le contexte. Fusionné dans
+mode-projet et actif en Docker. Maison : `~/.local/share/echohub-v2/agent` (hôte, natif = Docker).
+Vérifié après relance : 3 serveurs MCP joignables depuis le backend (playwright 25 outils, pty 8,
+log-watcher 8), chaîne e2e serveur de fond → navigateur → terminal dans l'atelier, AWARENESS/SYSTEM
+générés et rendus à trinity, relais mobile OK, huihui 19,6 tok/s. Détails : ARCHITECTURE § agent.
 - Autocompact règle de Quart, y compris pendant une tâche (compaction_boucle).
 - Maison partagée `~agent/` : SYSTEM.md, mémoire, skills, AWARENESS.md lu par section, mcp.json.
 - `plan_fichier` ; client MCP maison + outils différés ; service Playwright MCP vérifié en réel.
