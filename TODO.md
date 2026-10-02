@@ -29,6 +29,9 @@ redémarrage qu'il choisira. Ordre :
 - [ ] Conversations existantes : elles gardent leurs anciens réglages enregistrés (temp 0.8, top_k 40,
       rep 1.1) ; seules les nouvelles prennent les défauts Qwen3.6. Ajuster dans Réglages.
 - [ ] UI : écran pour la mémoire / les skills / SYSTEM.md (aujourd'hui : fichiers du dossier hôte).
+- [ ] Doublon de prompt : le socle liste chaque outil avec sa description (`- nom: description`) ET le
+      gabarit rend les mêmes descriptions avec les schémas (`tools`) — ~4,5 k caractères payés deux fois.
+      Mesurer l'effet sur les appels avant de retirer la liste du socle.
 - [ ] Mesurer sur un vrai projet : boucles de pensée, taux d'appels par tour, compactions déclenchées.
 Rien. Arbre git propre, application en ligne, accès distant opérationnel, 413 tests verts.
 
