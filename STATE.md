@@ -5,6 +5,11 @@
 
 - **enclave en Docker** : `./start.sh --docker` → conteneur `echohub-v2` (healthy, GPU RTX 3060),
   interface sur `${ECHOHUB_PORT_WEB:-37920}` (nginx + auth basique). Image `echohub:v2`.
+  Trois pièges corrigés le 2026-10-02 : `start.sh --docker` ne source plus le `.env` (`$$` → PID dans
+  le hash, auth et relais cassés) ; `ECHOHUB_MODELES_HOTE` monte les modèles de l'hôte (registre vide
+  sinon) ; `ECHOHUB_LLAMA_SERVER_HOTE` doit viser un llama-server compilé pour l'image (22.04/CUDA 12)
+  — celui du mode natif (Arch, glibc 2.43, CUDA 13) ne démarre pas dans le conteneur. huihui y tourne
+  à ~19,6 tok/s (binaire du 26/08, couche MTP ignorée).
 - **Mobile** : l'app mobile passe par un RELAIS sur le Pi (`/opt/echohub-relais`, bun), publié par le
   tunnel Cloudflare nommé du Pi (hostname dans `/etc/cloudflared/config.yml`). Le relais exige
   `Authorization: Bearer <RELAIS_JETON>` (le « jeton relais » à coller dans l'app), puis transmet
