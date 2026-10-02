@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
-from backend.chat import annulation, compaction, depot, port_inference
+from backend.chat import annulation, compaction, depot, diffusion, port_inference
 from backend.chat.annulation import GenerationActive
 from backend.chat.compaction import MessageAncre
 from backend.chat.erreurs import BrancheInvalide
@@ -417,7 +417,7 @@ _taches_en_cours: set[asyncio.Task[None]] = set()
 
 
 async def _produire(
-    preparation: PreparationGeneration, etat: _EtatFlux, file: asyncio.Queue[EvenementFlux | None]
+    preparation: PreparationGeneration, etat: _EtatFlux, file: diffusion.Diffusion
 ) -> None:
     """Mène la génération jusqu'à son terme et la persiste, que quelqu'un l'écoute ou non.
 
@@ -468,7 +468,7 @@ async def _instantane_projet(preparation: PreparationGeneration) -> None:
 
 
 async def _compacter_si_besoin(
-    preparation: PreparationGeneration, file: asyncio.Queue[EvenementFlux | None]
+    preparation: PreparationGeneration, file: diffusion.Diffusion
 ) -> None:
     """Compacte le contexte AVANT la génération si la fenêtre approche de la saturation.
 
@@ -523,24 +523,20 @@ async def diffuser(preparation: PreparationGeneration) -> AsyncIterator[Evenemen
     """
     annulation.marquer_demarree(preparation.generation)
     etat = _EtatFlux()
-    file: asyncio.Queue[EvenementFlux | None] = asyncio.Queue()
-
-    tache = asyncio.create_task(_produire(preparation, etat, file))
-    _taches_en_cours.add(tache)
-    tache.add_done_callback(_taches_en_cours.discard)
-
-    yield EvenementDebut(
+    # Diffusion et non file : un client qui revient sur la conversation s'y raccroche (`rejoindre`).
+    publication = diffusion.ouvrir(preparation.conversation_id)
+    await publication.put(EvenementDebut(
         conversation_id=preparation.conversation_id,
         message_id=preparation.message_id,
         modele_id=preparation.modele_id,
         parent_id=preparation.parent_id,
         message_utilisateur_id=preparation.message_utilisateur_id,
-    )
+    ))
+    tache = asyncio.create_task(_produire(preparation, etat, publication))
+    _taches_en_cours.add(tache)
+    tache.add_done_callback(_taches_en_cours.discard)
     try:
-        while True:
-            evenement = await file.get()
-            if evenement is None:
-                return
+        async for evenement in publication.abonner():
             yield evenement
     except GeneratorExit:
         # Le client est parti. On le NOTE et on ne fait rien d'autre : annuler la tâche ici

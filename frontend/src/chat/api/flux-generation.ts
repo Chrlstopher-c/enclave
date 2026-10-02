@@ -117,6 +117,32 @@ async function ouvrirFlux(
   await drainer(reponse.body, rappels);
 }
 
+/**
+ * Se raccroche à la génération EN COURS d'une conversation (retour d'une autre conversation ou d'un
+ * autre écran) : le serveur rejoue le déjà-produit puis diffuse la suite. Rend `false` s'il n'y a
+ * aucune génération en cours (204), `true` une fois le flux rejoint et terminé.
+ */
+export async function rejoindreFluxGeneration(
+  conversationId: string,
+  rappels: RappelsFlux,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const reponse = await fetch(`/api/chat/conversations/${conversationId}/flux`, {
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (reponse.status === 204) {
+    return false;
+  }
+  if (!reponse.ok || reponse.body === null) {
+    const erreur = await lireErreur(reponse);
+    journal.erreur(`raccrochage au flux refusé (${reponse.status} ${erreur.code})`, erreur.message);
+    throw erreur;
+  }
+  await drainer(reponse.body, rappels);
+  return true;
+}
+
 /** Tour normal : le message part au bout du chemin actif. */
 export function ouvrirFluxGeneration(
   conversationId: string,

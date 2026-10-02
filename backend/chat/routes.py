@@ -20,12 +20,12 @@ from functools import wraps
 from typing import ParamSpec, TypeVar
 
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 import json
 
 from loguru import logger
 
-from backend.chat import annulation, depot, flux_sse, generation
+from backend.chat import annulation, depot, diffusion, flux_sse, generation
 from backend.chat.compaction_manuelle import compacter_maintenant
 from backend.chat.modeles import (
     ActivationBranche,
@@ -198,6 +198,18 @@ async def modifier_outils(conversation_id: str, corps: SelectionOutils) -> Selec
     return SelectionOutils(outils_actifs=ecrits.outils_actifs)
 
 
+@routeur.get("/conversations/{conversation_id}/flux")
+@_traduire_erreurs
+async def rejoindre_flux(conversation_id: str) -> Response:
+    """Se raccroche à la génération EN COURS (déjà-produit puis direct) ; 204 s'il n'y en a pas."""
+    depot.exiger_conversation(conversation_id)
+    publication = diffusion.en_cours(conversation_id)
+    if publication is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return StreamingResponse(_encoder_rejointe(publication), media_type=flux_sse.TYPE_MEDIA_SSE,
+                             headers=flux_sse.ENTETES_SSE)
+
+
 @routeur.post("/conversations/{conversation_id}/compacter", response_model=InfoCompaction)
 @_traduire_erreurs
 async def compacter(conversation_id: str, corps: DemandeCompaction) -> InfoCompaction:
@@ -315,6 +327,11 @@ def _flux(preparation: generation.PreparationGeneration) -> StreamingResponse:
 
 async def _encoder_flux(preparation: generation.PreparationGeneration) -> AsyncIterator[str]:
     async for evenement in generation.diffuser(preparation):
+        yield flux_sse.encoder(evenement)
+
+
+async def _encoder_rejointe(publication: diffusion.Diffusion) -> AsyncIterator[str]:
+    async for evenement in publication.abonner():
         yield flux_sse.encoder(evenement)
 
 

@@ -25,7 +25,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { messageErreur } from '../api/client';
 import type { EvenementFlux, InfoCompaction } from '../api/contrats';
 import { annulerGeneration } from '../api/conversations-api';
-import { ouvrirFluxGeneration, type RappelsFlux } from '../api/flux-generation';
+import { ouvrirFluxGeneration, rejoindreFluxGeneration, type RappelsFlux } from '../api/flux-generation';
 import { journal } from '../api/journal';
 
 /*
@@ -213,11 +213,65 @@ function useCoupure(
     if (courant === null) {
       return;
     }
-    // Un nettoyage React est synchrone : impossible d'attendre le serveur ici. `couperFlux`
-    // journalise ses propres échecs et ne rejette pas — la promesse est abandonnée en connaissance
-    // de cause, et sa borne de délai garantit que la connexion finit coupée.
-    void couperFlux(courant.proprietaire, courant.controle);
+    // Quitter la conversation ou l'écran ne doit PAS arrêter la génération (2026-10-02 : changer
+    // de conversation l'annulait côté serveur). On ferme seulement la connexion locale ; le serveur
+    // poursuit et persiste, et le retour sur la conversation s'y raccroche (`useRaccrochage`).
+    courant.controle.abort();
   }, [enVol, setFlux]);
+}
+
+/**
+ * À l'arrivée sur une conversation (ou au retour sur l'écran du chat), se raccroche à sa génération
+ * en cours s'il y en a une : le brouillon réapparaît avec le déjà-produit, puis continue en direct.
+ */
+function useRaccrochage(
+  conversationId: string | null,
+  enVol: MutableRefObject<FluxEnVol | null>,
+  setFlux: Dispatch<SetStateAction<FluxCourant | null>>,
+  majFlux: MajFlux,
+  terminer: Fin,
+): void {
+  useEffect((): (() => void) | undefined => {
+    if (conversationId === null || enVol.current !== null) {
+      return undefined;
+    }
+    const id = conversationId;
+    const controle = new AbortController();
+    enVol.current = { proprietaire: id, controle };
+    const rappels: RappelsFlux = {
+      onEvenement: (evenement): void => {
+        if (evenement.type === 'debut') {
+          setFlux({ proprietaire: id, brouillon: '', actif: true, erreur: null, compaction: null });
+          return;
+        }
+        appliquer(majFlux, id, evenement);
+      },
+    };
+    void suivreRaccrochage(id, controle, rappels, enVol, terminer);
+    return (): void => controle.abort();
+  }, [conversationId, enVol, setFlux, majFlux, terminer]);
+}
+
+async function suivreRaccrochage(
+  id: string,
+  controle: AbortController,
+  rappels: RappelsFlux,
+  enVol: MutableRefObject<FluxEnVol | null>,
+  terminer: Fin,
+): Promise<void> {
+  let rejoint = false;
+  try {
+    rejoint = await rejoindreFluxGeneration(id, rappels, controle.signal);
+  } catch (cause) {
+    if (!controle.signal.aborted) {
+      journal.erreur('raccrochage au flux impossible', cause);
+    }
+  }
+  if (rejoint) {
+    await terminer(id, controle);
+  } else if (enVol.current?.controle === controle) {
+    enVol.current = null;
+  }
 }
 
 export function useGeneration(
@@ -235,6 +289,7 @@ export function useGeneration(
   // `conversationId` n'est pas lu dans l'effet : il en est le déclencheur. Son changement — comme
   // le démontage de l'écran — exécute le nettoyage, qui annule le flux et remet l'état à zéro.
   useEffect((): (() => void) => couper, [conversationId, couper]);
+  useRaccrochage(conversationId, enVol, setFlux, majFlux, terminer);
 
   // Le rattachement est refait au rendu, et pas seulement au nettoyage : un nettoyage d'effet
   // s'exécute APRÈS la peinture, la conversation entrante aurait donc affiché le brouillon de la
