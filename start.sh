@@ -165,6 +165,10 @@ demarrer_docker() {
     else
         journal "AVERTISSEMENT : echohub-cdi-regenerer absent — voir docker/cdi/README.md"
     fi
+    # Le conteneur sert `frontend/dist` de l'hôte (monté) : sans ce build, il servait un dist figé
+    # d'avant les derniers changements de l'interface (panneau Fichiers absent, 2026-10-02).
+    journal "construction de l'interface (frontend/dist)"
+    (cd "$RACINE/frontend" && bun run build >>"$LOGS/frontend-build.log" 2>&1) || echec "build du frontend en échec (logs/frontend-build.log)"
     journal "construction et démarrage du conteneur (première fois : compilation CUDA, longue)"
     (cd "$RACINE" && docker compose up -d --build $recreer) || echec "docker compose up a échoué"
     journal "interface : http://127.0.0.1:${ECHOHUB_PORT_WEB:-37920}"
