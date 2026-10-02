@@ -124,12 +124,15 @@ services:
       ECHOHUB_AUTH_HASH: ${ECHOHUB_AUTH_HASH:-}
       # Nom de service Docker, résolu par le DNS interne du réseau de la pile. Le domaine
       # `recherche` lit cette variable via backend/core/config.py — rien n'est codé en dur.
-      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      # Adresses INTERNES au réseau compose : jamais lues depuis SEARXNG_URL / ATELIER_URL du .env, qui
+      # visent 127.0.0.1 pour le mode natif — dans le conteneur, 127.0.0.1 est le conteneur lui-même
+      # (atelier et recherche injoignables, « Bad Request » sur un projet, 2026-10-02).
+      SEARXNG_URL: ${ECHOHUB_DOCKER_SEARXNG_URL:-http://searxng:8080}
       # Atelier d'exécution : le backend lui délègue commandes et code Python par HTTP, sur le
       # réseau interne (jamais un port publié). Le jeton partagé garde ce service qui exécute du
       # shell root ; il vient du .env, jamais du code. ATELIER_WORKSPACE désigne le point de montage
       # du volume PARTAGÉ avec l'atelier — un fichier écrit ici est vu des deux côtés.
-      ATELIER_URL: ${ATELIER_URL:-http://echohub-atelier:8080}
+      ATELIER_URL: ${ECHOHUB_DOCKER_ATELIER_URL:-http://echohub-atelier:8080}
       ATELIER_JETON: ${ATELIER_JETON:-}
       ATELIER_WORKSPACE: /data/ateliers
       ECHOHUB_PROJETS_RACINE: /projets
