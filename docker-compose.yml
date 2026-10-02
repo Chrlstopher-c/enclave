@@ -192,6 +192,20 @@ services:
     ports:
       - "127.0.0.1:${SEARXNG_PORT_HOTE:-37925}:8080"
 
+  # --- Navigateur pour les tests end-to-end de l'agent (serveur MCP Playwright) ---------------
+  # Atteint par le backend sur http://echohub-navigateur:8931/mcp (à déclarer dans ~agent/mcp.json).
+  # Les apps que l'agent lance dans l'atelier (liées à 0.0.0.0) y sont joignables sur
+  # http://echohub-atelier:<port>. Snapshots d'accessibilité en texte, images omises : le modèle ne
+  # voit pas les images. Aucun port publié.
+  echohub-navigateur:
+    image: mcr.microsoft.com/playwright/mcp:latest
+    container_name: echohub-navigateur
+    restart: unless-stopped
+    command: ["--port", "8931", "--host", "0.0.0.0", "--allowed-hosts", "*", "--image-responses", "omit",
+              "--isolated"]
+    expose:
+      - "8931"
+
   # --- Atelier d'exécution ------------------------------------------------------------------
   # Conteneur de dev persistant, unique et partagé par TOUTES les conversations (option B). L'agent
   # y est root, avec réseau et un vrai toolchain, et il installe le reste lui-même (`apt`, `pip`).

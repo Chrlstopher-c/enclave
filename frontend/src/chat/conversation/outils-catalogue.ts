@@ -11,7 +11,7 @@
  * l'écran utilisable le jour où il y aura trente outils au lieu de dix.
  */
 
-export type GroupeOutils = 'organisation' | 'web' | 'fichiers' | 'execution' | 'presentation';
+export type GroupeOutils = 'organisation' | 'web' | 'fichiers' | 'execution' | 'mcp' | 'presentation';
 
 export interface OutilDisponible {
   readonly nom: string;
@@ -26,6 +26,7 @@ export const LIBELLE_GROUPE: Readonly<Record<GroupeOutils, string>> = {
   web: 'Web',
   fichiers: 'Fichiers',
   execution: 'Exécution',
+  mcp: 'MCP',
   presentation: 'Présentation',
 };
 
@@ -112,6 +113,18 @@ export const CATALOGUE_OUTILS: readonly OutilDisponible[] = [
     nom: 'presenter_fichier',
     description: 'affiche un fichier existant dans le fil',
     groupe: 'presentation',
+    tokens_definition: null,
+  },
+  {
+    nom: 'mcp_outils',
+    description: 'liste les outils d’un serveur MCP déclaré dans ~agent/mcp.json',
+    groupe: 'mcp',
+    tokens_definition: null,
+  },
+  {
+    nom: 'mcp_appeler',
+    description: 'appelle un outil d’un serveur MCP (navigateur Playwright pour les tests e2e…)',
+    groupe: 'mcp',
     tokens_definition: null,
   },
 ];

@@ -27,6 +27,7 @@ from backend.outils.fichiers_bac import OUTIL_ECRIRE, OUTIL_LIRE, OUTIL_MODIFIER
 from backend.outils.presenter_fichier import OUTIL as OUTIL_PRESENTER
 from backend.outils.recherche_web import OUTIL as OUTIL_RECHERCHE
 from backend.outils.recuperer_page import OUTIL as OUTIL_PAGE
+from backend.outils.mcp_registre import OUTIL_MCP_APPELER, OUTIL_MCP_OUTILS
 from backend.outils.plan_fichier import OUTIL as OUTIL_PLAN
 from backend.outils.serveur_fond import OUTIL as OUTIL_SERVEUR_FOND
 from backend.outils.suivre_taches import OUTIL as OUTIL_TACHES
@@ -75,6 +76,9 @@ _OUTILS: dict[str, Outil] = {
     OUTIL_COMMANDE.nom: OUTIL_COMMANDE,
     OUTIL_SERVEUR_FOND.nom: OUTIL_SERVEUR_FOND,
     OUTIL_PRESENTER.nom: OUTIL_PRESENTER,
+    # Serveurs MCP : deux outils fixes, quel que soit le nombre de serveurs (outils « différés »).
+    OUTIL_MCP_OUTILS.nom: OUTIL_MCP_OUTILS,
+    OUTIL_MCP_APPELER.nom: OUTIL_MCP_APPELER,
     # `creer_artefact` ferme la marche, juste après la présentation : les deux montrent quelque
     # chose à l'utilisateur, et les voisiner rend leur différence lisible dans le socle —
     # `presenter_fichier` DÉSIGNE ce qui existe, `creer_artefact` PRODUIT ce qui n'existe pas.
@@ -99,6 +103,8 @@ _GROUPES: dict[str, str] = {
     "executer_commande": "execution",
     "serveur_fond": "execution",
     "presenter_fichier": "presentation",
+    "mcp_outils": "mcp",
+    "mcp_appeler": "mcp",
     "creer_artefact": "presentation",
 }
 

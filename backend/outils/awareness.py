@@ -15,6 +15,7 @@ from loguru import logger
 from backend.agent import AWARENESS, AWARENESS_NOTES, attribuer, lire_texte, memoire, racine, skills
 from backend.outils.bac_a_sable import LIMITES_REELLES_TEXTE
 from backend.outils.contrat import DescriptionOutil
+from backend.outils.mcp_registre import serveurs_connus
 
 NOTES_MAX = 20_000
 
@@ -46,6 +47,7 @@ def _mcp(serveurs: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
     lignes = ["## Serveurs MCP", ""]
     if not serveurs:
         return lignes + ["Aucun serveur branché (déclarer dans `~agent/mcp.json`).", ""]
+    lignes += ["Appel : `mcp_outils` (liste, schémas) puis `mcp_appeler`.", ""]
     for nom, outils in serveurs:
         lignes += [f"### {nom}", *(f"- {o}" for o in outils), ""]
     return lignes
@@ -55,7 +57,7 @@ def contenu(descriptions: Sequence[DescriptionOutil], projet_courant: str | None
             serveurs_mcp: Sequence[tuple[str, Sequence[str]]] = ()) -> str:
     lignes = ["# AWARENESS — ce que l'agent EchoHub peut utiliser", "",
               "Régénéré automatiquement à chaque conversation. Ajouts manuels : `~agent/AWARENESS.notes.md`.", ""]
-    lignes += _outils(descriptions) + _mcp(serveurs_mcp)
+    lignes += _outils(descriptions) + _mcp(serveurs_mcp or serveurs_connus())
     lignes += ["## Skills", ""] + [f"- {s.nom} — {s.description} ({s.chemin})" for s in skills()] + [""]
     souvenirs = memoire()
     lignes += ["## Mémoire", "", f"{len(souvenirs)} souvenir(s) dans `~agent/memoire/` (index dans le socle).", ""]
