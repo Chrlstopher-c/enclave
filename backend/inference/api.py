@@ -37,7 +37,7 @@ from backend.inference.engines_adapters import (
     superviseur,
     texte_de,
 )
-from backend.inference import _compacter_blocs_outils
+from backend.inference.hygiene_historique import pour_le_modele
 from backend.inference.engines_adapters.contrat import OccupationContexte
 from backend.inference.engines_adapters.traduction_plan import vers_cause_planificateur, vers_plan_moteur
 from backend.inference.planner import DemandeDeChargement, PlanDeChargement, degrader, planifier
@@ -244,13 +244,13 @@ async def mesurer_occupation_contexte(requete: RequeteOccupationContexte) -> Occ
     Le comptage passe par le tokenizer du modèle réellement chargé. Ce qu'il ne couvre pas est listé
     dans `avertissements` plutôt que comblé par une estimation.
 
-    Les blocs d'outils sont compactés AVANT d'être comptés, exactement comme la génération les
-    compacte avant de les envoyer (`_compacter_blocs_outils`). L'interface envoie ce qu'elle
+    Les blocs d'outils sont réduits AVANT d'être comptés, exactement comme la génération les réduit
+    avant de les envoyer (`hygiene_historique.pour_le_modele`). L'interface envoie ce qu'elle
     AFFICHE, qui reste entier ; sans ce passage, le panneau annoncerait une occupation que le
     modèle ne subit pas — et un panneau de contexte qui se trompe sur le contexte ne sert à rien.
     """
     mesures = [
-        message.model_copy(update={"content": _compacter_blocs_outils(message.content)})
+        message.model_copy(update={"content": pour_le_modele(message.content)})
         if isinstance(message.content, str)
         else message
         for message in requete.messages

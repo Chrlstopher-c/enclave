@@ -100,5 +100,7 @@ def test_l_historique_arrive_compacte_au_moteur() -> None:
     convertis = _messages_depuis([_MessageFactice("assistant", long_bloc)])
 
     assert len(convertis) == 1
-    assert "lignes retirées de l'historique" in str(convertis[0].content)
-    assert "contenu 59" not in str(convertis[0].content)
+    # Depuis le 2026-10-02 le bloc entier devient une ligne de prose : le modèle imitait le balisage.
+    contenu = str(convertis[0].content)
+    assert "contenu 59" not in contenu and "<outil>" not in contenu and "<sortie" not in contenu
+    assert "Outils utilisés dans ce tour" in contenu

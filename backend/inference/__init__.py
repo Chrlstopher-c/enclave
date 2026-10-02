@@ -49,6 +49,7 @@ from backend.inference.reprise import CONSIGNE_CLOTURE_PROMESSE
 from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
+from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -124,7 +125,8 @@ def _messages_depuis(messages: object) -> list[MessageChat]:
     n'est encodée ici : `content` porte encore des CHEMINS disque (`PartieImageChemin`), jamais du
     base64 — c'est l'adaptateur moteur qui encode, au tout dernier moment (plan d'exécution, 2.2.4).
 
-    Les blocs d'outils des tours PASSÉS y sont compactés (`_compacter_blocs_outils`). Ce qui arrive
+    Les blocs d'outils des tours PASSÉS y sont remplacés par un récapitulatif en prose
+    (`hygiene_historique.pour_le_modele`) : le modèle imitait leur balisage. Ce qui arrive
     ici vient de l'historique, par définition : les résultats du tour EN COURS sont ajoutés plus
     loin, en entier, par la boucle de `MoteurChat._flux`.
     """
@@ -138,7 +140,7 @@ def _messages_depuis(messages: object) -> list[MessageChat]:
             logger.warning("Message ignoré, forme inattendue : {}", type(message).__name__)
             continue
         if isinstance(contenu, str):
-            contenu = _compacter_blocs_outils(_sans_appels_outils(contenu))
+            contenu = pour_le_modele(_sans_appels_outils(contenu))
         pieces = getattr(message, "pieces", None) or ()
         convertis.append(MessageChat(role=role, content=_contenu_moteur(contenu, pieces)))
     return convertis
@@ -586,7 +588,7 @@ class MoteurChat:
                 continue
             yield {"texte": BALISE_FIN_ETAPE}
             messages = sans_reflexion_passee(_sans_pre_remplissage(messages, etat)) + [
-                MessageChat(role="assistant", content=_sans_appels_outils(texte))
+                MessageChat(role="assistant", content=pour_le_modele(_sans_appels_outils(texte)))
             ]
             async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):
                 yield etape
@@ -602,7 +604,7 @@ class MoteurChat:
         tour) : la boucle n'a plus à tenir elle-même le tampon.
         """
         recu: list[str] = []
-        flux = self._diffuser_complet(messages, options, etat.outils_declares, recu)
+        flux = sans_balises_imitees(self._diffuser_complet(messages, options, etat.outils_declares, recu))
         if etat.pre_rempli:
             flux = sans_echo(flux, etat.texte_pre_rempli)
         async for morceau in flux:
@@ -652,7 +654,7 @@ class MoteurChat:
             messages = list(messages) + [MessageChat(role="tool", content=_AUCUN_OUTIL_ABOUTI)]
         yield {"texte": BALISE_FIN_ETAPE}
         recu: list[str] = []
-        async for morceau in self._diffuser_complet(messages, options, None, recu):
+        async for morceau in sans_balises_imitees(self._diffuser_complet(messages, options, None, recu)):
             yield morceau
         yield {"tokens": len(recu)}
 
