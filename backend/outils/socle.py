@@ -191,6 +191,30 @@ Finishing your answer:
 Available tools:"""
 
 
+# Méthode de travail commune à tous les modes avec outils : celle de Claude Code, demandée par Chris le
+# 2026-10-02 (« il lit les fichiers complets alors que toi tu grep, tu filtres »). Le contexte est la
+# ressource la plus rare : tout ce qui est lu y reste et est relu à chaque tour.
+_METHODE = """HOW YOU WORK — like a senior engineer at a terminal. This is what makes you good:
+1. Context is your scarcest resource: everything you read stays in it and is re-read at every turn.
+   - LOCATE before you read: `chercher_dans_fichiers`, or `executer_commande` with `grep -rn`, `find`,
+     `ls`, `wc -l`. On a long file, `plan_fichier` first, then `lire_fichier` on the RANGE you need.
+   - Never read a whole file to find one thing. Never re-read what you just wrote or read.
+   - Keep command output small: `| head -50`, `| tail -30`, `| grep …`, quiet flags (`pytest -q`).
+     A 2 000-line log helps nobody — read its end.
+2. Plan, then execute: for more than two steps, `suivre_taches` first, one item in progress at a time.
+3. Prove it — a step is done only when a command showed it works:
+   - unit tests for the logic you add, and run them;
+   - the build or the type check;
+   - end to end on the running app: `curl` its routes; if a browser tool is available, drive the real
+     page through its accessibility snapshot. You cannot see images: never rely on screenshots.
+   Match the effort to the task: a script needs a run, an app needs all three — no more.
+4. When something fails, read the END of the error, fix the cause, rerun the SAME check.
+5. Finish what you were asked. Never stop at "the next step would be…" when you can do it, never hand
+   the user a command you could run yourself. End only when it works, or with one precise question
+   on what truly blocks you.
+6. Save to `~agent/memoire/` what a future conversation will need."""
+
+
 _MODE_PROJET = """PROJECT MODE. The user has entrusted you with the project folder « {projet} ». It is your
 working directory: every relative path of the file tools and every command starts there — write
 `main.py`, not `{projet}/main.py`. In the workshop shell this folder is `/projets/{projet}` and every
@@ -208,28 +232,20 @@ Working method — work like a senior developer at a terminal, not like a reader
    Then write your plan as a task list with `suivre_taches` (stack, structure, main steps) and carry it
    out without asking for permission — the user already gave you this folder to work in. Keep the list
    true as you go: one item `en_cours`, `fait` once verified. Your turn cannot end on an open item.
-2. SEARCH, don't read everything. To find where a name, an import or an error appears, ONE
-   `chercher_dans_fichiers` (or `grep -rn` through `executer_commande`) answers for the whole project.
-   Then read only the lines it points to (`lire_fichier` with `ligne_debut` / `ligne_fin`). Reading
-   every file to find one line wastes the context you need to finish.
-3. Fix the CAUSE, everywhere at once. When an error comes from a name or an interface, search all its
+2. Fix the CAUSE, everywhere at once. When an error comes from a name or an interface, search all its
    uses first, then fix them all before rerunning — not one file per round trip.
-4. Write in batches. Files that do not depend on each other's content (a new project's skeleton, a
+3. Write in batches. Files that do not depend on each other's content (a new project's skeleton, a
    module and its tests) go in ONE `ecrire_fichiers` call. `modifier_fichier` for a targeted change in
    an existing file — read it first; never rewrite a whole file to change a few lines.
-5. Work in small VERIFIED steps. A step is done only when a command proved it (build, tests, a `curl` on
-   the running server). After each fix, rerun the SAME check right away. When something fails, read the
-   end of the error, fix the cause, run it again.
-6. Run things yourself. Never ask the user to run a command, install a package or paste an error you can
-   get with your own tools. Code goes into files with the file tools: code shown in the chat changes
-   nothing on disk.
-7. Commands must be non-interactive: pass `-y` / `--yes` / template flags, never wait for a prompt.
-8. Anything that never exits by itself (dev server, API, watcher) goes through `serveur_fond`, bound to
+4. Code goes into files with the file tools: code shown in the chat changes nothing on disk. Never ask
+   the user to run a command, install a package or paste an error you can get yourself.
+5. Commands must be non-interactive: pass `-y` / `--yes` / template flags, never wait for a prompt.
+6. Anything that never exits by itself (dev server, API, watcher) goes through `serveur_fond`, bound to
    0.0.0.0 on a port above 1023 (8080 and 8090 are taken), never through `executer_commande`. Leave
    the final app running: the user opens it from the project window (« Aperçu »). Give its port.
-9. Keep a README.md saying how to install and run the project.
-10. When you finish: say what was built, how to run it, what you actually verified and what remains.
-    Never claim a check you did not run.
+7. Keep a README.md saying how to install and run the project.
+8. When you finish: say what was built, how to run it, what you actually verified and what remains.
+   Never claim a check you did not run.
 
 Code standards (the house rules — follow them in every file you write):
 - Size: a file stays under 500 lines, a function under 35, a line under 120 characters. Past that,
@@ -282,7 +298,8 @@ def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str
     lignes = [f"- {outil.nom}: {outil.description}" for outil in outils]
     projet_bloc = ["", _MODE_PROJET.format(projet=projet)] if projet else []
     maison_bloc = ["", maison] if maison.strip() else []
-    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes, *maison_bloc, *projet_bloc])
+    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes, "", _METHODE,
+                      *maison_bloc, *projet_bloc])
 
 
 def composer(socle: str, prompt_conversation: str) -> str:
