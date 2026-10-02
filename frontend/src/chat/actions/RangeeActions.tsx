@@ -9,7 +9,7 @@
  * n'existe pas ou si on l'a manquée.
  */
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { cn } from '../../shared/design';
 import { BoutonAction } from './BoutonAction';
 import { BoutonCopier } from './BoutonCopier';
@@ -37,6 +37,8 @@ export interface RangeeActionsProps {
   onEditer: () => void;
   onRejouer: () => void;
   className?: string;
+  /** Actions venues d'un autre domaine (notes de `retours` sous une réponse), posées en fin de rangée. */
+  children?: ReactNode;
 }
 
 export function RangeeActions({
@@ -47,6 +49,7 @@ export function RangeeActions({
   onEditer,
   onRejouer,
   className,
+  children,
 }: RangeeActionsProps): ReactElement {
   return (
     <span className={cn(CLASSE_RANGEE, className)}>
@@ -71,6 +74,7 @@ export function RangeeActions({
           <IconeRejouer />
         </BoutonAction>
       )}
+      {children}
     </span>
   );
 }

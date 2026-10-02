@@ -24,7 +24,7 @@ fabrique `creer_moteur_chat()` exposée par `backend.inference`.
 
 from backend.chat.annulation import annuler as annuler_generation
 from backend.chat.annulation import conversations_actives, est_active
-from backend.chat.depot import assurer_schema_chat, exiger_conversation
+from backend.chat.depot import assurer_schema_chat, chemin_jusqua, exiger_conversation, lire_reglages
 from backend.chat.erreurs import (
     BrancheInvalide,
     ContratInferenceInvalide,
@@ -79,6 +79,9 @@ __all__ = [
     # Vérification d'existence, exposée pour les domaines qui référencent une conversation
     # (`backend.fichiers`, notamment) sans dupliquer cette lecture.
     "exiger_conversation",
+    # Lecture d'un point de l'arbre et des réglages, pour `backend.retours` (exemples d'entraînement).
+    "chemin_jusqua",
+    "lire_reglages",
     # API HTTP
     "routeur",
     "PREFIXE",

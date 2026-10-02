@@ -21,6 +21,7 @@
  */
 
 import type { ReactElement, ReactNode } from 'react';
+import { BoutonsRetour } from '../../retours';
 import type { MessageChat } from '../api/contrats';
 import { useActionsMessages, type ActionsMessages } from './fournisseur';
 import { EditeurEnPlace } from './EditeurEnPlace';
@@ -72,7 +73,12 @@ function Barre({ message, actions }: BarreProps): ReactElement {
           occupe={actions.occupe}
           onEditer={() => actions.demarrerEdition(message)}
           onRejouer={() => actions.rejouer(message)}
-        />
+        >
+          {message.role === 'assistant' && !message.interrompu && (
+            <BoutonsRetour conversationId={message.conversation_id} messageId={message.id} contenu={message.contenu}
+              comparaison={freres.length > 1} />
+          )}
+        </RangeeActions>
       </span>
     </div>
   );
