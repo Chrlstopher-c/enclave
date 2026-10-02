@@ -62,6 +62,7 @@ from backend.inference.harnais_outils import (
     LIGNES_APERCU_ARGUMENT,
     LIGNES_BLOC_HISTORIQUE,
     _annonce,
+    sans_reflexion_passee,
     _apercu_valeur,
     _compacter_blocs_outils,
     _compacter_corps,
@@ -107,6 +108,8 @@ def _options_depuis(parametres: object) -> OptionsGeneration:
         # qui serait refusé à la validation.
         top_k=top_k if isinstance(top_k, int) and top_k >= 1 else None,
         repetition_penalty=champ("penalite_repetition"),
+        presence_penalty=champ("penalite_presence"),
+        min_p=champ("min_p"),
         max_tokens=champ("max_tokens"),
         stop=list(champ("sequences_arret") or []),
         graine=champ("graine"),
@@ -582,7 +585,7 @@ class MoteurChat:
                     break
                 continue
             yield {"texte": BALISE_FIN_ETAPE}
-            messages = _sans_pre_remplissage(messages, etat) + [
+            messages = sans_reflexion_passee(_sans_pre_remplissage(messages, etat)) + [
                 MessageChat(role="assistant", content=_sans_appels_outils(texte))
             ]
             async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):

@@ -15,7 +15,9 @@ export interface ParametresEchantillonnage {
   readonly temperature: number;
   readonly top_p: number;
   readonly top_k: number;
+  readonly min_p: number;
   readonly penalite_repetition: number;
+  readonly penalite_presence: number;
   readonly max_tokens: number;
   readonly sequences_arret: readonly string[];
   readonly graine: number | null;

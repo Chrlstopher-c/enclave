@@ -1058,6 +1058,10 @@ def _arguments_echantillonnage(options: OptionsGeneration) -> dict[str, Any]:
         arguments["top_k"] = options.top_k
     if options.repetition_penalty is not None:
         arguments["repeat_penalty"] = options.repetition_penalty
+    if options.presence_penalty is not None:
+        arguments["presence_penalty"] = options.presence_penalty
+    if options.min_p is not None:
+        arguments["min_p"] = options.min_p
     if options.max_tokens is not None:
         arguments["max_tokens"] = options.max_tokens
     if options.stop:

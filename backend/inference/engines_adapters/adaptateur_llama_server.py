@@ -284,6 +284,10 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
             charge["top_k"] = options.top_k
         if options.repetition_penalty is not None:
             charge["repeat_penalty"] = options.repetition_penalty
+        if options.presence_penalty is not None:
+            charge["presence_penalty"] = options.presence_penalty
+        if options.min_p is not None:
+            charge["min_p"] = options.min_p
         if options.max_tokens is not None:
             charge["max_tokens"] = options.max_tokens
         if options.stop:

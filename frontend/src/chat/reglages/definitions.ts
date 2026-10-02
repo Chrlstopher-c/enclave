@@ -105,6 +105,24 @@ export const PENALITE_REPETITION: DefinitionCurseur = {
   plage: { min: 0, max: 2, pas: 0.01 },
 };
 
+export const MIN_P: DefinitionCurseur = {
+  libelle: 'Min-p',
+  effet:
+    'Écarte les jetons dont la probabilité est inférieure à cette fraction de celle du plus probable. '
+    + 'Qwen3.6 recommande 0 : le critère est alors inactif.',
+  absence: '',
+  plage: { min: 0, max: 1, pas: 0.01 },
+};
+
+export const PENALITE_PRESENCE: DefinitionCurseur = {
+  libelle: 'Pénalité de présence',
+  effet:
+    'Pénalise d’un montant fixe tout jeton déjà apparu : c’est le réglage que Qwen recommande contre les '
+    + 'boucles de répétition (jusqu’à 1,5). Trop haut, il mélange les langues et dégrade le code.',
+  absence: '',
+  plage: { min: 0, max: 2, pas: 0.05 },
+};
+
 export const TOP_K: DefinitionEntier = {
   libelle: 'Top-k',
   effet:
@@ -158,7 +176,9 @@ export const LIBELLES: Record<CleReglage, string> = {
   temperature: TEMPERATURE.libelle,
   top_p: TOP_P.libelle,
   top_k: TOP_K.libelle,
+  min_p: MIN_P.libelle,
   penalite_repetition: PENALITE_REPETITION.libelle,
+  penalite_presence: PENALITE_PRESENCE.libelle,
   max_tokens: MAX_TOKENS.libelle,
   sequences_arret: SEQUENCES_ARRET.libelle,
   graine: GRAINE.libelle,

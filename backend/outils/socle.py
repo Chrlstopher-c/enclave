@@ -195,6 +195,10 @@ Available tools:"""
 # 2026-10-02 (« il lit les fichiers complets alors que toi tu grep, tu filtres »). Le contexte est la
 # ressource la plus rare : tout ce qui est lu y reste et est relu à chaque tour.
 _METHODE = """HOW YOU WORK — like a senior engineer at a terminal. This is what makes you good:
+0. Think briefly, then act. As soon as you know the next action, stop reasoning and make the call.
+   Never restate in your reasoning a plan you already made, never re-decide what you already decided,
+   never announce the call twice: one decision, one call. Reasoning you have done is not progress —
+   only a tool call or a written file is.
 1. Context is your scarcest resource: everything you read stays in it and is re-read at every turn.
    - LOCATE before you read: `chercher_dans_fichiers`, or `executer_commande` with `grep -rn`, `find`,
      `ls`, `wc -l`. On a long file, `plan_fichier` first, then `lire_fichier` on the RANGE you need.

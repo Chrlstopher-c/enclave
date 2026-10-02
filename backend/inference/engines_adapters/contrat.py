@@ -203,6 +203,8 @@ class OptionsGeneration(BaseModel):
     top_p: float = Field(default=0.95, gt=0.0, le=1.0)
     top_k: int | None = Field(default=None, ge=1)
     repetition_penalty: float | None = Field(default=None, gt=0.0)
+    presence_penalty: float | None = Field(default=None, ge=0.0, le=2.0)
+    min_p: float | None = Field(default=None, ge=0.0, le=1.0)
     max_tokens: int | None = Field(default=None, gt=0)
     stop: list[str] = Field(default_factory=list)
     graine: int | None = None

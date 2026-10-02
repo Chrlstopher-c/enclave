@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import re
 
+from backend.inference.engines_adapters.contrat import MessageChat, separer_raisonnement
+
 """Balises du flux annonçant un outil. Elles voyagent dans le texte de la réponse, comme celles du
 raisonnement, et l'interface les replie de la même façon : l'utilisateur voit la recherche se
 faire, sans que le résultat brut n'écrase la réponse.
@@ -167,3 +169,21 @@ def _annonce(nom: str, arguments: object) -> str:
     else:
         detail = _apercu_valeur(arguments) if arguments else ""
     return f"{nom}({detail})" if detail else nom
+
+
+def sans_reflexion_passee(messages: list[MessageChat]) -> list[MessageChat]:
+    """Retire le raisonnement (`<think>`) des tours d'assistant déjà joués ; actes et prose restent.
+
+    Le gabarit Qwen garde TOUT le raisonnement après le dernier message `user`, et le purge dès qu'un
+    nouveau `user` arrive — or chaque relance du harnais en est un : le préfixe changeait, llama.cpp
+    retraitait tout le prompt, et la réflexion passée gonflait le contexte (le modèle la relisait et la
+    paraphrasait). Ici seule la réflexion du tour à venir existera : le tour le plus récent garde la
+    sienne jusqu'à ce qu'un nouveau tour la remplace. Recherche du 2026-10-02, carte Qwen3.6.
+    """
+    nettoyes: list[MessageChat] = []
+    for message in messages:
+        if message.role == "assistant" and isinstance(message.content, str) and "<think>" in message.content:
+            visible, _ = separer_raisonnement(message.content)
+            message = MessageChat(role="assistant", content=visible.strip())
+        nettoyes.append(message)
+    return nettoyes

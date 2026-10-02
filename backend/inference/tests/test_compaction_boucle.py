@@ -91,3 +91,13 @@ def test_fin_d_etape_compacte_plus_tot(faux: _FauxSuperviseur) -> None:
     messages = _tache(5)  # ~530 tokens : au-delà de l'étape (400), en deçà du dur (700)
     assert asyncio.run(compacter_si_besoin(list(messages), demarrer(messages), etape_terminee=False)) is None
     assert asyncio.run(compacter_si_besoin(messages, demarrer(messages), etape_terminee=True)) is not None
+
+
+def test_les_reflexions_passees_sont_retirees_les_actes_restent() -> None:
+    from backend.inference.harnais_outils import sans_reflexion_passee
+
+    messages = [MessageChat(role="user", content="go"),
+                MessageChat(role="assistant", content="<think>je réfléchis longuement</think>J'écris main.py."),
+                MessageChat(role="tool", content="Écrit « main.py »")]
+    nettoyes = sans_reflexion_passee(messages)
+    assert nettoyes[1].content == "J'écris main.py." and nettoyes[0] is messages[0] and nettoyes[2] is messages[2]

@@ -244,7 +244,9 @@ export interface ParametresEchantillonnage {
   temperature: number;
   top_p: number;
   top_k: number;
+  min_p: number;
   penalite_repetition: number;
+  penalite_presence: number;
   max_tokens: number;
   sequences_arret: string[];
   graine: number | null;

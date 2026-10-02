@@ -6,6 +6,8 @@ import type { Reglages } from './contrat';
 import {
   GRAINE,
   MAX_TOKENS,
+  MIN_P,
+  PENALITE_PRESENCE,
   PENALITE_REPETITION,
   PROMPT_SYSTEME,
   TEMPERATURE,
@@ -76,6 +78,28 @@ function ChampPenalite({ pilotage }: SectionProps): ReactElement {
   );
 }
 
+function ChampMinP({ pilotage }: SectionProps): ReactElement {
+  return (
+    <ChampCurseur
+      id="reglage-min-p"
+      definition={MIN_P}
+      valeur={pilotage.valeurs.parametres.min_p}
+      onChanger={(min_p) => pilotage.modifierParametres({ min_p })}
+    />
+  );
+}
+
+function ChampPresence({ pilotage }: SectionProps): ReactElement {
+  return (
+    <ChampCurseur
+      id="reglage-presence"
+      definition={PENALITE_PRESENCE}
+      valeur={pilotage.valeurs.parametres.penalite_presence}
+      onChanger={(penalite_presence) => pilotage.modifierParametres({ penalite_presence })}
+    />
+  );
+}
+
 function ChampTopK({ pilotage }: SectionProps): ReactElement {
   return (
     <ChampEntier
@@ -133,7 +157,9 @@ function SectionTirage({ pilotage }: SectionProps): ReactElement {
       <ChampTemperature pilotage={pilotage} />
       <ChampTopP pilotage={pilotage} />
       <ChampTopK pilotage={pilotage} />
+      <ChampMinP pilotage={pilotage} />
       <ChampPenalite pilotage={pilotage} />
+      <ChampPresence pilotage={pilotage} />
     </Section>
   );
 }

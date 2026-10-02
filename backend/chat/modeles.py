@@ -23,6 +23,11 @@ RoleMessage = Literal["system", "user", "assistant"]
 MAX_TOKENS_PLAFOND = 262_144
 
 
+# Défauts alignés sur la carte officielle Qwen3.6 (mode thinking), la famille des modèles servis ici
+# (2026-10-02) : top_k 20, min_p 0, repetition_penalty 1.0 — l'ancien 1.1 pénalisait aussi les jetons
+# dont le CODE a besoin (indentation, parenthèses). Température 0.6 = préréglage « code précis » de
+# Qwen ; presence_penalty 0.5 = compromis DÉDUIT entre ce préréglage (0) et le préréglage général
+# (1.5, documenté contre les boucles de répétition).
 class ParametresEchantillonnage(BaseModel):
     """Paramètres de génération d'une conversation. Bornes issues des plages admises par llama.cpp.
 
@@ -35,10 +40,12 @@ class ParametresEchantillonnage(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    temperature: float = Field(default=0.6, ge=0.0, le=2.0)
     top_p: float = Field(default=0.95, gt=0.0, le=1.0)
-    top_k: int = Field(default=40, ge=0)
-    penalite_repetition: float = Field(default=1.1, ge=0.0, le=2.0)
+    top_k: int = Field(default=20, ge=0)
+    min_p: float = Field(default=0.0, ge=0.0, le=1.0)
+    penalite_repetition: float = Field(default=1.0, ge=0.0, le=2.0)
+    penalite_presence: float = Field(default=0.5, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=MAX_TOKENS_PLAFOND)
     sequences_arret: list[str] = Field(default_factory=list)
     graine: int | None = Field(default=None)
@@ -58,6 +65,8 @@ class MajParametres(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     top_p: float | None = Field(default=None, gt=0.0, le=1.0)
     top_k: int | None = Field(default=None, ge=0)
+    min_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    penalite_presence: float | None = Field(default=None, ge=0.0, le=2.0)
     penalite_repetition: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=MAX_TOKENS_PLAFOND)
     sequences_arret: list[str] | None = Field(default=None)
