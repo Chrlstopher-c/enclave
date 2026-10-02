@@ -32,9 +32,10 @@ from typing import Any
 
 from loguru import logger
 
+from backend.agent import attribuer
 from backend.core import EchoHubError
 from backend.fichiers import deposer_fichier
-from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac
+from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac, verifier_ecriture
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 from backend.outils.verif_syntaxe import avis_syntaxe
 
@@ -165,6 +166,7 @@ def _preparer_cible(contexte: ContexteExecution, chemin_demande: str) -> Path:
     """Résout le chemin dans le bac et crée les dossiers parents. Lève `CheminHorsBac` si hors bac."""
     preparer_bac(contexte.racine_bac)
     cible = resoudre_dans_bac(contexte.racine_bac, chemin_demande)
+    verifier_ecriture(cible)
     cible.parent.mkdir(parents=True, exist_ok=True)
     return cible
 
@@ -213,6 +215,7 @@ async def _ecrire(arguments: dict[str, Any], contexte: ContexteExecution) -> str
         raise EchecOutil(f"Échec : {exc}") from exc
     octets = str(contenu).encode("utf-8")
     cible.write_bytes(octets)
+    attribuer(cible)
     mention = _enregistrer(contexte, chemin_demande, cible)
     lignes = str(contenu).count("\n") + 1
     avis = avis_syntaxe(chemin_demande, str(contenu))
@@ -364,6 +367,7 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
         raise EchecOutil(_echec_arguments("modifier_fichier", _REQUIS_MODIFIER, arguments))
     try:
         cible = resoudre_dans_bac(contexte.racine_bac, chemin_demande)
+        verifier_ecriture(cible)
     except CheminHorsBac as exc:
         raise EchecOutil(f"Échec : {exc}") from exc
     if not cible.is_file():
@@ -377,6 +381,7 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
         raise EchecOutil(refus)
     nouveau_texte = texte.replace(str(ancien), str(nouveau), 1)
     cible.write_text(nouveau_texte, encoding="utf-8")
+    attribuer(cible)
     mention = _enregistrer(contexte, chemin_demande, cible)
     avis = avis_syntaxe(chemin_demande, nouveau_texte)
     return f"Modifié « {chemin_demande} » : un fragment remplacé, le reste du fichier est intact. {mention}{avis}"

@@ -61,6 +61,12 @@ export const CATALOGUE_OUTILS: readonly OutilDisponible[] = [
     tokens_definition: null,
   },
   {
+    nom: 'plan_fichier',
+    description: 'structure d’un fichier (sections et lignes) avant de le lire par plage',
+    groupe: 'fichiers',
+    tokens_definition: null,
+  },
+  {
     nom: 'lire_fichier',
     description: 'relit un fichier du bac',
     groupe: 'fichiers',

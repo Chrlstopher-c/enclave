@@ -47,6 +47,7 @@ export const OUTILS_CONNUS: Readonly<Record<string, DescripteurOutil>> = {
   recuperer_page: { libelle: 'Page web', icone: 'globe', cles: ['url', 'lien', 'adresse'] },
   ecrire_fichier: { libelle: 'Écriture', icone: 'crayon', cles: ['chemin', 'path', 'fichier', 'nom'] },
   ecrire_fichiers: { libelle: 'Écriture groupée', icone: 'crayon', cles: ['fichiers', 'files'] },
+  plan_fichier: { libelle: 'Plan', icone: 'document', cles: ['chemin', 'path', 'fichier'] },
   lire_fichier: { libelle: 'Lecture', icone: 'document', cles: ['chemin', 'path', 'fichier', 'nom'] },
   modifier_fichier: { libelle: 'Modification', icone: 'crayon', cles: ['chemin', 'path', 'fichier', 'nom'] },
   lister_fichiers: { libelle: 'Dossier', icone: 'dossier', cles: ['motif', 'pattern', 'glob', 'chemin'] },

@@ -7,7 +7,13 @@ de leur dossier temporaire — ou échouaient selon la configuration de qui les 
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 from backend.core.config import Settings, reset_settings_cache
+
+# La maison de l'agent est régénérée à chaque socle (AWARENESS.md) : jamais celle du poste en test.
+os.environ.setdefault("ECHOHUB_AGENT_DIR", tempfile.mkdtemp(prefix="echohub-agent-tests-"))
 
 Settings.model_config["env_file"] = None
 reset_settings_cache()

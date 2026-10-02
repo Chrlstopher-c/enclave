@@ -249,7 +249,8 @@ Code standards (the house rules — follow them in every file you write):
 A snapshot of the folder is taken before each of your turns: the user can roll your changes back."""
 
 
-def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str | None = None) -> str:
+def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str | None = None,
+               maison: str = "") -> str:
     """Texte du socle, fonction des outils réellement branchés à cet instant.
 
     Fonction pure : elle décrit ce qu'on lui donne. Un outil déclaré ici mais absent du registre
@@ -280,7 +281,8 @@ def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str
     # française y détonnerait au milieu d'un texte que le modèle lit comme de l'anglais.
     lignes = [f"- {outil.nom}: {outil.description}" for outil in outils]
     projet_bloc = ["", _MODE_PROJET.format(projet=projet)] if projet else []
-    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes, *projet_bloc])
+    maison_bloc = ["", maison] if maison.strip() else []
+    return "\n".join([_LANGUE, "", _HONNETETE, "", *identite, _AVEC_OUTILS, *lignes, *maison_bloc, *projet_bloc])
 
 
 def composer(socle: str, prompt_conversation: str) -> str:

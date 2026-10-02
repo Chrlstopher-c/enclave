@@ -27,6 +27,7 @@ from backend.outils.fichiers_bac import OUTIL_ECRIRE, OUTIL_LIRE, OUTIL_MODIFIER
 from backend.outils.presenter_fichier import OUTIL as OUTIL_PRESENTER
 from backend.outils.recherche_web import OUTIL as OUTIL_RECHERCHE
 from backend.outils.recuperer_page import OUTIL as OUTIL_PAGE
+from backend.outils.plan_fichier import OUTIL as OUTIL_PLAN
 from backend.outils.serveur_fond import OUTIL as OUTIL_SERVEUR_FOND
 from backend.outils.suivre_taches import OUTIL as OUTIL_TACHES
 
@@ -64,6 +65,8 @@ _OUTILS: dict[str, Outil] = {
     OUTIL_ECRIRE.nom: OUTIL_ECRIRE,
     # Juste après l'écriture simple, dont il est la forme groupée (2026-10-01).
     OUTIL_ECRIRE_GROUPE.nom: OUTIL_ECRIRE_GROUPE,
+    # Le plan précède la lecture par plage : voir la structure, puis lire la section utile.
+    OUTIL_PLAN.nom: OUTIL_PLAN,
     OUTIL_LIRE.nom: OUTIL_LIRE,
     OUTIL_MODIFIER.nom: OUTIL_MODIFIER,
     OUTIL_LISTER.nom: OUTIL_LISTER,
@@ -87,6 +90,7 @@ _GROUPES: dict[str, str] = {
     "recuperer_page": "web",
     "ecrire_fichier": "fichiers",
     "ecrire_fichiers": "fichiers",
+    "plan_fichier": "fichiers",
     "lire_fichier": "fichiers",
     "modifier_fichier": "fichiers",
     "lister_fichiers": "fichiers",

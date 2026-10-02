@@ -26,7 +26,9 @@ from typing import Any
 
 from loguru import logger
 
-from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac
+from backend.agent import PREFIXE as PREFIXE_MAISON
+from backend.agent import racine as racine_maison
+from backend.outils.bac_a_sable import CheminHorsBac, est_maison, preparer_bac, resoudre_dans_bac
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 
 # Bornes de sortie. Un bac contenant un dépôt cloné dépasse vite le millier de fichiers, et lister
@@ -122,7 +124,7 @@ def _fichiers(racine: Path, motif: str) -> list[Path]:
     return sorted(retenus)
 
 
-def _lister(racine: Path, motif: str) -> str:
+def _lister(racine: Path, motif: str, prefixe: str = "") -> str:
     fichiers = _fichiers(racine, motif)
     if not fichiers:
         precision = f" matching « {motif} »" if motif else ""
@@ -134,7 +136,7 @@ def _lister(racine: Path, motif: str) -> str:
             taille = chemin.stat().st_size
         except OSError:
             taille = -1
-        relatif = chemin.relative_to(racine)
+        relatif = f"{prefixe}{chemin.relative_to(racine).as_posix()}"
         lignes.append(f"  {relatif}  ({taille} octets)" if taille >= 0 else f"  {relatif}  (illisible)")
     if len(fichiers) > FICHIERS_MAX:
         lignes.append(f"  [liste tronquée : {len(fichiers) - FICHIERS_MAX} fichier(s) de plus, "
@@ -154,7 +156,7 @@ def _lignes_correspondantes(chemin: Path, aiguille: str) -> list[tuple[int, str]
             if aiguille in ligne.lower()]
 
 
-def _chercher(racine: Path, texte: str, motif: str) -> str:
+def _chercher(racine: Path, texte: str, motif: str, prefixe: str = "") -> str:
     aiguille = texte.lower()
     lignes: list[str] = []
     total = 0
@@ -163,7 +165,7 @@ def _chercher(racine: Path, texte: str, motif: str) -> str:
             total += 1
             if len(lignes) < CORRESPONDANCES_MAX:
                 extrait = ligne.strip()[:LONGUEUR_LIGNE_MAX]
-                lignes.append(f"  {chemin.relative_to(racine)}:{numero}: {extrait}")
+                lignes.append(f"  {prefixe}{chemin.relative_to(racine).as_posix()}:{numero}: {extrait}")
     if not total:
         return (f"« {texte} » appears in no file of the sandbox. "
                 "Check the spelling, or list the files first with `lister_fichiers`.")
@@ -171,6 +173,18 @@ def _chercher(racine: Path, texte: str, motif: str) -> str:
     if total > CORRESPONDANCES_MAX:
         lignes.append(f"  [tronqué : {total - CORRESPONDANCES_MAX} correspondance(s) de plus]")
     return "\n".join([entete, *lignes])
+
+
+def _cible(contexte: ContexteExecution, motif: str) -> tuple[Path, str, str]:
+    """(racine à parcourir, motif relatif à elle, préfixe d'affichage) — la maison si `~agent/`."""
+    if est_maison(motif or ""):
+        reste = motif.strip()[len(PREFIXE_MAISON):] if motif.strip() != "~agent" else ""
+        try:
+            resoudre_dans_bac(contexte.racine_bac, PREFIXE_MAISON + reste.replace("*", "x").replace("?", "x"))
+        except CheminHorsBac as exc:
+            raise EchecOutil(f"Pattern refused: {exc}") from exc
+        return racine_maison(), reste, PREFIXE_MAISON
+    return _racine_verifiee(contexte, motif), motif, ""
 
 
 def _racine_verifiee(contexte: ContexteExecution, motif: str) -> Path:
@@ -189,9 +203,8 @@ def _racine_verifiee(contexte: ContexteExecution, motif: str) -> Path:
 
 async def executer_liste(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     """Liste les fichiers du bac de `contexte`."""
-    motif = str(arguments.get("motif", "")).strip()
-    racine = _racine_verifiee(contexte, motif)
-    resultat = await asyncio.to_thread(_lister, racine, motif)
+    racine, motif, prefixe = _cible(contexte, str(arguments.get("motif", "")).strip())
+    resultat = await asyncio.to_thread(_lister, racine, motif, prefixe)
     logger.info("lister_fichiers : motif={} → {} caractères", motif or "*", len(resultat))
     return resultat
 
@@ -203,9 +216,8 @@ async def executer_recherche(arguments: dict[str, Any], contexte: ContexteExecut
         raise EchecOutil(
             "No text to search for. Send the `texte` argument, "
             'for example: {"texte": "def main"}')
-    motif = str(arguments.get("motif", "")).strip()
-    racine = _racine_verifiee(contexte, motif)
-    resultat = await asyncio.to_thread(_chercher, racine, texte, motif)
+    racine, motif, prefixe = _cible(contexte, str(arguments.get("motif", "")).strip())
+    resultat = await asyncio.to_thread(_chercher, racine, texte, motif, prefixe)
     logger.info("chercher_dans_fichiers : « {} » motif={} → {} caractères", texte, motif or "*", len(resultat))
     return resultat
 

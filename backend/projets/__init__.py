@@ -4,7 +4,7 @@ Interface publique : ce que le chat et l'inférence ont le droit d'utiliser. Le 
 """
 
 from backend.projets.modeles import LiaisonProjet
-from backend.projets.racine import ProjetInvalide, ProjetsDesactives, chemin_projet
+from backend.projets.racine import ProjetInvalide, ProjetsDesactives, catalogue, chemin_projet
 
 
 def instantane_avant_tour(nom: str, message: str) -> None:
@@ -15,4 +15,5 @@ def instantane_avant_tour(nom: str, message: str) -> None:
     prendre_sans_echec(nom, message)
 
 
-__all__ = ["LiaisonProjet", "ProjetInvalide", "ProjetsDesactives", "chemin_projet", "instantane_avant_tour"]
+__all__ = ["LiaisonProjet", "ProjetInvalide", "ProjetsDesactives", "catalogue", "chemin_projet",
+           "instantane_avant_tour"]

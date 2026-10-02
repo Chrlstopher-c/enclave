@@ -31,6 +31,9 @@ from pathlib import Path
 from loguru import logger
 from pydantic import BaseModel
 
+from backend.agent import PREFIXE as PREFIXE_MAISON
+from backend.agent import ecriture_permise
+from backend.agent import racine as racine_maison
 from backend.core import get_settings
 from backend.outils.atelier import (
     AtelierInjoignable,
@@ -174,6 +177,8 @@ def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
     """
     if not chemin_demande.strip():
         raise CheminHorsBac("Aucun chemin fourni.")
+    if est_maison(chemin_demande):
+        return _resoudre_maison(chemin_demande)
     demande = _relatif_au_bac(racine_bac, Path(chemin_demande))
     if demande.is_absolute():
         raise CheminHorsBac(f"Chemin absolu refusé : « {chemin_demande} ». Utiliser un chemin relatif au bac.")
@@ -184,6 +189,34 @@ def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
     if cible != racine and racine not in cible.parents:
         raise CheminHorsBac(f"Chemin hors du bac : « {chemin_demande} ».")
     return cible
+
+
+def est_maison(chemin: str) -> bool:
+    """Le chemin vise-t-il la maison partagée de l'agent (`~agent/…`) plutôt que le bac ?"""
+    texte = chemin.strip()
+    return texte == "~agent" or texte.startswith(PREFIXE_MAISON)
+
+
+def _resoudre_maison(chemin_demande: str) -> Path:
+    """Même confinement que le bac, appliqué à la maison de l'agent."""
+    relatif = Path(chemin_demande.strip()[len(PREFIXE_MAISON):] if chemin_demande.strip() != "~agent" else "")
+    if relatif.is_absolute():
+        raise CheminHorsBac(f"Chemin absolu refusé : « {chemin_demande} ».")
+    racine = racine_maison()
+    cible = (racine / relatif).resolve()
+    if cible != racine and racine not in cible.parents:
+        raise CheminHorsBac(f"Chemin hors de ~agent/ : « {chemin_demande} ».")
+    return cible
+
+
+def verifier_ecriture(cible: Path) -> None:
+    """Refuse d'écrire dans la maison hors de `memoire/`, `skills/` et `notes/` (SYSTEM.md reste à Chris)."""
+    racine = racine_maison()
+    if cible != racine and racine not in cible.parents:
+        return
+    if not ecriture_permise(cible.relative_to(racine)):
+        raise CheminHorsBac("Écriture refusée dans ~agent/ : seuls ~agent/memoire/, ~agent/skills/ et "
+                            "~agent/notes/ sont modifiables.")
 
 
 def executer_code_confine(code: str, racine_bac: Path) -> ResultatExecution:

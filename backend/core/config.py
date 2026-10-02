@@ -34,6 +34,7 @@ _SOUS_DOSSIERS: dict[str, str] = {
     "models_dir": "models",
     "engines_dir": "engines",
     "atelier_workspace": "ateliers",
+    "agent_dir": "agent",
 }
 
 # Atelier d'exécution : conteneur de dev persistant, atteint par son nom sur le réseau interne de
@@ -77,6 +78,11 @@ class Settings(BaseSettings):
     # volume commun : un fichier écrit ici par `ecrire_fichier` est vu par le shell de l'atelier,
     # et un fichier produit par une commande de l'atelier est balayé et rattaché à la conversation.
     atelier_workspace: Path = Field(default=None, validation_alias="ATELIER_WORKSPACE")
+    # Maison de l'agent, PARTAGÉE entre toutes les conversations : SYSTEM.md, AWARENESS.md, mémoire,
+    # skills, mcp.json. Le modèle y accède par le préfixe `~agent/` de ses outils de fichiers.
+    agent_dir: Path = Field(default=None, validation_alias="ECHOHUB_AGENT_DIR")
+    # `uid:gid` à qui rendre les fichiers écrits dans la maison (le backend Docker est root) ; vide = rien.
+    agent_proprietaire: str = Field(default="", validation_alias="ECHOHUB_AGENT_PROPRIETAIRE")
 
     host: str = Field(default="127.0.0.1", validation_alias="ECHOHUB_HOST")
     # Distinct du port par défaut de la v1 (37821), qui peut tourner simultanément sur la même
@@ -131,7 +137,7 @@ class Settings(BaseSettings):
         """Vide = désactivé : `Path('')` vaudrait le dossier courant, une racine que personne n'a choisie."""
         return valeur if valeur not in (None, "") else None
 
-    @field_validator("models_dir", "engines_dir", "atelier_workspace", mode="before")
+    @field_validator("models_dir", "engines_dir", "atelier_workspace", "agent_dir", mode="before")
     @classmethod
     def _deriver_de_data_home(cls, valeur: Any, info: Any) -> Any:
         """Un chemin non fourni tombe sous `data_home`, donc dans le volume persistant."""

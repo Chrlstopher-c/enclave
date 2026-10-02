@@ -20,6 +20,8 @@ Découpe interne, dans l'ordre des dépendances :
 
 from collections.abc import Sequence
 
+from loguru import logger
+
 from backend.outils.bac_a_sable import LIMITES_REELLES_TEXTE
 from backend.outils.contrat import DescriptionOutil, Outil, ResultatOutil
 from backend.outils.registre import (
@@ -29,6 +31,8 @@ from backend.outils.registre import (
     format_moteur,
     groupes,
 )
+from backend.agent import bloc_socle
+from backend.outils.awareness import regenerer as regenerer_awareness
 from backend.outils.socle import composer, construire
 from backend.outils.suivre_taches import liste_taches, taches_ouvertes
 
@@ -40,7 +44,20 @@ def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: 
     `outils` ne connaît pas `inference` et n'a pas à le découvrir. Vide, le socle n'affirme aucune
     identité — mieux vaut qu'il se taise que de nommer un modèle qui n'est pas celui qui répond.
     """
-    return construire(descriptions(actifs), modele, projet)
+    declarees = descriptions(actifs)
+    if not declarees:
+        return construire(declarees, modele, projet)
+    regenerer_awareness(declarees, projet)
+    return construire(declarees, modele, projet, maison=_bloc_maison())
+
+
+def _bloc_maison() -> str:
+    """Bloc de la maison de l'agent ; vide si elle est inaccessible — le socle part sans, jamais en échec."""
+    try:
+        return bloc_socle()
+    except Exception as exc:  # noqa: BLE001 — la maison est un plus, jamais une condition
+        logger.warning("Maison de l'agent indisponible : {}", exc)
+        return ""
 
 
 def prompt_systeme(prompt_conversation: str, modele: str = "",

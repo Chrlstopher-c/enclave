@@ -63,6 +63,9 @@ services:
       # existant garde son propriétaire, un modèle téléchargé depuis Docker appartiendra à root.
       - ${ECHOHUB_MODELES_HOTE:-echohub_models}:/data/models
       - echohub_userdata:/data/user              # base SQLite, configuration, journaux
+      # Maison de l'agent (SYSTEM.md, AWARENESS.md, mémoire, skills, mcp.json), partagée entre ses
+      # conversations. Sur la tour, ECHOHUB_AGENT_HOTE pointe sur le même dossier que le mode natif.
+      - ${ECHOHUB_AGENT_HOTE:-echohub_agent}:/data/agent
       # Espaces de travail des conversations, PARTAGÉS avec le conteneur atelier (même volume monté
       # sur /workspace là-bas). C'est ce partage qui fait qu'un fichier écrit par `ecrire_fichier`
       # est visible du shell de l'atelier, et qu'un fichier produit par une commande est balayé et
@@ -136,6 +139,9 @@ services:
       ATELIER_JETON: ${ATELIER_JETON:-}
       ATELIER_WORKSPACE: /data/ateliers
       ECHOHUB_PROJETS_RACINE: /projets
+      ECHOHUB_AGENT_DIR: /data/agent
+      # Le backend est root : les fichiers qu'il écrit dans la maison sont rendus à cet uid:gid.
+      ECHOHUB_AGENT_PROPRIETAIRE: ${ECHOHUB_AGENT_PROPRIETAIRE:-}
       # GGML_CUDA_ENABLE_UNIFIED_MEMORY est volontairement ABSENTE : sous WSL2 elle immobilise
       # le modèle en RAM avec la VRAM figée à 2 Go (mesuré). ggml active le comportement sur la
       # simple présence de la variable — une valeur vide suffirait à nuire. L'entrypoint la
@@ -245,3 +251,4 @@ volumes:
   echohub_searxng:
   # Espaces de travail des conversations, partagés backend <-> atelier (voir les deux services).
   echohub_ateliers:
+  echohub_agent:
