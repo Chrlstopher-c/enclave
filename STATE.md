@@ -5,10 +5,10 @@
 
 - **enclave en Docker** : `./start.sh --docker` → conteneur `echohub-v2` (healthy, GPU RTX 3060),
   interface sur `${ECHOHUB_PORT_WEB:-37920}` (nginx + auth basique). Image `echohub:v2`.
-- **Mobile** : quick tunnel cloudflared de l'HÔTE vers `localhost:37920`
-  (`logs/cloudflared-enclave.log`, PID dans `logs/cloudflared-enclave.pid`), séparé du conteneur
-  `emploi-tunnel` (projet emploi, intact). URL éphémère `*.trycloudflare.com`, change à chaque
-  relance, meurt au reboot. URL stable = tunnel nommé (non fait).
+- **Mobile** : URL stable `https://echohub-mobile.example.com` (vérifiée : 401 = écran
+  de connexion). Tunnel Cloudflare NOMMÉ, connecteur HORS tour (le Pi) : aucune config cloudflared
+  sur la tour. L'ingress existe déjà et pointe sur l'enclave de la tour (port 37920) ; il suffit
+  qu'enclave tourne en Docker pour que l'URL réponde. Ne PAS ouvrir de quick tunnel : inutile.
 
 ## Session du 2026-10-02 — Autonomie de l'agent en mode projet (branche `agent-autonomie`)
 
