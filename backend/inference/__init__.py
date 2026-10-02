@@ -425,12 +425,12 @@ class MoteurChat:
         return await superviseur.compter_contexte(_socle_outils_json(), _messages_depuis(messages))
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
     ) -> str | None:
         """Résumé cumulatif orienté agent, produit par le modèle chargé — ou `None` s'il échoue."""
         from backend.inference.resume_compaction import produire_resume
 
-        return await produire_resume(a_resumer, resume_precedent, langue, max_tokens)
+        return await produire_resume(a_resumer, resume_precedent, langue, max_tokens, consigne)
 
     async def _flux(self, requete: object) -> AsyncIterator[dict[str, Any]]:
         """Assemble le tour complet : contexte d'exécution, boucle d'outils, mesure du débit."""

@@ -26,15 +26,18 @@ import json
 from loguru import logger
 
 from backend.chat import annulation, depot, flux_sse, generation
+from backend.chat.compaction_manuelle import compacter_maintenant
 from backend.chat.modeles import (
     ActivationBranche,
     ArbreConversation,
     ConversationDetaillee,
     CreationConversation,
+    DemandeCompaction,
     DemandeEdition,
     DemandeGeneration,
     DemandeRejeu,
     EtatBranche,
+    InfoCompaction,
     MajConversation,
     MajReglages,
     MessageChat,
@@ -193,6 +196,14 @@ async def modifier_outils(conversation_id: str, corps: SelectionOutils) -> Selec
     ecrits = depot.ecrire_reglages(
         conversation_id, actuels.model_copy(update={"outils_actifs": corps.outils_actifs}))
     return SelectionOutils(outils_actifs=ecrits.outils_actifs)
+
+
+@routeur.post("/conversations/{conversation_id}/compacter", response_model=InfoCompaction)
+@_traduire_erreurs
+async def compacter(conversation_id: str, corps: DemandeCompaction) -> InfoCompaction:
+    """Compaction manuelle (`/compact [instructions]`) de la branche affichée, tout de suite."""
+    depot.exiger_conversation(conversation_id)
+    return await compacter_maintenant(conversation_id, corps.instructions)
 
 
 @routeur.get("/conversations/{conversation_id}/projet")

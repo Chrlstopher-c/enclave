@@ -171,6 +171,8 @@ async def preparer_compaction(
     conversation_id: str,
     message_id: str,
     langue: str = "",
+    forcer: bool = False,
+    consigne: str = "",
 ) -> ResultatCompaction:
     """Applique une compaction existante, mesure, et en déclenche une nouvelle si le seuil est franchi.
 
@@ -181,13 +183,14 @@ async def preparer_compaction(
     """
     courant = appliquer(entete, ancres, active)
     occupation = await moteur.mesurer_occupation(courant)
-    if not depasse_seuil(occupation):
+    # `forcer` : compaction manuelle (`/compact`) — sans seuil, et la queue réduite au minimum.
+    if not forcer and not depasse_seuil(occupation):
         return ResultatCompaction(messages=courant, info=None)
 
     contexte_total = occupation.contexte_total or 0
     tokens_avant = occupation.tokens_mesures or 0
     verbatim = _verbatim_courant(ancres, active)
-    budget = budget_queue(contexte_total)
+    budget = 0 if forcer else budget_queue(contexte_total)
 
     async def mesurer_tail(k: int) -> int | None:
         essai = appliquer(entete, verbatim[len(verbatim) - k :], None)
@@ -205,6 +208,7 @@ async def preparer_compaction(
         active.resume if active is not None else "",
         langue,
         max(RESUME_MAX_TOKENS_PLANCHER, int(FRACTION_MAX_RESUME * contexte_total)),
+        **({"consigne": consigne} if consigne.strip() else {}),
     )
     if resume is None:
         logger.warning("Résumé de compaction indisponible : génération sur contexte courant.")

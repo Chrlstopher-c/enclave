@@ -62,7 +62,7 @@ def construire_messages_resume(a_resumer: str, resume_precedent: str) -> list[Me
 
 
 async def produire_resume(
-    a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+    a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
 ) -> str | None:
     """Demande au modèle chargé un résumé cumulatif, ou `None` si rien ne peut être produit.
 
@@ -73,11 +73,13 @@ async def produire_resume(
     if not a_resumer.strip() and not resume_precedent.strip():
         return None
     messages = construire_messages_resume(a_resumer, resume_precedent)
+    systeme = PROMPT_RESUME_SYSTEME
     if langue.strip():
-        messages[0] = MessageChat(
-            role="system",
-            content=f"{PROMPT_RESUME_SYSTEME}\nLangue attendue du résumé : {langue.strip()}.",
-        )
+        systeme += f"\nLangue attendue du résumé : {langue.strip()}."
+    if consigne.strip():
+        # Compaction manuelle (`/compact …`) : ce que l'utilisateur demande de garder prime.
+        systeme += f"\nINSTRUCTIONS DE L'UTILISATEUR POUR CE RÉSUMÉ, PRIORITAIRES : {consigne.strip()}"
+    messages[0] = MessageChat(role="system", content=systeme)
     options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens)
     morceaux: list[str] = []
     try:

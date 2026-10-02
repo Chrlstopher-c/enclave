@@ -15,7 +15,7 @@ import type {
   MessageChat,
   ReglagesConversation,
 } from '../api/contrats';
-import { ecrireReglages, lireConversation, listerMessages } from '../api/conversations-api';
+import { compacterConversation, ecrireReglages, lireConversation, listerMessages } from '../api/conversations-api';
 import { journal } from '../api/journal';
 import { useGeneration } from './useGeneration';
 
@@ -146,20 +146,7 @@ export function useConversation(conversationId: string | null): EtatConversation
   const generation = useGeneration(conversationId, rafraichirMessages);
   const enregistrerReglages = useEnregistrementReglages(conversationId, socle);
 
-  // Dépendance sur `generation.envoyer`, stable, et non sur l'objet d'état reconstruit à chaque
-  // fragment reçu : sinon l'identité de `envoyer` change des dizaines de fois par seconde pendant
-  // une génération, et toute mise en dépendance ultérieure boucle.
-  const { envoyer: lancerGeneration } = generation;
-  const envoyer = useCallback(
-    async (contenu: string, fichierIds?: string[]): Promise<void> => {
-      if (conversationId === null) {
-        return;
-      }
-      setMessages([...socle.messages, messageLocal(conversationId, contenu)]);
-      await lancerGeneration(contenu, fichierIds);
-    },
-    [conversationId, socle.messages, setMessages, lancerGeneration],
-  );
+  const envoyer = useEnvoi(conversationId, socle, generation.envoyer, rafraichirMessages);
 
   return {
     detail: socle.detail,
@@ -173,6 +160,57 @@ export function useConversation(conversationId: string | null): EtatConversation
     annuler: generation.annuler,
     enregistrerReglages,
   };
+}
+
+/*
+ * Envoi d'un message — ou, pour `/compact [instructions]`, compaction manuelle sans génération.
+ * Dépendance sur `lancerGeneration`, stable, et non sur l'objet d'état reconstruit à chaque fragment
+ * reçu : sinon l'identité de `envoyer` change des dizaines de fois par seconde pendant une génération.
+ */
+function useEnvoi(
+  conversationId: string | null,
+  socle: Socle,
+  lancerGeneration: (contenu: string, fichierIds?: string[]) => Promise<void>,
+  relire: (id: string) => Promise<void>,
+): (contenu: string, fichierIds?: string[]) => Promise<void> {
+  const { messages, setMessages, setErreur } = socle;
+  return useCallback(
+    async (contenu: string, fichierIds?: string[]): Promise<void> => {
+      if (conversationId === null) {
+        return;
+      }
+      const instructions = instructionsDeCompaction(contenu);
+      if (instructions !== null) {
+        await compacterMaintenant(conversationId, instructions, relire, setErreur);
+        return;
+      }
+      setMessages([...messages, messageLocal(conversationId, contenu)]);
+      await lancerGeneration(contenu, fichierIds);
+    },
+    [conversationId, messages, setMessages, setErreur, lancerGeneration, relire],
+  );
+}
+
+/** `/compact` ou `/compact <instructions>` : les instructions (éventuellement vides), sinon `null`. */
+export function instructionsDeCompaction(contenu: string): string | null {
+  const trouve = /^\/compact(?:\s+([\s\S]*))?$/.exec(contenu.trim());
+  return trouve === null ? null : (trouve[1] ?? '').trim();
+}
+
+async function compacterMaintenant(
+  conversationId: string,
+  instructions: string,
+  relire: (id: string) => Promise<void>,
+  setErreur: (erreur: string | null) => void,
+): Promise<void> {
+  try {
+    await compacterConversation(conversationId, instructions);
+    setErreur(null);
+    await relire(conversationId);
+  } catch (cause) {
+    journal.erreur('compaction manuelle refusée', cause);
+    setErreur(messageErreur(cause));
+  }
 }
 
 function useEnregistrementReglages(

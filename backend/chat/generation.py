@@ -348,6 +348,11 @@ def _construire_contexte(
                               outils_actifs=reglages.outils_actifs, projet=reglages.projet)
 
 
+def contexte_de_branche(conversation_id: str, feuille: str | None) -> _ContexteConstruit:
+    """Contexte tel qu'il partirait au moteur pour la branche qui finit à `feuille` (compaction manuelle)."""
+    return _construire_contexte(conversation_id, depot.lire_reglages(conversation_id), feuille)
+
+
 def _socle_outils(reglages: ReglagesConversation) -> str:
     """Socle du harnais + prompt de conversation, ou le seul prompt si le harnais est indisponible.
 

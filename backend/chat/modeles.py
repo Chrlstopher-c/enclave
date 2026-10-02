@@ -412,3 +412,11 @@ class SelectionOutils(BaseModel):
     """
 
     outils_actifs: list[str] | None = None
+
+
+class DemandeCompaction(BaseModel):
+    """Corps de `POST …/compacter` : instructions facultatives, prioritaires pour le résumé."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    instructions: str = Field(default="", max_length=2_000)

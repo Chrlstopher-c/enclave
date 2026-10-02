@@ -5,6 +5,7 @@
 
 import { deleteJson, getJson, patchJson, postJson } from './client';
 import type {
+  InfoCompaction,
   ConversationDetaillee,
   MajReglages,
   MessageChat,
@@ -46,4 +47,9 @@ export function ecrireReglages(id: string, patch: MajReglages): Promise<Reglages
 /** Demande l'arrêt côté serveur. `annulee: false` signifie qu'il n'y avait rien à arrêter. */
 export function annulerGeneration(id: string): Promise<{ annulee: boolean }> {
   return postJson<{ annulee: boolean }>(`${RACINE}/${id}/annuler`, {});
+}
+
+/** Compaction manuelle (`/compact [instructions]`) de la branche affichée. */
+export function compacterConversation(id: string, instructions: string): Promise<InfoCompaction> {
+  return postJson<InfoCompaction>(`${RACINE}/${id}/compacter`, { instructions });
 }

@@ -142,9 +142,11 @@ class MoteurGeneration(Protocol):
         ...
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
     ) -> str | None:
         """Résumé cumulatif orienté agent des tours anciens, produit par le modèle chargé.
+
+        `consigne` : instructions de l'utilisateur pour CE résumé (compaction manuelle), prioritaires.
 
         `resume_precedent` est le résumé d'une compaction antérieure, à ENGLOBER et non à oublier.
         Rend `None` si le résumé ne peut pas être produit (aucun modèle prêt, échec moteur) : la

@@ -157,13 +157,15 @@ class _MoteurNormalise:
         return _occupation_depuis(brut)
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
     ) -> str | None:
         """Résumé cumulatif du moteur enveloppé, ou `None` s'il ne sait pas le produire."""
         resumer = getattr(self._moteur, "resumer", None)
         if resumer is None:
             logger.debug("Moteur {} sans résumé : compaction inerte.", type(self._moteur).__name__)
             return None
+        if consigne.strip():
+            return await resumer(a_resumer, resume_precedent, langue, max_tokens, consigne=consigne)
         return await resumer(a_resumer, resume_precedent, langue, max_tokens)
 
     async def _flux(self, requete: RequeteGeneration) -> AsyncIterator[ElementFlux]:
