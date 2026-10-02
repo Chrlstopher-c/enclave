@@ -34,7 +34,9 @@ import { journal } from '../api/journal';
  * moteur en train de produire. Passé ce délai on rompt localement, quitte à ce que le serveur
  * l'apprenne par la fermeture de la connexion.
  */
-const DELAI_ANNULATION_MS = 3_000;
+// 20 s : le serveur répond une fois le partiel ENREGISTRÉ (il attend jusqu'à 15 s, `DELAI_ARRET_S`).
+// À 3 s, la relecture partait avant l'écriture et l'écran se vidait jusqu'au rafraîchissement.
+const DELAI_ANNULATION_MS = 20_000;
 
 export interface EtatGeneration {
   /** Texte reçu jusqu'ici pour la réponse en cours ; `null` hors génération. */

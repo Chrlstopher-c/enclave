@@ -450,6 +450,7 @@ async def _produire(
         # ne s'écrit qu'APRÈS lui.
         erreur = _persister(preparation, etat) or erreur
         _persister_compaction(preparation, etat)
+        preparation.generation.terminee.set()
         if erreur is not None:
             await file.put(erreur)
         await file.put(_evenement_fin(preparation, etat))
@@ -577,7 +578,11 @@ async def _fragments(preparation: PreparationGeneration, etat: _EtatFlux) -> Asy
                 etat.interrompu = True
                 logger.info("Génération annulée sur {}", preparation.conversation_id)
                 break
-            element = await _element_suivant(iterateur, preparation.conversation_id)
+            element = await _element_suivant(iterateur, preparation)
+            if element is _ARRET:
+                etat.interrompu = True
+                logger.info("Génération annulée pendant une attente sur {}", preparation.conversation_id)
+                break
             if element is None:
                 break
             etat.fragments += 1
@@ -595,19 +600,48 @@ async def _fragments(preparation: PreparationGeneration, etat: _EtatFlux) -> Asy
         await _fermer(iterateur)
 
 
-async def _element_suivant(iterateur: AsyncIterator[object], conversation_id: str) -> object | None:
-    """Élément suivant, ou `None` en fin de flux. Une inactivité prolongée devient une erreur claire."""
+# Rendu par `_element_suivant` quand l'arrêt est demandé PENDANT l'attente (appel d'outil en cours).
+_ARRET = object()
+
+
+async def _element_suivant(iterateur: AsyncIterator[object], preparation: PreparationGeneration) -> object | None:
+    """Élément suivant, `None` en fin de flux, `_ARRET` si l'arrêt arrive pendant l'attente.
+
+    L'attente fait la course avec l'arrêt : une commande d'outil peut durer 10 min sans émettre un
+    token, et l'arrêt n'était vu qu'au token suivant. Une inactivité prolongée devient une erreur claire.
+    """
     delai = _delai_inactivite_s()
+    conversation_id = preparation.conversation_id
+    suivant = asyncio.ensure_future(iterateur.__anext__())
+    arret = asyncio.ensure_future(preparation.generation.arret.wait())
     try:
-        return await asyncio.wait_for(iterateur.__anext__(), timeout=delai)
-    except StopAsyncIteration:
-        return None
-    except asyncio.TimeoutError as exc:
+        faits, _ = await asyncio.wait({suivant, arret}, timeout=delai, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        arret.cancel()
+    if suivant not in faits:
+        await _abandonner(suivant, conversation_id)
+        if arret in faits or preparation.generation.arret.is_set():
+            return _ARRET
         logger.error("Moteur silencieux depuis {} s sur {}", delai, conversation_id)
         raise MoteurIndisponible(
             f"Le moteur n'a rien émis depuis {delai:.0f} s.",
             remediation="Vérifier l'état du moteur dans l'écran Système, puis recharger le modèle.",
-        ) from exc
+        )
+    try:
+        return suivant.result()
+    except StopAsyncIteration:
+        return None
+
+
+async def _abandonner(attente: asyncio.Future[object], conversation_id: str) -> None:
+    """Annule l'attente du moteur (appel d'outil compris) et en absorbe la fin, journalisée."""
+    attente.cancel()
+    try:
+        await attente
+    except (asyncio.CancelledError, StopAsyncIteration):
+        pass
+    except Exception as exc:  # noqa: BLE001 — l'arrêt prime ; l'erreur tardive est seulement tracée
+        logger.debug("Fin d'attente après arrêt sur {} : {}", conversation_id, exc)
 
 
 def _appliquer(element: object, etat: _EtatFlux) -> str:

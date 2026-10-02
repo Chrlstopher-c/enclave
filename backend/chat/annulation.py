@@ -23,6 +23,8 @@ from backend.chat.erreurs import GenerationDejaEnCours
 # Une réservation posée par la route mais jamais consommée (client parti entre la requête et la
 # lecture du flux) bloquerait la conversation indéfiniment. Passé ce délai, elle est reprise.
 DELAI_RESERVATION_ABANDONNEE_S = 30.0
+# Attente maximale d'un arrêt : de quoi fermer le flux et écrire le partiel, pas plus.
+DELAI_ARRET_S = 15.0
 
 
 @dataclass(slots=True)
@@ -34,6 +36,10 @@ class GenerationActive:
     reservee_le: float
     flux_demarre: bool = False
     arret: asyncio.Event = field(default_factory=asyncio.Event)
+    # Posé APRÈS la persistance du message (même partiel) : c'est ce qu'attend un arrêt pour que
+    # l'interface relise un fil où le travail déjà fait figure. Sans lui, la relecture partait avant
+    # l'écriture et l'écran se vidait jusqu'au rafraîchissement suivant (2026-10-02).
+    terminee: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 # État partagé du processus : les générations en cours, indexées par conversation.
@@ -88,6 +94,18 @@ def annuler(conversation_id: str) -> bool:
         return False
     generation.arret.set()
     logger.info("Annulation demandée sur la conversation {}", conversation_id)
+    return True
+
+
+async def annuler_et_attendre(conversation_id: str, delai_s: float = DELAI_ARRET_S) -> bool:
+    """Arrête la génération et attend qu'elle ait persisté ce qu'elle a produit (borné par `delai_s`)."""
+    generation = _actives.get(conversation_id)
+    if not annuler(conversation_id) or generation is None:
+        return False
+    try:
+        await asyncio.wait_for(generation.terminee.wait(), timeout=delai_s)
+    except asyncio.TimeoutError:
+        logger.warning("Arrêt de {} : génération pas terminée après {:.0f} s.", conversation_id, delai_s)
     return True
 
 

@@ -323,4 +323,4 @@ async def _encoder_flux(preparation: generation.PreparationGeneration) -> AsyncI
 async def annuler_generation(conversation_id: str) -> dict[str, bool]:
     """Demande l'arrêt de la génération en cours. `annulee` vaut `false` s'il n'y en avait aucune."""
     depot.exiger_conversation(conversation_id)
-    return {"annulee": annulation.annuler(conversation_id)}
+    return {"annulee": await annulation.annuler_et_attendre(conversation_id)}
