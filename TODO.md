@@ -67,6 +67,8 @@ et son URL change à chaque relance — la retrouver dans `%LOCALAPPDATA%\cloudf
       escaladées). Si la boucle d'annonces revient malgré la fin du compte à rebours, borner plutôt le
       nombre de relances consécutives sans appel, quel qu'en soit le motif.
 - [ ] Panneau Fichiers : liste de tâches de l'agent affichable dans le panneau (aujourd'hui : dans le fil).
+- [ ] `backend/chat/generation.py` dépasse 500 lignes (689) et 4 fonctions > 35 : extraire la lecture du
+      moteur (`_element_suivant`, `_abandonner`) et la persistance dans des modules dédiés.
 - [ ] `backend/inference/__init__.py` dépasse 500 lignes (669) : à découper (boucle d'outils à part).
 - [ ] **Dernière ligne droite du modèle** : relances sur annonce/pause/reste faisable en place
       (`fin_projet.py`), mais sur `todo-final` il finit à 8/9 en épuisant ses 6 relances en pauses sans
