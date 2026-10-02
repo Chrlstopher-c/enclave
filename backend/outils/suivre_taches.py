@@ -120,6 +120,12 @@ def taches_ouvertes(conversation_id: str) -> list[str]:
     return [t.titre for t in _LISTES.get(conversation_id, []) if t.etat in OUVERTS]
 
 
+def liste_taches(conversation_id: str) -> str:
+    """La liste rendue telle que le modèle l'a vue, ou chaîne vide : réinjectée dans un résumé de compaction."""
+    taches = _LISTES.get(conversation_id)
+    return rendre(taches) if taches else ""
+
+
 OUTIL = Outil(description=DESCRIPTION, executer=_executer)
 
-__all__ = ["OUTIL", "TACHES_MAX", "EtatTache", "Tache", "rendre", "taches_ouvertes"]
+__all__ = ["OUTIL", "TACHES_MAX", "EtatTache", "Tache", "liste_taches", "rendre", "taches_ouvertes"]

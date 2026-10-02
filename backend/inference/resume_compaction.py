@@ -25,17 +25,23 @@ from backend.inference.engines_adapters.contrat import separer_raisonnement
 # même tâche décrite deux fois de la même façon, pas une reformulation qui dérive à chaque compaction.
 _TEMPERATURE_RESUME = 0.3
 
+# Même consigne que la compaction de Quart (« Conserve … Jette … ») : un agent reprend sa tâche sur ce
+# résumé, il doit y trouver ce qui ne se relit pas ailleurs — et rien de ce qui est déjà sur disque.
 PROMPT_RESUME_SYSTEME = (
     "Tu es un compacteur de contexte pour un agent autonome. On te donne un extrait de conversation, "
     "éventuellement précédé d'un résumé antérieur à INTÉGRER. Produis un unique RÉSUMÉ CUMULATIF, "
     "dense et fidèle, rédigé dans la MÊME LANGUE que la conversation. N'ajoute aucun commentaire, ne "
     "t'adresse à personne, n'annonce pas que tu résumes : écris seulement le résumé. Structure-le "
     "pour qu'un agent reprenne la tâche sans relire les messages :\n"
-    "- OBJECTIF : le but de la tâche.\n"
-    "- ÉTAT : où en est la tâche maintenant.\n"
-    "- FICHIERS : fichiers créés ou modifiés, et leur rôle.\n"
-    "- DÉCISIONS : les choix faits et leur raison.\n"
-    "- À FAIRE : ce qui reste.\n"
+    "- OBJECTIF : le but de la tâche, tel que l'utilisateur l'a demandé.\n"
+    "- ÉTAT : l'étape en cours et les suivantes ; la liste de tâches si elle existe, avec l'état de chacune.\n"
+    "- DÉCISIONS : les choix faits et POURQUOI.\n"
+    "- FICHIERS : fichiers créés ou modifiés, et leur rôle (pas leur contenu).\n"
+    "- COMMANDES : les commandes de build, de test et de lancement qui MARCHENT, telles quelles ; "
+    "les serveurs lancés et leurs ports ; l'état git s'il y en a un.\n"
+    "- PIÈGES : les erreurs rencontrées, leur cause et leur correctif.\n"
+    "JETTE : les sorties d'outils (garde-en seulement la conclusion), les explorations closes, et le "
+    "code déjà écrit — il est sur disque, l'agent le relira s'il en a besoin.\n"
     "Si un résumé antérieur est fourni, ENGLOBE-le : n'oublie rien de ce qu'il portait."
 )
 

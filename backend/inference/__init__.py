@@ -48,6 +48,7 @@ from backend.inference.harnais import (
 from backend.inference.reprise import CONSIGNE_CLOTURE_PROMESSE
 from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
+from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -260,6 +261,13 @@ def _avec_avertissement(messages: list[MessageChat], etat: EtatBoucle) -> list[M
     if avis is None or etat.pre_rempli:
         return messages
     return list(messages) + [MessageChat(role="tool", content=avis)]
+
+
+def _taches(contexte: ContexteExecution) -> str:
+    """Liste de tâches de la conversation, réinjectée dans un résumé de compaction ; vide si indisponible."""
+    from backend.outils import liste_taches
+
+    return liste_taches(contexte.conversation_id)
 
 
 def _moteur_pre_remplit() -> bool:
@@ -558,7 +566,7 @@ class MoteurChat:
         """
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
                           outils_declares=outils or None, mode_projet=contexte.projet is not None,
-                          pre_remplissage_permis=_moteur_pre_remplit())
+                          pre_remplissage_permis=_moteur_pre_remplit(), compaction=demarrer(messages))
         while not budget_epuise(etat):
             messages = _avec_avertissement(messages, etat)
             async for morceau in self._diffuser_tour(messages, options, etat):
@@ -609,9 +617,15 @@ class MoteurChat:
         moteur, sinon il lui sert de modèle à recopier) ; `_jouer_appels` y ajoute les réponses.
         """
         harnais.rearmer_relances(etat)
+        ouvertes_avant = len(etat.taches_ouvertes or [])
         async for etape in _jouer_appels(appels, messages, contexte, etat, texte):
             yield etape
         _prolonger_si_demande(etat)
+        # Fin d'étape au sens de Quart : une tâche s'est fermée pendant ce tour.
+        etape_terminee = etat.taches_ouvertes is not None and len(etat.taches_ouvertes) < ouvertes_avant
+        note = await compacter_si_besoin(messages, etat.compaction, etape_terminee, _taches(contexte))
+        if note is not None:
+            yield {"texte": note}
 
     async def _cloturer(
         self, messages: list[MessageChat], options: OptionsGeneration, aboutis: int,

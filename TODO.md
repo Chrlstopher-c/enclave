@@ -4,6 +4,22 @@
 
 ## En cours
 
+### Chantier « agent maison » (branche `agent-maison`, demandé par Chris le 2026-10-02)
+Ne PAS appliquer pendant que l'agent de Chris travaille : coder et tester sur la branche, activer au
+redémarrage qu'il choisira. Ordre :
+- [ ] A. Autocompact à la Quart : DANS la boucle d'outils (fin d'étape = tâche `fait`, ou fin de tour
+      d'outil), seuils min(120k, 40 %) en fin d'étape / min(350k, 70 %) dur ; consigne alignée (commandes,
+      git, pièges ; jeter sorties d'outils et code sur disque) ; liste de tâches réinjectée.
+- [ ] B. Maison de l'agent (dossier partagé entre sessions, `ECHOHUB_AGENT_DIR`) : SYSTEM.md (son
+      CLAUDE.md) chargé dans le socle ; mémoire (un fait par fichier + index) avec outils ; skills
+      (liste dans le socle, corps chargé à la demande) ; AWARENESS.md (capacités, MCP, skills, API, projets),
+      JAMAIS lu en entier : plan des sections + lecture par section + recherche.
+- [ ] C. Doctrine du socle : méthode Claude Code (chercher puis lire par plage, jamais un fichier entier
+      sans raison), aller au bout, ne pas refuser, tests unitaires + build + e2e (sans capture d'écran).
+- [ ] D. Client MCP (HTTP + stdio, `mcp.json`) exposant les outils des serveurs ; Playwright MCP
+      (snapshots d'accessibilité, texte) dans l'atelier pour les tests e2e des apps qu'il y lance.
+- [ ] E. Hygiène de contexte : outils de lecture structurée (`plan_fichier`, `lire_section`).
+
 Rien. Arbre git propre, application en ligne, accès distant opérationnel, 413 tests verts.
 
 **Services vivants à connaître en reprenant** : conteneurs `echohub-v2` et `echohub-searxng`, plus un

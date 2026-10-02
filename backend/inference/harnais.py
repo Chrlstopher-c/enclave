@@ -69,6 +69,7 @@ from backend.inference.fin_projet import (
     reste_faisable,
     visible,
 )
+from backend.inference.compaction_boucle import EtatCompaction
 from backend.inference.budget_outils import (
     CONSIGNE_AVERTISSEMENT,
     CONSIGNE_DERNIER_TOUR,
@@ -290,6 +291,8 @@ class EtatBoucle:
     # Texte du dernier tour du moteur, rangé par `_diffuser_tour` pour que la boucle n'ait pas à
     # tenir le tampon elle-même.
     texte_recu: str = ""
+    # Compaction pendant la tâche (`compaction_boucle`) : fenêtre et ratio caractères/token mesurés.
+    compaction: EtatCompaction = field(default_factory=EtatCompaction)
     relances_taches: int = 0
     ouvertes_a_la_relance: int | None = None
 

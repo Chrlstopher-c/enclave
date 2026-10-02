@@ -30,15 +30,11 @@ from loguru import logger
 from backend.chat.modeles import InfoCompaction
 from backend.chat.port_inference import MessageInference, MoteurGeneration, OccupationContexte
 from backend.core import maintenant
+from backend.core.politique_compaction import budget_queue, decider
 
-# Seuil de déclenchement : une seule constante nommée, jamais un nombre dispersé. 10 % de marge sous
-# la fenêtre servie — au-delà, une session longue tronquerait en silence et perdrait sa tâche.
-SEUIL_COMPACTION = 0.90
-
-# Cible d'occupation de la queue conservée mot pour mot, APRÈS compaction. On garde bien en dessous
-# du seuil pour ne pas re-déclencher au tour suivant ; le résumé et le socle occupent le reste du
-# budget entre cette cible et le seuil.
-CIBLE_TAIL = 0.50
+# Seuils et budget de queue : la règle de Quart, commune à `chat` (ici, au départ d'un message) et à
+# `inference` (dans la boucle d'outils) — `backend.core.politique_compaction`. Un nouveau message de
+# l'utilisateur suit un tour TERMINÉ : c'est une fin d'étape, le seuil d'étape s'applique.
 
 # On garde toujours au moins ce nombre de messages récents intacts : le dernier échange en cours ne
 # doit jamais partir dans le résumé, sous peine de résumer la question à laquelle le modèle répond.
@@ -74,12 +70,12 @@ class ResultatCompaction(NamedTuple):
 
 
 def depasse_seuil(occupation: OccupationContexte) -> bool:
-    """Vrai quand l'occupation MESURÉE franchit le seuil. Une mesure absente ne déclenche jamais."""
+    """Vrai quand l'occupation MESURÉE franchit le seuil d'étape. Une mesure absente ne déclenche jamais."""
     if not occupation.mesurable:
         return False
     if occupation.contexte_total is None or occupation.tokens_mesures is None:
         return False
-    return occupation.tokens_mesures >= SEUIL_COMPACTION * occupation.contexte_total
+    return decider(occupation.tokens_mesures, occupation.contexte_total, etape_terminee=True) is not None
 
 
 def _message_resume(resume: str) -> MessageInference:
@@ -191,7 +187,7 @@ async def preparer_compaction(
     contexte_total = occupation.contexte_total or 0
     tokens_avant = occupation.tokens_mesures or 0
     verbatim = _verbatim_courant(ancres, active)
-    budget = int(CIBLE_TAIL * contexte_total)
+    budget = budget_queue(contexte_total)
 
     async def mesurer_tail(k: int) -> int | None:
         essai = appliquer(entete, verbatim[len(verbatim) - k :], None)
