@@ -21,11 +21,13 @@ def _appeler(arguments: dict, contexte: ContexteExecution) -> str:
 
 def test_liste_rendue_et_taches_ouvertes(tmp_path: Path) -> None:
     contexte = _contexte(tmp_path)
-    sortie = _appeler({"taches": [{"titre": "Squelette", "etat": "fait"}, {"titre": "API", "etat": "en_cours"},
+    sortie = _appeler({"taches": [{"titre": "Squelette", "etat": "fait", "preuve": "ls : 4 fichiers"},
+                                  {"titre": "API", "etat": "en_cours"},
                                   {"titre": "Tests", "etat": "a_faire"}]}, contexte)
     assert sortie.startswith("Tâches (1/3 faites)") and "[x] Squelette" in sortie and "[>] API" in sortie
     assert taches_ouvertes("conv-taches") == ["API", "Tests"]
-    _appeler({"todos": [{"titre": "API", "etat": "fait"}, {"titre": "Tests", "etat": "abandonne",
+    _appeler({"todos": [{"titre": "API", "etat": "fait", "preuve": "curl → 200"},
+                                  {"titre": "Tests", "etat": "abandonne",
                                                             "raison": "hors périmètre"}]}, contexte)
     assert taches_ouvertes("conv-taches") == []
 
@@ -36,3 +38,14 @@ def test_bloque_sans_raison_refuse_et_etat_inconnu_refuse(tmp_path: Path) -> Non
     with pytest.raises(EchecOutil):
         _appeler({"taches": [{"titre": "X", "etat": "presque"}]}, _contexte(tmp_path, "c2"))
     assert taches_ouvertes("c2") == []
+
+
+def test_fait_exige_une_preuve_et_liste_inchangee_refusee(tmp_path: Path) -> None:
+    contexte = _contexte(tmp_path, "c3")
+    _appeler({"taches": [{"titre": "API", "etat": "en_cours"}]}, contexte)
+    with pytest.raises(EchecOutil, match="sans `preuve`"):
+        _appeler({"taches": [{"titre": "API", "etat": "fait"}]}, contexte)
+    sortie = _appeler({"taches": [{"titre": "API", "etat": "fait", "preuve": "pytest -q : 9 passed"}]}, contexte)
+    assert "preuve : pytest -q : 9 passed" in sortie
+    with pytest.raises(EchecOutil, match="liste inchangée"):
+        _appeler({"taches": [{"titre": "API", "etat": "fait", "preuve": "pytest -q : 9 passed"}]}, contexte)

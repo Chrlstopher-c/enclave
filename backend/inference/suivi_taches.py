@@ -21,9 +21,9 @@ RELANCES_TACHES_MAX = 3
 
 CONSIGNE_TACHES_OUVERTES = (
     "Your task list still has open items: {taches}. Your turn cannot end on an open task. Do the next "
-    "one NOW, starting with a tool call — then mark it `fait` with `suivre_taches` once a check proved "
-    "it. If an item really needs the user, mark it `bloque` with the question in `raison`; if it no "
-    "longer applies, mark it `abandonne` with the reason."
+    "one NOW, starting with a tool call — then mark it `fait` with `suivre_taches` and its `preuve` once a "
+    "check proved it. NEVER mark an item `fait` just to end the turn. If an item really needs the user, "
+    "mark it `bloque` with the question in `raison`; if it no longer applies, `abandonne` with the reason."
 )
 
 

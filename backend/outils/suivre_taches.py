@@ -43,6 +43,10 @@ class Tache(BaseModel):
     titre: str = Field(min_length=1, max_length=200)
     etat: EtatTache = EtatTache.A_FAIRE
     raison: str = Field(default="", max_length=300)
+    # Ce qui PROUVE qu'une tâche est faite (« pytest -q : 9 passed », « curl /api/notes → 200 »).
+    # Exigée au passage à `fait` : le 2026-10-02 le modèle marquait tout fait pour sortir d'une relance,
+    # sans rien avoir exécuté. Le harnais ne juge pas la vérité, mais une preuve se lit et se vérifie.
+    preuve: str = Field(default="", max_length=300)
 
 
 _LISTES: dict[str, list[Tache]] = {}
@@ -51,8 +55,10 @@ DESCRIPTION = DescriptionOutil(
     nom="suivre_taches",
     description=(
         "Your task list for the current request, replaced in full at each call. For any request of "
-        "more than two steps, call it FIRST with your plan, then again whenever an item changes: one "
-        "item `en_cours` at a time, `fait` only once a command proved it works. The harness will not "
+        "more than two steps, call it FIRST with your plan, then again whenever an item CHANGES: one "
+        "item `en_cours` at a time; `fait` only once a command proved it, and that item needs `preuve` "
+        "(the check and its result, e.g. `pytest -q: 9 passed`). Never mark an item `fait` to end a turn: "
+        "do it first. Only WORK items go in the list — not « reply to the user ». The harness will not "
         "let your turn end while an item is `a_faire` or `en_cours` — finish it, or mark it `bloque` "
         "(needs the user: put the question in `raison`) or `abandonne` (with the reason)."
     ),
@@ -68,6 +74,8 @@ DESCRIPTION = DescriptionOutil(
                         "titre": {"type": "string", "description": "What this step delivers, in a few words."},
                         "etat": {"type": "string", "enum": [e.value for e in EtatTache]},
                         "raison": {"type": "string", "description": "Required for `bloque` and `abandonne`."},
+                        "preuve": {"type": "string",
+                                   "description": "Required when an item becomes `fait`: the check that proved it."},
                     },
                     "required": ["titre", "etat"],
                 },
@@ -77,6 +85,21 @@ DESCRIPTION = DescriptionOutil(
     },
     alias={alias: "taches" for alias in ("todos", "tasks", "liste", "plan", "items")},
 )
+
+
+def _verifier_transitions(avant: list[Tache], apres: list[Tache]) -> None:
+    """Refuse une liste inchangée (boucle) et un passage à `fait` sans preuve."""
+    if avant and [(t.titre, t.etat) for t in avant] == [(t.titre, t.etat) for t in apres]:
+        raise EchecOutil(
+            "Échec : liste inchangée. N'appelle `suivre_taches` que quand une tâche CHANGE. Si tout est "
+            "fait, écris maintenant ta réponse finale à l'utilisateur, sans autre appel.")
+    deja_faites = {t.titre for t in avant if t.etat == EtatTache.FAIT}
+    sans_preuve = [t.titre for t in apres
+                   if t.etat == EtatTache.FAIT and t.titre not in deja_faites and not t.preuve.strip()]
+    if sans_preuve:
+        raise EchecOutil(
+            f"Échec : {sans_preuve} passe(nt) à `fait` sans `preuve`. Indique la vérification qui le prouve "
+            "(commande et résultat). Si tu ne l'as pas encore faite, laisse la tâche `en_cours` et fais-la.")
 
 
 def _lire(arguments: dict[str, Any]) -> list[Tache]:
@@ -101,12 +124,14 @@ def _lire(arguments: dict[str, Any]) -> list[Tache]:
 
 def rendre(taches: list[Tache]) -> str:
     faites = sum(t.etat == EtatTache.FAIT for t in taches)
-    lignes = [f"{_CASE[t.etat]} {t.titre}" + (f" — {t.raison}" if t.raison else "") for t in taches]
+    lignes = [f"{_CASE[t.etat]} {t.titre}" + (f" — {t.raison}" if t.raison else "")
+              + (f" — preuve : {t.preuve}" if t.preuve and t.etat == EtatTache.FAIT else "") for t in taches]
     return f"Tâches ({faites}/{len(taches)} faites) :\n" + "\n".join(lignes)
 
 
 async def _executer(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     taches = _lire(arguments)
+    _verifier_transitions(_LISTES.get(contexte.conversation_id, []), taches)
     _LISTES[contexte.conversation_id] = taches
     en_cours = sum(t.etat == EtatTache.EN_COURS for t in taches)
     logger.info("Tâches de {} : {} dont {} ouverte(s).", contexte.conversation_id, len(taches),
