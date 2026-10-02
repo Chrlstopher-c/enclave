@@ -38,7 +38,12 @@ WORKDIR /opt/atelier
 COPY requirements.txt .
 RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
-COPY serveur.py processus.py apercu.py ./
+# Serveurs MCP de Chris (terminal PTY, processus de fond) servis en HTTP DANS l'atelier : leur code est
+# monté en lecture seule sur /opt/mcp ; leurs dépendances vivent dans un venv à part, ni dans celles du
+# service, ni dans le python système que l'agent modifie à volonté.
+RUN python3 -m venv /opt/mcp-venv \
+    && /opt/mcp-venv/bin/pip install --no-cache-dir "mcp==1.27.1" uvicorn loguru pydantic-settings pexpect pyte
+COPY serveur.py processus.py apercu.py mcp_http.py ./
 
 # Sonde locale, jamais publiée sur l'hôte : le healthcheck Docker interroge la route ouverte /sante.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \

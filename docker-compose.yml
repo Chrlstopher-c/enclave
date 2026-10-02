@@ -242,9 +242,14 @@ services:
       # Nom de volume par défaut ; en mode NATIF, chemin de l'hôte = celui du backend natif
       # (ATELIER_WORKSPACE), pour que les deux voient les mêmes fichiers.
       - ${ECHOHUB_ATELIERS_HOTE:-echohub_ateliers}:/workspace
-      # La SEULE fenêtre sur l'hôte : la racine des projets. Un projet confié à une conversation
+      # La SEULE fenêtre en ÉCRITURE sur l'hôte : la racine des projets. Un projet confié à une conversation
       # y est un sous-dossier ; les garde-fous refusent d'en sortir.
       - ${ECHOHUB_PROJETS_HOTE:-./projets}:/projets
+      # Serveurs MCP de Chris (pty-mcp, log-watcher-mcp) servis DANS l'atelier par mcp_http.py — jamais
+      # sur l'hôte, où ils donneraient à l'agent un terminal hors conteneur. Lecture seule, et seulement
+      # ces deux dossiers : jamais le dossier parent, qui contient d'autres serveurs.
+      - ${ECHOHUB_MCP_PTY_HOTE:-./atelier/mcp-vide}:/opt/mcp/pty-mcp:ro
+      - ${ECHOHUB_MCP_LOGWATCHER_HOTE:-./atelier/mcp-vide}:/opt/mcp/log-watcher-mcp:ro
     # Garde-fous : une commande de l'agent ne doit pas pouvoir asphyxier l'hôte. Généreux mais bornés.
     mem_limit: 4g
     cpus: 4.0

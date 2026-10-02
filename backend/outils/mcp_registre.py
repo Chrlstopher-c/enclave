@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from loguru import logger
@@ -45,6 +46,15 @@ def configuration() -> dict[str, dict[str, Any]]:
     return {nom: d for nom, d in serveurs.items() if isinstance(d, dict) and not d.get("disabled")}
 
 
+def _en_tetes(definition: dict[str, Any]) -> dict[str, str]:
+    """En-têtes HTTP du serveur, `${VAR}` remplacé depuis l'environnement du backend.
+
+    Le secret (ex. `${ATELIER_JETON}`) n'est donc jamais écrit dans mcp.json, que le modèle peut lire.
+    """
+    brut = definition.get("headers") or {}
+    return {str(k): os.path.expandvars(str(v)) for k, v in brut.items()} if isinstance(brut, dict) else {}
+
+
 def _client(nom: str) -> ClientMCP:
     definition = configuration().get(nom)
     if definition is None:
@@ -53,7 +63,7 @@ def _client(nom: str) -> ClientMCP:
     signature = (json.dumps(definition, sort_keys=True), id(asyncio.get_running_loop()))
     if nom not in _CLIENTS or _SIGNATURE.get(nom) != signature:
         if definition.get("url"):
-            transport: Any = TransportHTTP(str(definition["url"]), definition.get("headers"))
+            transport: Any = TransportHTTP(str(definition["url"]), _en_tetes(definition))
         elif definition.get("command"):
             transport = TransportStdio([str(definition["command"]), *map(str, definition.get("args", []))],
                                        definition.get("env"))

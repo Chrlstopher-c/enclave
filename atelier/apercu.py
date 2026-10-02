@@ -17,7 +17,8 @@ from fastapi import FastAPI, Request, Response
 from loguru import logger
 
 PORT_APERCU = 8090
-PORTS_RESERVES = frozenset({8080, PORT_APERCU})
+# 8932/8933 : serveurs MCP de l'atelier (`serveur.SERVEURS_MCP`), jamais une app à prévisualiser.
+PORTS_RESERVES = frozenset({8080, PORT_APERCU, 8932, 8933})
 _SAUT_PAR_SAUT = frozenset({"connection", "keep-alive", "transfer-encoding", "upgrade", "host",
                             "content-length", "content-encoding"})
 _TCP = (Path("/proc/net/tcp"), Path("/proc/net/tcp6"))

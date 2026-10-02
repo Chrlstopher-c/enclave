@@ -231,6 +231,26 @@ def pointer_apercu(requete: RequeteApercu) -> dict[str, object]:
     return lire_apercu()
 
 
+# Serveurs MCP montés sur /opt/mcp (dossier de l'hôte, lecture seule), servis en HTTP sur le réseau
+# interne par `mcp_http.py`, jeton de l'atelier exigé. Absent = rien à démarrer, pas une erreur.
+SERVEURS_MCP = {"pty-mcp": 8932, "log-watcher-mcp": 8933}
+_RACINE_MCP = Path("/opt/mcp")
+_PYTHON_MCP = "/opt/mcp-venv/bin/python"
+
+
+def _demarrer_mcp() -> None:
+    for nom, port in SERVEURS_MCP.items():
+        script = _RACINE_MCP / nom / "mcp_server.py"
+        if not script.is_file():
+            continue
+        try:
+            subprocess.Popen([_PYTHON_MCP, str(Path(__file__).with_name("mcp_http.py")), str(script), str(port)],
+                             cwd="/projets" if Path("/projets").is_dir() else "/", start_new_session=True)
+            logger.info("Serveur MCP {} servi sur le port {}", nom, port)
+        except OSError as exc:
+            logger.error("Serveur MCP {} non démarré : {}", nom, exc)
+
+
 def _demarrer_relais() -> None:
     serveur = uvicorn.Server(uvicorn.Config(apercu.app, host="0.0.0.0", port=apercu.PORT_APERCU,
                                             log_level="warning"))
@@ -241,4 +261,5 @@ if __name__ == "__main__":
     if not _JETON:
         logger.warning("ATELIER_JETON absent : toutes les exécutions seront refusées (repli fermé).")
     _demarrer_relais()
+    _demarrer_mcp()
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")

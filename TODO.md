@@ -22,8 +22,12 @@ redémarrage qu'il choisira. Ordre :
 
 - [x] F. Réglages Qwen3.6 officiels (min_p, presence_penalty ajoutés), réflexion passée retirée en boucle.
 - [ ] APPLIQUER (redémarrage choisi par Chris) : fusionner `agent-maison` ; `.env` : ECHOHUB_AGENT_HOTE
-      (même dossier que le natif), ECHOHUB_AGENT_PROPRIETAIRE=1000:1000 ; créer ~agent/mcp.json avec
-      playwright → http://echohub-navigateur:8931/mcp ; `./start.sh --docker` (démarre le navigateur).
+      (même dossier que le natif), ECHOHUB_AGENT_PROPRIETAIRE=1000:1000, ECHOHUB_MCP_PTY_HOTE et
+      ECHOHUB_MCP_LOGWATCHER_HOTE (dossiers echo-os/mcp/pty-mcp et log-watcher-mcp) ; ~agent/mcp.json :
+      playwright → http://echohub-navigateur:8931/mcp ; pty → http://echohub-atelier:8932/mcp et
+      log-watcher → http://echohub-atelier:8933/mcp, en-tête `x-atelier-jeton: ${ATELIER_JETON}`, avec une
+      `description` (cwd=/projets/<projet>) ; `./start.sh --docker` (reconstruit l'atelier, démarre le
+      navigateur).
 - [ ] MTP : llama-server récent compilé POUR l'image (22.04/CUDA 12) avec `--spec-type draft-mtp`
       (~1,5× annoncé) — le binaire Docker actuel (26/08) ignore les couches nextn.
 - [ ] Conversations existantes : elles gardent leurs anciens réglages enregistrés (temp 0.8, top_k 40,
