@@ -1,6 +1,15 @@
 # STATE — EchoHub v2
 
 
+## Accès (2026-10-02)
+
+- **enclave en Docker** : `./start.sh --docker` → conteneur `echohub-v2` (healthy, GPU RTX 3060),
+  interface sur `${ECHOHUB_PORT_WEB:-37920}` (nginx + auth basique). Image `echohub:v2`.
+- **Mobile** : quick tunnel cloudflared de l'HÔTE vers `localhost:37920`
+  (`logs/cloudflared-enclave.log`, PID dans `logs/cloudflared-enclave.pid`), séparé du conteneur
+  `emploi-tunnel` (projet emploi, intact). URL éphémère `*.trycloudflare.com`, change à chaque
+  relance, meurt au reboot. URL stable = tunnel nommé (non fait).
+
 ## Session du 2026-10-02 — Autonomie de l'agent en mode projet (branche `agent-autonomie`)
 
 Né de captures de Chris (projet `spoofer`) : boucle « I keep announcing… let me batch », lecture de
