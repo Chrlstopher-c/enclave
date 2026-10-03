@@ -17,6 +17,24 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
+## Session du 2026-10-03 — Moteur Strata pour Qwen3.8-Flash-Next (SC117 abliterated)
+
+llama.cpp rendait ce modèle inutilisable ici (6,6 tok/s, prompt à 5 tok/s, cf. « Mesures »). Strata
+(github.com/Niko1221/Strata, moteur écrit pour lui : cache d'experts en VRAM par profil, MTP, prefill
+par blocs de 8 k) est installé sur l'HÔTE : `~/build/Strata` (moteur compilé sm_86, `setup.sh
+--gguf-dir` sur les shards SC117 déjà téléchargés — l'installateur prend sinon l'amont CENSURÉ),
+packs dans `~/modeles/strata-data`, config `strata-iq2_xs.json` (contexte porté à 65 536, KV int8,
+`.orig` = celle du setup). Son contrôle « IQ2_XS : tight » à 47 Go de RAM : à surveiller.
+- **Branchement** : `docker/strata-hote.sh` (appelé par start/stop `--docker`) lance son serveur À
+  VIDE (`--lazy`) sur docker0 seulement, clé `STRATA_JETON` exigée. Moteur `strata` dans EchoHub :
+  `adaptateur_strata.py` charge/décharge par `/v1/load`/`/v1/unload`, réutilise le flux SSE de
+  llama-server, compte les tokens avec le `tokenizer.json` du pack (monté, lib `tokenizers`).
+  Carte « Strata » en tête de l'onglet des modèles locaux ; `POST /inference/strata/charger`.
+- **Non testé en charge réelle** (GPU occupé par `accroche/sft-v2` au moment du branchement) : Chris
+  teste lui-même. Débit attendu inférieur aux chiffres publiés (RTX 5070 + Ryzen 7600 + 64 Go).
+- Piège : `decharger()` envoie TOUJOURS `/v1/unload` (un Strata resté chargé par un backend
+  précédent tiendrait la VRAM) ; sans `STRATA_URL` (mode natif, CI), aucun appel réseau.
+
 ## Session du 2026-10-02 (suite) — Agent maison (appliqué le 2026-10-02 à 16 h 40)
 
 Demande de Chris : encadrer l'agent comme Claude Code sans exploser le contexte. Fusionné dans

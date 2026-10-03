@@ -54,6 +54,7 @@ arreter_docker() {
     # `down` sans -v : les volumes nommés contiennent les modèles téléchargés et les données
     # utilisateur. Les supprimer se fait à la main, jamais dans un script d'arrêt.
     (cd "$RACINE" && docker compose down) || journal "docker compose down a échoué"
+    "$RACINE/docker/strata-hote.sh" arreter || journal "arrêt de Strata en échec"
 }
 
 case "${1:-}" in

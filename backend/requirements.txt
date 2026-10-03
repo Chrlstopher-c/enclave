@@ -28,6 +28,7 @@ loguru
 
 # --- Accès externes -------------------------------------------------------------------------
 httpx                 # client HTTP asynchrone (recherche Hugging Face, sondes moteurs)
+tokenizers            # décompte de contexte pour Strata, qui n'expose pas de /tokenize
 # Pour le BAC À SABLE, pas pour le backend. Mesuré le 2026-08-26 : à « upload par API », le modèle
 # écrit `import requests` — c'est le réflexe de tout code Python HTTP publié depuis quinze ans — et
 # reçoit `ModuleNotFoundError`. Il ne peut pas l'installer lui-même : le bac abaisse ses privilèges

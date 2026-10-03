@@ -53,6 +53,11 @@ services:
       # cette machine (curl 127.0.0.1:37921), injoignable depuis toute autre origine.
       - "127.0.0.1:${ECHOHUB_PORT_API:-37921}:37921"  # API FastAPI directe, débogage local uniquement
 
+    # Strata (moteur de Qwen3.8-Flash-Next) tourne sur l'HÔTE, à l'écoute de docker0 seulement
+    # (docker/strata-hote.sh) : son moteur est compilé pour l'hôte, pas pour cette image.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     volumes:
       # Volumes nommés : MODELS_DIR et XDG_DATA_HOME pointent DEDANS (cf. Dockerfile). Tout ce
       # que le backend écrit ailleurs est perdu à la reconstruction de l'image.
@@ -63,6 +68,9 @@ services:
       # existant garde son propriétaire, un modèle téléchargé depuis Docker appartiendra à root.
       - ${ECHOHUB_MODELES_HOTE:-echohub_models}:/data/models
       - echohub_userdata:/data/user              # base SQLite, configuration, journaux
+      # Tokenizer du pack Strata, pour mesurer le contexte (Strata n'expose pas de /tokenize).
+      # Défaut : volume vide — le décompte est alors « non mesurable », rien d'autre ne casse.
+      - ${STRATA_TOKENIZER_HOTE:-echohub_strata_tokenizer}:/data/strata/tokenizer:ro
       # Maison de l'agent (SYSTEM.md, AWARENESS.md, mémoire, skills, mcp.json), partagée entre ses
       # conversations. Sur la tour, ECHOHUB_AGENT_HOTE pointe sur le même dossier que le mode natif.
       - ${ECHOHUB_AGENT_HOTE:-echohub_agent}:/data/agent
@@ -140,6 +148,9 @@ services:
       ATELIER_WORKSPACE: /data/ateliers
       ECHOHUB_PROJETS_RACINE: /projets
       ECHOHUB_AGENT_DIR: /data/agent
+      # Serveur Strata de l'hôte : sa clé vient du .env, jamais du code (vide = Strata sans clé).
+      STRATA_URL: http://host.docker.internal:${STRATA_PORT:-37926}
+      STRATA_JETON: ${STRATA_JETON:-}
       # Le backend est root : les fichiers qu'il écrit dans la maison sont rendus à cet uid:gid.
       ECHOHUB_AGENT_PROPRIETAIRE: ${ECHOHUB_AGENT_PROPRIETAIRE:-}
       # GGML_CUDA_ENABLE_UNIFIED_MEMORY est volontairement ABSENTE : sous WSL2 elle immobilise
@@ -271,3 +282,4 @@ volumes:
   # Espaces de travail des conversations, partagés backend <-> atelier (voir les deux services).
   echohub_ateliers:
   echohub_agent:
+  echohub_strata_tokenizer:

@@ -27,9 +27,12 @@ export type CauseEchecMoteur =
 
 export type NiveauEntreeJournal = 'info' | 'avertissement' | 'erreur';
 
+
+/** Moteurs que le superviseur peut servir : ceux du planificateur, plus Strata (hôte, hors plan). */
+export type MoteurServi = Moteur | 'strata';
 /** Plan tel que l'adaptateur l'a reçu. Aucun champ n'y est recalculé par le moteur. */
 export interface PlanChargementApplique {
-  readonly moteur: Moteur;
+  readonly moteur: MoteurServi;
   readonly chemin_modele: string;
   readonly identifiant_modele: string;
   /** `-1` = toutes les couches sur GPU (convention llama.cpp). */
@@ -47,7 +50,7 @@ export interface PlanChargementApplique {
 
 /** Ce que le moteur sert réellement, et ce que le chargement a coûté. */
 export interface EtatMoteurCharge {
-  readonly moteur: Moteur;
+  readonly moteur: MoteurServi;
   readonly modele: string;
   readonly pret: boolean;
   readonly contexte: number;
@@ -62,7 +65,7 @@ export interface EtatMoteurCharge {
 /** État courant du superviseur. Un seul modèle à la fois : le GPU est exclusif sur 16 Go. */
 export interface StatutInference {
   readonly etat: EtatChargement;
-  readonly moteur: Moteur | null;
+  readonly moteur: MoteurServi | null;
   readonly modele: string | null;
   readonly plan: PlanChargementApplique | null;
   readonly etat_moteur: EtatMoteurCharge | null;
@@ -123,7 +126,7 @@ export interface PartContexte {
 export interface OccupationContexte {
   readonly mesurable: boolean;
   readonly raison: string;
-  readonly moteur: Moteur | null;
+  readonly moteur: MoteurServi | null;
   readonly modele: string | null;
   /** Contexte RÉELLEMENT servi, lu sur le moteur — pas le contexte natif du modèle. */
   readonly contexte_total: number | null;
@@ -141,7 +144,7 @@ export interface OccupationContexte {
 /** Sonde à l'instant t : un moteur mort n'apparaît pas dans l'état mémorisé. */
 export interface SanteInference {
   readonly disponible: boolean;
-  readonly moteur: Moteur | null;
+  readonly moteur: MoteurServi | null;
   readonly modele: string | null;
   readonly latence_ms: number | null;
   readonly detail: string;

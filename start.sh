@@ -171,6 +171,8 @@ demarrer_docker() {
     (cd "$RACINE/frontend" && bun run build >>"$LOGS/frontend-build.log" 2>&1) || echec "build du frontend en échec (logs/frontend-build.log)"
     journal "construction et démarrage du conteneur (première fois : compilation CUDA, longue)"
     (cd "$RACINE" && docker compose up -d --build $recreer) || echec "docker compose up a échoué"
+    # Strata (Qwen3.8-Flash-Next) vit sur l'hôte : lancé à vide, le backend le charge à la demande.
+    "$RACINE/docker/strata-hote.sh" demarrer || journal "AVERTISSEMENT : Strata non démarré (logs/strata.log)"
     journal "interface : http://127.0.0.1:${ECHOHUB_PORT_WEB:-37920}"
     journal "journaux : docker compose logs -f echohub"
 }

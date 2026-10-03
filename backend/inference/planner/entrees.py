@@ -23,6 +23,9 @@ class Moteur(str, Enum):
 
     LLAMA_CPP = "llama.cpp"
     VLLM = "vllm"
+    # Jamais choisi par le planificateur (Strata place lui-même ses experts) : n'apparaît que comme
+    # OCCUPANT du GPU dans `ModeleCharge`, pour que son éjection soit exigée avant un autre plan.
+    STRATA = "strata"
 
 
 class FormatModele(str, Enum):

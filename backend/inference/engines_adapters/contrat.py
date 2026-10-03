@@ -22,6 +22,8 @@ class MoteurSupporte(str, Enum):
 
     LLAMA_CPP = "llama.cpp"
     VLLM = "vllm"
+    # Servi sur l'hôte, hors du conteneur, et chargé à la demande : voir `adaptateur_strata.py`.
+    STRATA = "strata"
 
 
 class CauseEchec(str, Enum):

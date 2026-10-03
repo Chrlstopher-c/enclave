@@ -12,7 +12,7 @@
 
 /* ------------------------------------------------------------------ planificateur : entrées */
 
-export type Moteur = 'llama.cpp' | 'vllm';
+export type Moteur = 'llama.cpp' | 'vllm' | 'strata';
 export type FormatModele = 'gguf' | 'safetensors';
 export type TypeCacheKV = 'f16' | 'q8_0' | 'q4_0';
 export type PlateformePlan = 'linux_natif' | 'wsl2' | 'windows';

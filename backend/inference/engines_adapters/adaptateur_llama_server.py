@@ -100,6 +100,14 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
     def etat(self) -> EtatMoteur | None:
         return self._etat
 
+    def _url_base(self) -> str:
+        """Adresse du serveur OpenAI-compatible ; Strata (sur l'hôte) la remplace."""
+        return serveur.url_base()
+
+    def _client(self, delai_s: float) -> httpx.AsyncClient:
+        """Client HTTP vers le serveur ; Strata y ajoute sa clé d'API."""
+        return httpx.AsyncClient(timeout=delai_s)
+
     async def charger(self, plan: PlanChargement, session: SessionChargement | None = None) -> EtatMoteur:
         """Lance le serveur avec le plan, attend qu'il réponde, rend l'état servi."""
         exiger_moteur(plan, self.moteur)
@@ -180,8 +188,8 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
             return Sante(disponible=False, detail="Aucun modèle servi par llama-server.")
         depart = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=serveur.DELAI_SONDE_HTTP_S) as client:
-                reponse = await client.get(f"{serveur.url_base()}/health")
+            async with self._client(serveur.DELAI_SONDE_HTTP_S) as client:
+                reponse = await client.get(f"{self._url_base()}/health")
             disponible = reponse.status_code == 200
             detail = "" if disponible else f"/health a répondu {reponse.status_code}"
         except httpx.HTTPError as exc:
@@ -205,7 +213,7 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
             return ComptageTokens(possible=False, raison="Aucun modèle servi par llama-server.")
         comptes: list[int] = []
         try:
-            async with httpx.AsyncClient(timeout=serveur.DELAI_SONDE_HTTP_S) as client:
+            async with self._client(serveur.DELAI_SONDE_HTTP_S) as client:
                 for texte in textes:
                     comptes.append(await self._tokeniser(client, texte))
         except (httpx.HTTPError, ValueError, KeyError) as exc:
@@ -217,7 +225,7 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
         """Nombre de tokens d'un texte selon `/tokenize`. Un texte vide vaut zéro, sans appel."""
         if not texte:
             return 0
-        reponse = await client.post(f"{serveur.url_base()}/tokenize", json={"content": texte})
+        reponse = await client.post(f"{self._url_base()}/tokenize", json={"content": texte})
         reponse.raise_for_status()
         return len(reponse.json()["tokens"])
 
@@ -253,9 +261,9 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
         appels = _Accumulateur()
         raison: str | None = None
         try:
-            async with httpx.AsyncClient(timeout=DELAI_GENERATION_S) as client:
+            async with self._client(DELAI_GENERATION_S) as client:
                 async with client.stream(
-                    "POST", f"{serveur.url_base()}/v1/chat/completions", json=charge
+                    "POST", f"{self._url_base()}/v1/chat/completions", json=charge
                 ) as reponse:
                     await _verifier_reponse(reponse)
                     async for morceau, arret in _lire_flux(reponse, appels, plafond):

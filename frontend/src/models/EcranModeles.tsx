@@ -8,6 +8,7 @@ import { ModelesLocaux } from './locaux/ModelesLocaux';
 import { useModelesLocaux, type EtatModelesLocaux } from './locaux/useModelesLocaux';
 import { ModaleTelechargement } from './recherche/ModaleTelechargement';
 import { PanneauDecouverte } from './recherche/PanneauDecouverte';
+import { CarteStrata } from './strata/CarteStrata';
 import { useRecherche, type EtatRecherche } from './recherche/useRecherche';
 import { Telechargements } from './telechargements/Telechargements';
 import { useTelechargements, type EtatTelechargements } from './telechargements/useTelechargements';
@@ -155,7 +156,12 @@ function Panneau(props: PanneauProps): ReactElement {
     );
   }
   if (props.onglet === 'locaux') {
-    return <ModelesLocaux etat={props.locaux} budget={props.budget} onCharger={props.onCharger} />;
+    return (
+      <>
+        <CarteStrata />
+        <ModelesLocaux etat={props.locaux} budget={props.budget} onCharger={props.onCharger} />
+      </>
+    );
   }
   return <Telechargements etat={props.transferts} />;
 }

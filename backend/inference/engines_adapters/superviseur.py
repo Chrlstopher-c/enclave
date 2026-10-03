@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from backend.core import ChargementEchoue, maintenant
 from backend.inference.engines_adapters.adaptateur_llama_cpp import AdaptateurLlamaCpp
 from backend.inference.engines_adapters.adaptateur_llama_server import AdaptateurLlamaServer
+from backend.inference.engines_adapters.adaptateur_strata import AdaptateurStrata
 from backend.inference.engines_adapters.adaptateur_vllm import AdaptateurVllm
 from backend.inference.engines_adapters import processus_llama_server
 from backend.inference.engines_adapters.base import AdaptateurMoteur
@@ -123,6 +124,7 @@ class SuperviseurInference:
         self._adaptateurs: dict[MoteurSupporte, AdaptateurMoteur] = {
             MoteurSupporte.LLAMA_CPP: _adaptateur_llama_cpp(),
             MoteurSupporte.VLLM: AdaptateurVllm(),
+            MoteurSupporte.STRATA: AdaptateurStrata(),
         }
         self._actif: AdaptateurMoteur | None = None
         self._statut = StatutInference()
@@ -281,6 +283,9 @@ class SuperviseurInference:
     async def _liberer(self, session: SessionChargement | None) -> None:
         """Décharge le moteur actif et VÉRIFIE la restitution de la VRAM avant d'autoriser la suite."""
         if self._reference_vram is None and self._actif is None:
+            # Strata vit hors de ce processus : resté chargé par un backend précédent, il fausserait
+            # la référence et priverait le nouveau modèle de sa VRAM. Sans lui, l'appel ne coûte rien.
+            await self._adaptateurs[MoteurSupporte.STRATA].decharger()
             self._reference_vram = lire_vram()
         if self._actif is None:
             return

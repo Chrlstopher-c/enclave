@@ -105,7 +105,7 @@ Client SearXNG, analyse, service, sonde de disponibilité.
 | `App.tsx` | Navigation, bandeau d'état, éjection — seul point de rencontre des domaines |
 | `cible/` | Croise métadonnées lues, profil machine et moteurs pour bâtir une cible de chargement |
 | `chat/` | `ChatEcran.tsx` · `EnTeteChat.tsx` et `useTiroirsChat.ts` (tiroirs mobiles) · `conversation/` fil et composeur · `markdown/` analyseur maison, aucun HTML injecté · `raisonnement/` extraction et repli · `artefacts/` détection et cartes cliquables · `actions/` survol, branches, édition · `reglages/` · `plan/` · `contexte/` occupation de la fenêtre · `api/` |
-| `models/` | `recherche/` Hub et filtres de capacités · `locaux/` registre, favoris, inventaire disque · `telechargements/` · `faisabilite/` verdict VRAM |
+| `models/` | `recherche/` Hub et filtres de capacités · `locaux/` registre, favoris, inventaire disque · `strata/` carte du moteur Strata (sonde, chargement) · `telechargements/` · `faisabilite/` verdict VRAM |
 | `system/` | Matériel, contraintes, moteurs, installation vLLM |
 | `shared/design/` | Primitives et tokens · `Modal.tsx` et `Feuille.tsx` (modale et tiroir, sans débordement) · `BoutonActions.tsx` · `MenuContextuel.tsx` · `useEstGrandEcran.ts` et `useHauteurVisuelle.ts` (points de rupture et clavier mobile) · polices IBM Plex versionnées |
 | `shared/api/` | Client unique, SSE, types miroirs du backend |
@@ -116,7 +116,8 @@ Client SearXNG, analyse, service, sonde de disponibilité.
 lance uvicorn et nginx, neutralise la mémoire unifiée sous WSL2, **appose une empreinte de version
 aux assets** · `preuves_bac_a_sable.py` preuves d'isolation exécutées en conteneur ·
 `outils-acces.py` engendre les identifiants web (mot de passe affiché une fois, seule l'empreinte
-crypt salée est conservée) · `searxng/settings.yml` configuration de la recherche.
+crypt salée est conservée) · `searxng/settings.yml` configuration de la recherche ·
+`strata-hote.sh` lance/arrête le serveur Strata de l'hôte (à vide, docker0 seulement, clé exigée).
 
 ## Tests — 413 verts, sans GPU ni réseau
 
@@ -153,6 +154,7 @@ docker run --rm --gpus all --entrypoint /app/backend/.venv/bin/python \
 | `backend/inference/harnais.py` | Conduite de la boucle d'outils : tours, relances, budget, radotage |
 | `backend/inference/engines_adapters/processus_llama_server.py` | Pilotage du sous-processus `llama-server` |
 | `backend/inference/engines_adapters/adaptateur_llama_server.py` | Adaptateur `llama-server` — même plan, HTTP au lieu de bindings |
+| `backend/inference/engines_adapters/adaptateur_strata.py` | Adaptateur Strata (hôte) — charge/décharge par HTTP, sonde, plan sans planificateur |
 | `frontend/src/chat/plan/ReglagesMemoire.tsx` | Cache KV et flash attention, dans le panneau de plan |
 
 Le frontend a par ailleurs été refondu sur la conversation (`chat/conversation/`,

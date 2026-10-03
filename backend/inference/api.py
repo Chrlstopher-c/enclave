@@ -38,6 +38,7 @@ from backend.inference.engines_adapters import (
     texte_de,
 )
 from backend.inference.hygiene_historique import pour_le_modele
+from backend.inference.engines_adapters.adaptateur_strata import SondeStrata, plan_strata, sonder_serveur
 from backend.inference.engines_adapters.contrat import OccupationContexte
 from backend.inference.engines_adapters.traduction_plan import vers_cause_planificateur, vers_plan_moteur
 from backend.inference.planner import DemandeDeChargement, PlanDeChargement, degrader, planifier
@@ -204,6 +205,25 @@ async def charger_modele(requete: RequeteChargement) -> StatutInference:
     try:
         await _verifier_moteur_disponible(plan.moteur)
         return await superviseur.demarrer_chargement(plan)
+    except EchoHubError as exc:
+        raise _en_http(exc) from exc
+
+
+@router.get("/strata", response_model=SondeStrata)
+async def lire_strata() -> SondeStrata:
+    """Le serveur Strata de l'hôte : joignable, modèle chargé ou non, contexte servi."""
+    return await sonder_serveur()
+
+
+@router.post("/strata/charger", response_model=StatutInference, status_code=202)
+async def charger_strata() -> StatutInference:
+    """Charge le modèle de Strata à la place du modèle actif (déchargé d'abord par le superviseur)."""
+    sonde = await sonder_serveur()
+    try:
+        if not sonde.joignable:
+            raise MoteurIndisponible("Le serveur Strata de l'hôte ne répond pas.", remediation=sonde.detail,
+                                     details={"moteur": MoteurSupporte.STRATA.value})
+        return await superviseur.demarrer_chargement(plan_strata(sonde))
     except EchoHubError as exc:
         raise _en_http(exc) from exc
 
