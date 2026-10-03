@@ -32,6 +32,17 @@ packs dans `~/modeles/strata-data`, config `strata-iq2_xs.json` (contexte porté
   Carte « Strata » en tête de l'onglet des modèles locaux ; `POST /inference/strata/charger`.
 - **Non testé en charge réelle** (GPU occupé par `accroche/sft-v2` au moment du branchement) : Chris
   teste lui-même. Débit attendu inférieur aux chiffres publiés (RTX 5070 + Ryzen 7600 + 64 Go).
+- **Mesuré le 2026-10-03 (premier vrai chargement)** : le mode par défaut de Strata (experts verrouillés
+  en RAM, ~31 Go) s'est fait tuer par le noyau (OOM) : 46 Go de RAM, ~15 Go déjà pris par le reste. Corrigé
+  par `setup.sh --low-ram on` (config `--resident-experts`, packs réécrits en un fichier de 36 Go dans
+  `~/modeles/strata-data/packs/iq2_xs`) : chargé en ~3 min, VRAM 11,5 Go, plus d'OOM, mais RAM libre ~2 Go.
+  Débit **à froid** sur la tâche de référence : 1er token 56 s, ~6,6 tok/s — aucun gain sur llama.cpp pour
+  l'instant. Mesure « à chaud » et qualité de la sortie NON faites (interrompu). Pistes : relancer la
+  mesure à chaud ; libérer de la RAM (autres conteneurs, accroche) ; `--setup --calibrate` ; Q2_0 ;
+  `--draft-vocab en` (économise VRAM pour le cache d'experts). Sauvegarde de l'ancienne config :
+  `/tmp/claude-1000/strata-iq2_xs.avant-lowram.json` (la config d'origine du setup : `strata-iq2_xs.json.orig`).
+- **Au redémarrage de la tour** : `./start.sh --docker` relance Strata à vide ; le modèle n'est chargé
+  que par le bouton « Charger ». Le conteneur a `tokenizers` installé à la main dans son venv (volume).
 - Piège : `decharger()` envoie TOUJOURS `/v1/unload` (un Strata resté chargé par un backend
   précédent tiendrait la VRAM) ; sans `STRATA_URL` (mode natif, CI), aucun appel réseau.
 
