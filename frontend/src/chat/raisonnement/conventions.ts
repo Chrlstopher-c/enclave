@@ -38,6 +38,9 @@ export const CONVENTIONS_RAISONNEMENT: readonly ConventionRaisonnement[] = [
   { nom: 'appel', ouvrante: '<tool_call>', fermante: '</tool_call>' },
   // Certains gabarits l'émettent sans englobant. Même traitement, pour la même raison.
   { nom: 'appel', ouvrante: '<function=', fermante: '</function>' },
+  // Posée par NOTRE harnais (`backend/inference/consignes.py`) : un message que l'utilisateur a glissé
+  // pendant le travail, lu par l'agent à la fin de son étape. Rendu à sa place, comme un message à lui.
+  { nom: 'consigne', ouvrante: '<consigne>', fermante: '</consigne>' },
 ];
 
 /** Libellé affiché en tête d'un bloc replié, par convention. */
@@ -50,4 +53,5 @@ export const LIBELLE_CONVENTION: Readonly<Record<string, string>> = {
   // lecteur s'il vaut d'être déplié, un numéro d'étape ne dit rien.
   etape: 'Note de travail',
   appel: 'Appel du modèle',
+  consigne: 'Ton message',
 };

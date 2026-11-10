@@ -24,6 +24,7 @@ from fastapi.responses import Response, StreamingResponse
 import json
 
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from backend.chat import annulation, depot, diffusion, flux_sse, generation
 from backend.chat.compaction_manuelle import compacter_maintenant
@@ -341,3 +342,23 @@ async def annuler_generation(conversation_id: str) -> dict[str, bool]:
     """Demande l'arrêt de la génération en cours. `annulee` vaut `false` s'il n'y en avait aucune."""
     depot.exiger_conversation(conversation_id)
     return {"annulee": await annulation.annuler_et_attendre(conversation_id)}
+
+
+class ConsigneGlissee(BaseModel):
+    """Message écrit pendant que l'agent travaille : lu à la fin de son étape en cours."""
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[\w-]+$")
+    texte: str = Field(min_length=1, max_length=20_000)
+
+
+@routeur.post("/conversations/{conversation_id}/consignes")
+@_traduire_erreurs
+async def glisser_consigne(conversation_id: str, corps: ConsigneGlissee) -> dict[str, bool]:
+    """`acceptee` vaut `false` sans génération en cours : l'interface l'envoie alors comme un message."""
+    from backend.inference import consignes
+
+    depot.exiger_conversation(conversation_id)
+    if not annulation.est_active(conversation_id):
+        return {"acceptee": False}
+    consignes.deposer(conversation_id, corps.id, corps.texte)
+    return {"acceptee": True}

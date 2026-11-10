@@ -99,7 +99,16 @@ function testerAucunCaracterePerdu(): void {
   }
 }
 
+function testerConsigneGlissee(): void {
+  const source = 'Je lis.<outil>x</outil>\n<etape-fin/>\n<consigne>id:k1\nUtilise pnpm</consigne>\nBilan.';
+  const segmentee = segmenterReponse(source);
+  const consigne = segmentee.raisonnements.find((segment) => segment.convention === 'consigne');
+  verifier('consigne glissée reconnue', consigne?.texte ?? '', 'id:k1\nUtilise pnpm');
+  verifier('la réponse reste visible après la consigne', segmentee.visible.trim(), 'Bilan.');
+}
+
 testerSansRaisonnement();
+testerConsigneGlissee();
 testerBlocFerme();
 testerBlocOuvert();
 testerPlusieursBlocs();

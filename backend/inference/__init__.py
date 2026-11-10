@@ -241,8 +241,35 @@ def _appels_demandes(texte: str) -> list[dict[str, Any]]:
     différent, perdrait le cache et doublerait le temps avant le premier token.
     """
     from backend.inference.engines_adapters.adaptateur_llama_cpp import _appels_dans_le_texte
+    from backend.outils.noms_publics import interne
 
-    return _appels_dans_le_texte(texte)
+    appels = []
+    for appel in _appels_dans_le_texte(texte):
+        nom, arguments = _texte_appel(appel)
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments) if arguments.strip() else {}
+            except json.JSONDecodeError:
+                pass  # illisible : le registre le dira au modèle
+        nom, arguments = interne(nom, arguments)
+        appels.append({"type": "function", "function": {"name": nom, "arguments": arguments}})
+    return appels
+
+
+def _consignes_en_attente(contexte: ContexteExecution) -> bool:
+    from backend.inference import consignes
+
+    return bool(consignes._files.get(contexte.conversation_id))
+
+
+def _lire_consignes(messages: list[MessageChat], contexte: ContexteExecution) -> list[dict[str, Any]]:
+    """Messages glissés pendant l'étape : ajoutés au contexte, et tracés dans la réponse."""
+    from backend.inference import consignes
+
+    lues = consignes.prendre(contexte.conversation_id)
+    for consigne in lues:
+        messages.append(MessageChat(role="user", content=consignes.pour_le_modele(consigne.texte)))
+    return [{"texte": consignes.balise(consigne)} for consigne in lues]
 
 
 def _signature(nom: str, arguments: Any) -> str:
@@ -553,14 +580,19 @@ class MoteurChat:
         debut = time.monotonic()
         tokens = 0
 
-        async for etape in self._boucle_outils(
-            messages, options, format_moteur(_outils_demandes(requete)), contexte
-        ):
-            tokens += int(etape.pop("tokens", 0) or 0)
-            if "texte" in etape:
-                yield {"texte": etape["texte"]}
-            elif "activite" in etape:
-                yield {"activite": etape["activite"]}
+        from backend.inference import consignes
+
+        try:
+            async for etape in self._boucle_outils(
+                messages, options, format_moteur(_outils_demandes(requete)), contexte
+            ):
+                tokens += int(etape.pop("tokens", 0) or 0)
+                if "texte" in etape:
+                    yield {"texte": etape["texte"]}
+                elif "activite" in etape:
+                    yield {"activite": etape["activite"]}
+        finally:
+            consignes.jeter(contexte.conversation_id)
 
         ecoule = time.monotonic() - debut
         # Le compte de tokens est celui des morceaux réellement reçus, et le débit en découle. Si
@@ -589,7 +621,12 @@ class MoteurChat:
         n'était lue par personne : c'est elle qui dit si la réponse est complète ou tronquée.
         """
         suivi = etat.activite if etat is not None else None
-        async for morceau in superviseur.generer(messages, options, outils):
+        from backend.outils.noms_publics import publier_messages, publier_outils
+
+        from backend.inference.forme_messages import un_seul_systeme
+
+        envoyes = un_seul_systeme(publier_messages(messages))
+        async for morceau in superviseur.generer(envoyes, options, publier_outils(outils)):
             if suivi is not None:
                 await _suivre(suivi, morceau, etat)
                 instantane = suivi.instantane()
@@ -716,7 +753,12 @@ class MoteurChat:
             if not appels:
                 suite, messages = self._apres_tour_sans_appel(texte, messages, etat)
                 if suite is _FIN:
-                    return
+                    if not _consignes_en_attente(contexte):
+                        return
+                    messages = messages + [MessageChat(role="assistant", content=pour_le_modele(texte))]
+                    for etape in [{"texte": BALISE_FIN_ETAPE}, *_lire_consignes(messages, contexte)]:
+                        yield etape  # écrit pendant la réponse finale : elle devient une étape
+                    continue
                 yield {"texte": BALISE_FIN_ETAPE}
                 if suite is _CLOTURE:
                     break
@@ -728,6 +770,8 @@ class MoteurChat:
                             tool_calls=_appels_natifs(appels, etat))
             ]
             async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):
+                yield etape
+            for etape in _lire_consignes(messages, contexte):
                 yield etape
         async for morceau in self._cloturer(messages, options, etat.aboutis, _motif_cloture(etat)):
             yield morceau
@@ -807,8 +851,9 @@ def _socle_outils_json() -> str:
 
     try:
         from backend.outils import format_moteur
+        from backend.outils.noms_publics import publier_outils
 
-        outils = format_moteur(None)
+        outils = publier_outils(format_moteur(None))
     except Exception as exc:  # noqa: BLE001 — l'absence d'outils ne doit pas empêcher de mesurer
         logger.debug("Définitions d'outils non mesurables ({}) : socle d'outils compté à vide.", exc)
         return ""

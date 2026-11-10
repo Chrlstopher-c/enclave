@@ -35,6 +35,7 @@ from loguru import logger
 from backend.agent import attribuer
 from backend.core import EchoHubError
 from backend.fichiers import deposer_fichier
+from backend.outils.fichiers_tmp import ecrire_tmp, est_tmp, lire_tmp
 from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac, verifier_ecriture
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 from backend.outils.verif_syntaxe import avis_syntaxe
@@ -209,6 +210,9 @@ async def _ecrire(arguments: dict[str, Any], contexte: ContexteExecution) -> str
     # qui produisait deux échecs successifs là où un seul appel complet suffisait.
     if contenu is None or not chemin_demande:
         raise EchecOutil(_echec_arguments("ecrire_fichier", _REQUIS_ECRIRE, arguments))
+    if est_tmp(chemin_demande):
+        taille = await ecrire_tmp(chemin_demande, str(contenu), contexte)
+        return f"Wrote « {chemin_demande} » ({taille} bytes).{avis_syntaxe(chemin_demande, str(contenu))}"
     try:
         cible = _preparer_cible(contexte, chemin_demande)
     except CheminHorsBac as exc:
@@ -272,10 +276,7 @@ def _extrait(texte: str, ligne_debut: object, ligne_fin: object) -> tuple[str, s
     return "".join(lignes[debut - 1:fin_effective]), f"[lignes {debut}-{fin_effective} sur {len(lignes)}]\n"
 
 
-async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
-    chemin_demande = str(arguments.get("chemin", "")).strip()
-    if not chemin_demande:
-        raise EchecOutil(_echec_arguments("lire_fichier", {"chemin": "the file name to read back"}, arguments))
+def _texte_bac(contexte: ContexteExecution, chemin_demande: str) -> str:
     try:
         cible = resoudre_dans_bac(contexte.racine_bac, chemin_demande)
     except CheminHorsBac as exc:
@@ -283,9 +284,17 @@ async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     if not cible.is_file():
         raise EchecOutil(f"Échec : « {chemin_demande} » n'existe pas dans le bac de cette conversation.")
     try:
-        texte = cible.read_text(encoding="utf-8")
+        return cible.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise EchecOutil(f"Échec : « {chemin_demande} » illisible en texte ({exc}).") from exc
+
+
+async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
+    chemin_demande = str(arguments.get("chemin", "")).strip()
+    if not chemin_demande:
+        raise EchecOutil(_echec_arguments("lire_fichier", {"chemin": "the file name to read back"}, arguments))
+    texte = await lire_tmp(chemin_demande, contexte) if est_tmp(chemin_demande) else _texte_bac(contexte,
+                                                                                                   chemin_demande)
     total = len(texte.splitlines())
     debut = _entier(arguments.get("ligne_debut")) or 1
     if debut > max(total, 1):
@@ -374,6 +383,8 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
     nouveau = arguments.get("nouveau")
     if not ancien or nouveau is None or not chemin_demande:
         raise EchecOutil(_echec_arguments("modifier_fichier", _REQUIS_MODIFIER, arguments))
+    if est_tmp(chemin_demande):
+        return await _modifier_tmp(chemin_demande, str(ancien), str(nouveau), contexte)
     try:
         cible = resoudre_dans_bac(contexte.racine_bac, chemin_demande)
         verifier_ecriture(cible)
@@ -394,6 +405,16 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
     mention = _enregistrer(contexte, chemin_demande, cible)
     avis = avis_syntaxe(chemin_demande, nouveau_texte)
     return f"Modifié « {chemin_demande} » : un fragment remplacé, le reste du fichier est intact. {mention}{avis}"
+
+
+async def _modifier_tmp(chemin: str, ancien: str, nouveau: str, contexte: ContexteExecution) -> str:
+    texte = await lire_tmp(chemin, contexte)
+    refus = _verdict_occurrences(texte.count(ancien), ancien)
+    if refus is not None:
+        raise EchecOutil(refus)
+    nouveau_texte = texte.replace(ancien, nouveau, 1)
+    await ecrire_tmp(chemin, nouveau_texte, contexte)
+    return f"Edited « {chemin} »: one fragment replaced.{avis_syntaxe(chemin, nouveau_texte)}"
 
 
 OUTIL_ECRIRE = Outil(description=DESCRIPTION_ECRIRE, executer=_ecrire)

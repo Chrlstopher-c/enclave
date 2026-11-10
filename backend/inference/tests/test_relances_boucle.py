@@ -78,6 +78,6 @@ def test_l_appel_part_au_format_natif_relie_a_son_resultat(monkeypatch: Any) -> 
     suite = modele.vus[1]
     appelant = next(m for m in suite if m.role == "assistant" and m.tool_calls)
     resultat = next(m for m in suite if m.role == "tool")
-    assert appelant.tool_calls[0]["function"]["name"] == "lire_fichier"
+    assert appelant.tool_calls[0]["function"]["name"] == "read_file", "le moteur voit le nom public"
     assert resultat.tool_call_id == appelant.tool_calls[0]["id"]
     assert "<function=" not in str(appelant.content), "le balisage brut ne repart toujours pas en prose"

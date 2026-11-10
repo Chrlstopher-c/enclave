@@ -77,6 +77,17 @@ function CommentaireIntermediaire({ texte }: { texte: string }): ReactElement | 
   );
 }
 
+/** Message glissé par l'utilisateur pendant le travail, montré là où l'agent l'a lu. */
+function ConsigneGlissee({ texte }: { texte: string }): ReactElement {
+  const message = texte.replace(/^id:[\w-]+\n/, '');
+  return (
+    <div className="ml-auto max-w-[92%] rounded-md bg-surface-2 px-3.5 py-2.5 lg:max-w-[80%]">
+      <p className="mb-1 text-2xs text-text-3">Ton message, lu pendant le travail</p>
+      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-text">{message}</p>
+    </div>
+  );
+}
+
 function SegmentRendu({ segment, rang, actif, apresOutil }: SegmentProps): ReactElement | null {
   // L'appel émis par le modèle n'est plus montré : il n'apprend rien au lecteur, qui voit déjà
   // l'outil et son résultat juste après. Il doublait chaque action d'une ligne « Appel du modèle »
@@ -84,6 +95,9 @@ function SegmentRendu({ segment, rang, actif, apresOutil }: SegmentProps): React
   // Le texte reste dans le message enregistré : c'est l'AFFICHAGE qui change, pas la trace.
   if (segment.convention === 'appel') {
     return null;
+  }
+  if (segment.convention === 'consigne') {
+    return <ConsigneGlissee texte={segment.texte} />;
   }
   if (apresOutil && segment.convention !== 'outil') {
     return <CommentaireIntermediaire texte={segment.texte} />;

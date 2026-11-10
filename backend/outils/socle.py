@@ -109,9 +109,10 @@ future conversation will need."""
 
 
 _MODE_PROJET = """PROJECT MODE — folder « {projet} ». It is your working directory: paths are relative to it
-(`main.py`, not `{projet}/main.py`); in the shell it is `/projets/{projet}` and every command already runs
-there — never `cd` into it, never invent another path. Build the complete application here without asking
-permission: the user gave you this folder.
+(`main.py`, not `{projet}/main.py`); the shell already starts in `/projets/{projet}`, so `.` is the
+project — never `cd` into it, and the parent `/projets` is off-limits. `/tmp` is free scratch space, for
+the shell and the file tools alike. Build the complete application here without asking permission: the
+user gave you this folder.
 
 Enforced by the harness (a violating call is refused):
 - stay inside the folder; never touch `.echohub` (the snapshots that let the user undo your work);

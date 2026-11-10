@@ -219,8 +219,9 @@ def _nomme_un_outil(code: str) -> bool:
     """
     try:
         from backend.outils import disponibles
+        from backend.outils.noms_publics import PUBLIC
 
-        noms = {outil.nom for outil in disponibles()}
+        noms = {outil.nom for outil in disponibles()} | set(PUBLIC.values())
     except Exception:  # noqa: BLE001 — sans registre lisible, la détection se tait
         return False
     return any(re.search(rf"\b{re.escape(nom)}\b", code) for nom in noms)

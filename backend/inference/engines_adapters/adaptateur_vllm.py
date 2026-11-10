@@ -302,6 +302,11 @@ class AdaptateurVllm(AdaptateurMoteur):
                 message="La conversation dépasse la fenêtre de contexte du modèle (maximum context length).",
                 remediation="Compacter la conversation (/compact) ou recharger le modèle avec un contexte plus grand.",
             )
+        elif reponse.status_code == 400:
+            # Requête refusée (gabarit, arguments) : le moteur va bien, c'est la requête qu'il faut citer.
+            diagnostic = Diagnostic(cause=CauseEchec.INDETERMINEE,
+                                    message=f"vLLM a refusé la requête : {_message_erreur(corps)}",
+                                    remediation="Relancer le message ; si ça se répète, joindre ce texte au rapport.")
         else:
             diagnostic = qualifier(corps, source_verifiee=True)
         raise EchecChargement(diagnostic, details={"statut": reponse.status_code})
@@ -345,6 +350,14 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["tools"] = list(outils)
             charge["tool_choice"] = "auto"
         return charge
+
+
+def _message_erreur(corps: str) -> str:
+    """Le `message` d'une erreur OpenAI de vLLM, ou le début du corps brut."""
+    try:
+        return str(json.loads(corps)["error"]["message"])[:300]
+    except (ValueError, KeyError, TypeError):
+        return corps[:300]
 
 
 class _LecteurVllm:

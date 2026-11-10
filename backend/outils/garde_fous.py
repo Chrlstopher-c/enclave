@@ -75,6 +75,12 @@ def _segments(jetons: list[str]) -> list[list[str]]:
     return [s for s in segments if s]
 
 
+def _hors_dossier(chemin: str, racine: str) -> str:
+    """Refus lisible par un 9B (2026-11-10) : l'ancien message lui faisait croire à un bug d'affichage."""
+    return (f"Refused: « {chemin} » is outside your project. You are already in {racine} (the shell's "
+            "current directory): use `.` or relative paths. Outside the project only /tmp is available.")
+
+
 def _dedans(chemin: str, racine: str) -> bool:
     return chemin == racine or chemin.startswith(racine.rstrip("/") + "/")
 
@@ -93,7 +99,7 @@ def _verifier_chemin(jeton: str, cwd: str, racine: str) -> None:
     absolu = valeur.startswith("/")
     partage = absolu and any(_dedans(posixpath.normpath(valeur), r) for r in RACINES_PARTAGEES)
     if (partage or ".." in valeur.split("/")) and not _dedans(_resoudre(valeur, cwd), racine):
-        raise CommandeRefusee(f"« {jeton} » sort de ton dossier de travail ({racine}). Reste dedans.")
+        raise CommandeRefusee(_hors_dossier(jeton, racine))
 
 
 def _verifier_destruction(programme: str, args: list[str], cwd: str, racine: str) -> None:
@@ -141,7 +147,7 @@ def verifier_code_python(code: str, racine: str) -> None:
         raise CommandeRefusee(f"« {DOSSIER_RESERVE} » contient les instantanés du harnais : interdit d'y toucher.")
     for chemin in _CHEMIN_PYTHON.findall(code):
         if not _dedans(posixpath.normpath(chemin), racine):
-            raise CommandeRefusee(f"« {chemin} » sort de ton dossier de travail ({racine}). Reste dedans.")
+            raise CommandeRefusee(_hors_dossier(chemin, racine))
 
 
 __all__ = ["CommandeRefusee", "verifier_code_python", "verifier_commande"]

@@ -39,7 +39,7 @@ def test_ecrire_puis_executer_dans_le_projet(contexte_projet: ContexteExecution)
 
 def test_sortir_du_projet_est_refuse(contexte_projet: ContexteExecution) -> None:
     refus = _appel("executer_commande", {"commande": "cd .. && ls"}, contexte_projet)
-    assert not refus.succes and "sort de ton dossier" in refus.texte
+    assert not refus.succes and "outside your project" in refus.texte
     reserve = _appel("ecrire_fichier", {"chemin": ".echohub/x", "contenu": "x"}, contexte_projet)
     assert not reserve.succes
 

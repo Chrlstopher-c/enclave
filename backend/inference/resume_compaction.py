@@ -83,9 +83,11 @@ async def produire_resume(
         systeme += f"\nINSTRUCTIONS DE L'UTILISATEUR POUR CE RÉSUMÉ, PRIORITAIRES : {consigne.strip()}"
     messages[0] = MessageChat(role="system", content=systeme)
     options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens)
+    from backend.outils.noms_publics import publier_messages
+
     morceaux: list[str] = []
     try:
-        async for morceau in superviseur.generer(messages, options, None):
+        async for morceau in superviseur.generer(publier_messages(messages), options, None):
             if morceau.type == "token" and morceau.contenu:
                 morceaux.append(morceau.contenu)
             elif morceau.type == "erreur":

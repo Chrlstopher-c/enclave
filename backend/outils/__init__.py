@@ -48,7 +48,20 @@ def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: 
     if not declarees:
         return construire(declarees, modele, projet)
     regenerer_awareness(declarees, projet)
-    return construire(declarees, modele, projet, maison=_bloc_maison())
+    socle = construire(declarees, modele, projet, maison=_bloc_maison())
+    return f"{socle}\n\n{_bloc_env(projet)}".rstrip() if projet else socle
+
+
+def _bloc_env(projet: str) -> str:
+    """Bloc d'environnement du projet ; vide s'il n'est pas lisible, jamais un échec du socle."""
+    try:
+        from backend.outils.environnement import bloc_environnement
+        from backend.projets.racine import chemin_projet
+
+        return bloc_environnement(chemin_projet(projet), projet)
+    except Exception as exc:  # noqa: BLE001 — l'environnement est un plus, jamais une condition
+        logger.warning("Bloc d'environnement indisponible pour {} : {}", projet, exc)
+        return ""
 
 
 def _bloc_maison() -> str:

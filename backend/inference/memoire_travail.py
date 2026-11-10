@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from backend.inference.consignes import pour_le_modele as consignes_pour_le_modele
 from backend.inference.hygiene_historique import pour_le_modele
 
 # Caractères de sorties d'outils PASSÉES gardées entières (≈ 12 k tokens). Au-delà, les plus
@@ -39,7 +40,8 @@ CONSIGNE_BOUCLE = (
 )
 
 _BLOC = re.compile(
-    r"<outil>\s*<entree>(?P<entree>.*?)</entree>\s*(?P<ouvrante><sortie[^>]*>)(?P<sortie>.*?)</sortie>\s*</outil>",
+    r"<outil>\s*<entree>(?P<entree>.*?)</entree>\s*(?P<ouvrante><sortie[^>]*>)(?P<sortie>.*?)</sortie>\s*</outil>"
+    r"|<consigne>(?:id:[^\n]*\n)?(?P<consigne>.*?)</consigne>",
     re.DOTALL,
 )
 
@@ -65,10 +67,14 @@ def deplier(texte: str) -> list[Segment]:
     curseur = 0
     for bloc in _BLOC.finditer(texte):
         prose = _sans_redites(pour_le_modele(texte[curseur:bloc.start()]), vus)
-        if prose or not segments:
+        if prose or not segments or (segments[-1].role == "user" and bloc.group("consigne") is None):
             segments.append(Segment("assistant", prose))
-        segments.append(Segment("tool", bloc.group("sortie").strip(), bloc.group("entree").strip(),
-                                "echec" in bloc.group("ouvrante")))
+        if bloc.group("consigne") is not None:
+            # Message glissé par l'utilisateur pendant le travail : rendu à son rôle (`consignes`).
+            segments.append(Segment("user", consignes_pour_le_modele(bloc.group("consigne").strip())))
+        else:
+            segments.append(Segment("tool", bloc.group("sortie").strip(), bloc.group("entree").strip(),
+                                    "echec" in bloc.group("ouvrante")))
         curseur = bloc.end()
     fin = _sans_redites(pour_le_modele(texte[curseur:]), vus)
     if fin or not segments:

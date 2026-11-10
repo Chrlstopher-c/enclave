@@ -181,7 +181,8 @@ def resoudre_dans_bac(racine_bac: Path, chemin_demande: str) -> Path:
         return _resoudre_maison(chemin_demande)
     demande = _relatif_au_bac(racine_bac, Path(chemin_demande))
     if demande.is_absolute():
-        raise CheminHorsBac(f"Chemin absolu refusé : « {chemin_demande} ». Utiliser un chemin relatif au bac.")
+        raise CheminHorsBac(f"« {chemin_demande} » is outside your folder: use a path relative to it, "
+                           "or /tmp/… for scratch files.")
     if DOSSIER_RESERVE in demande.parts:
         raise CheminHorsBac(f"« {DOSSIER_RESERVE} » est réservé aux instantanés du harnais : chemin refusé.")
     racine = racine_bac.resolve()

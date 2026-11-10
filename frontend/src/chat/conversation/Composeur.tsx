@@ -18,6 +18,8 @@ import {
   useDepotPieces,
   type PieceComposeur,
 } from './pieces-jointes';
+import { FileEnAttente } from './FileEnAttente';
+import type { MessageEnAttente } from './useMessagesEnAttente';
 
 /*
  * Saisie du message. Entrée envoie, Maj+Entrée passe à la ligne — la convention des interfaces de
@@ -41,6 +43,7 @@ import {
  */
 
 const HAUTEUR_MAX_PX = 200;
+const PLACEHOLDER_GLISSER = 'Ajouter une consigne — lue à la fin de l’étape en cours…';
 
 /*
  * Sous le seuil, la rangée passe à DEUX lignes : la saisie occupe la sienne, les boutons suivent.
@@ -82,6 +85,8 @@ interface BarreSaisieProps {
   onColle: (evenement: ClipboardEvent<HTMLTextAreaElement>) => void;
   onEnvoyer: () => void;
   onAnnuler: () => void;
+  /** Pendant une génération, l'envoi glisse le message à l'agent au lieu d'attendre. */
+  peutGlisser: boolean;
   onChoisirFichier: () => void;
   onPrendrePhoto: () => void;
 }
@@ -89,19 +94,28 @@ interface BarreSaisieProps {
 function BoutonEnvoi({
   genere,
   envoyable,
+  peutGlisser,
   onEnvoyer,
   onAnnuler,
 }: {
   genere: boolean;
   envoyable: boolean;
+  peutGlisser: boolean;
   onEnvoyer: () => void;
   onAnnuler: () => void;
 }): ReactElement {
   if (genere) {
     return (
-      <Button variant="secondary" size="sm" onClick={onAnnuler}>
-        Arrêter
-      </Button>
+      <>
+        {peutGlisser && envoyable && (
+          <Button variant="primary" size="sm" onClick={onEnvoyer} title="Lu par l'agent à la fin de son étape en cours">
+            Glisser
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" onClick={onAnnuler}>
+          Arrêter
+        </Button>
+      </>
     );
   }
   return (
@@ -148,11 +162,12 @@ function BarreSaisie(props: BarreSaisieProps): ReactElement {
         onChange={onTexte}
         onKeyDown={onTouche}
         onPaste={onColle}
-        placeholder="Écrire un message…"
+        placeholder={genere && props.peutGlisser ? PLACEHOLDER_GLISSER : 'Écrire un message…'}
         className={CLASSE_ZONE_SAISIE}
       />
       <BoutonEnvoi
         genere={genere}
+        peutGlisser={props.peutGlisser}
         envoyable={!desactive && texte.trim() !== ''}
         onEnvoyer={props.onEnvoyer}
         onAnnuler={props.onAnnuler}
@@ -170,6 +185,10 @@ export interface ComposeurProps {
   conversationId: string | null;
   onEnvoyer: (contenu: string, fichierIds: string[]) => void;
   onAnnuler: () => void;
+  /** Message écrit pendant une génération : lu par l'agent à la fin de son étape en cours. */
+  onGlisser?: (texte: string) => void;
+  /** Messages glissés pas encore lus par l'agent. */
+  enAttente?: readonly MessageEnAttente[];
 }
 
 interface GestesComposeur {
@@ -186,6 +205,7 @@ interface EntreesGestes {
   desactive: boolean;
   pieces: PieceComposeur[];
   onEnvoyer: (contenu: string, fichierIds: string[]) => void;
+  onGlisser: ((texte: string) => void) | undefined;
   setTexte: (texte: string) => void;
   deposer: (fichiers: File[]) => void;
   vider: () => void;
@@ -221,10 +241,15 @@ function envoyerTouche(envoyer: () => void, evenement: KeyboardEvent<HTMLTextAre
 
 /* Les gestes du composeur, sortis du composant : chacun tient en quelques lignes et se lit seul. */
 function useGestesComposeur(entrees: EntreesGestes): GestesComposeur {
-  const { texte, genere, desactive, pieces, onEnvoyer, setTexte, deposer, vider } = entrees;
+  const { texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider } = entrees;
   const envoyer = useCallback((): void => {
     const contenu = texte.trim();
-    if (contenu === '' || genere || desactive) {
+    if (contenu === '' || desactive || (genere && onGlisser === undefined)) {
+      return;
+    }
+    if (genere && onGlisser !== undefined) {
+      onGlisser(contenu);
+      setTexte('');
       return;
     }
     // Les pièces encore en cours de dépôt sont exclues plutôt que d'attendre : le texte part sans
@@ -233,7 +258,7 @@ function useGestesComposeur(entrees: EntreesGestes): GestesComposeur {
     onEnvoyer(contenu, fichierIds);
     setTexte('');
     vider();
-  }, [texte, genere, desactive, pieces, onEnvoyer, setTexte, vider]);
+  }, [texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, vider]);
 
   return {
     envoyer,
@@ -254,6 +279,7 @@ interface CorpsComposeurProps {
   retirer: (cle: string) => void;
   gestes: GestesComposeur;
   onAnnuler: () => void;
+  peutGlisser: boolean;
 }
 
 function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
@@ -275,6 +301,7 @@ function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
         onColle={gestes.surCollage}
         onEnvoyer={gestes.envoyer}
         onAnnuler={props.onAnnuler}
+        peutGlisser={props.peutGlisser}
         onChoisirFichier={() => entreeFichier.current?.click()}
         onPrendrePhoto={() => entreePhoto.current?.click()}
       />
@@ -282,26 +309,23 @@ function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
   );
 }
 
-export function Composeur({
-  genere,
-  desactive,
-  empechement,
-  conversationId,
-  onEnvoyer,
-  onAnnuler,
-}: ComposeurProps): ReactElement {
+export function Composeur(props: ComposeurProps): ReactElement {
+  const { genere, desactive, conversationId, onEnvoyer, onGlisser } = props;
   const [texte, setTexte] = useState<string>('');
   const zone = useHauteurAuto(texte);
   const [pieces, deposer, retirer, vider] = useDepotPieces(conversationId);
-  const gestes = useGestesComposeur({ texte, genere, desactive, pieces, onEnvoyer, setTexte, deposer, vider });
-
+  const gestes = useGestesComposeur({
+    texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider,
+  });
   return (
     <div
       className="eh-marge-sure-bas shrink-0 border-t border-border px-3 py-3 lg:px-6 lg:py-4"
       onDragOver={(evenement) => evenement.preventDefault()}
       onDrop={gestes.surDepot}
     >
+      <FileEnAttente messages={props.enAttente ?? []} />
       <CorpsComposeur
+        peutGlisser={onGlisser !== undefined}
         texte={texte}
         setTexte={setTexte}
         genere={genere}
@@ -310,9 +334,9 @@ export function Composeur({
         pieces={pieces}
         retirer={retirer}
         gestes={gestes}
-        onAnnuler={onAnnuler}
+        onAnnuler={props.onAnnuler}
       />
-      <Empechement texte={empechement} />
+      <Empechement texte={props.empechement} />
     </div>
   );
 }

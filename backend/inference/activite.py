@@ -19,12 +19,14 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from backend.outils.noms_publics import nom_interne, parametres_internes
+
 INTERVALLE_S = 0.5
 FENETRE_DEBIT_S = 3.0
 OUTILS_GROUPES = frozenset({"ecrire_fichiers"})
 
-_CHEMIN = re.compile(r'"chemin"\s*:\s*"((?:[^"\\]|\\.)*)"')
-_DEBUT_LISTE = re.compile(r'"fichiers"\s*:\s*\[|<parameter=fichiers>\s*\[')
+_CHEMIN = re.compile(r'"(?:chemin|path)"\s*:\s*"((?:[^"\\]|\\.)*)"')
+_DEBUT_LISTE = re.compile(r'"(?:fichiers|files)"\s*:\s*\[|<parameter=(?:fichiers|files)>\s*\[')
 _DECODEUR = json.JSONDecoder()
 
 # Écrit un fichier d'une écriture groupée dès qu'il est complet ; le harnais la fournit (outil réel).
@@ -101,8 +103,9 @@ def fichiers_termines(brut: str) -> list[dict[str, str]]:
             objet, position = _DECODEUR.raw_decode(brut, position)
         except json.JSONDecodeError:
             return termines
-        if isinstance(objet, dict) and isinstance(objet.get("chemin"), str) and isinstance(objet.get("contenu"), str):
-            termines.append({"chemin": objet["chemin"], "contenu": objet["contenu"]})
+        chemin, contenu = objet.get("chemin", objet.get("path")), objet.get("contenu", objet.get("content"))
+        if isinstance(chemin, str) and isinstance(contenu, str):
+            termines.append({"chemin": chemin, "contenu": contenu})
 
 
 @dataclass
@@ -174,7 +177,8 @@ class SuiviActivite:
         outil = None
         if self.outil is not None:
             outil = {"nom": self.outil, "chemin": chemin_courant(self.brut), "caracteres": len(self.brut),
-                     "fichiers_sauves": list(self.sauves), "parametres": parametres_partiels(self.brut)}
+                     "fichiers_sauves": list(self.sauves),
+                     "parametres": parametres_internes(self.outil, parametres_partiels(self.brut))[1]}
         return {"phase": self.phase, "tokens": self.jetons, "tokens_par_seconde": self.debit(),
                 "outil": outil, "taches": self.taches}
 
@@ -187,7 +191,8 @@ async def progression(suivi: SuiviActivite, details: dict[str, Any], ecrire: Ecr
     if not isinstance(outil, dict) or not isinstance(outil.get("nom"), str) or not outil["nom"]:
         return
     brut = outil.get("brut") if isinstance(outil.get("brut"), str) else ""
-    for fichier in suivi.appel(outil["nom"], brut):
+    nom = nom_interne(outil["nom"]) or outil["nom"]
+    for fichier in suivi.appel(nom, brut):
         if ecrire is not None:
             await ecrire(fichier["chemin"], fichier["contenu"])
 

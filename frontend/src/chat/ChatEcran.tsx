@@ -12,6 +12,7 @@ import {
 } from './artefacts';
 import { PanneauContexte } from './contexte';
 import { Composeur } from './conversation/Composeur';
+import { useMessagesEnAttente } from './conversation/useMessagesEnAttente';
 import { FilMessages } from './conversation/FilMessages';
 import { ListeConversations } from './conversation/ListeConversations';
 import { PanneauOutils } from './conversation/PanneauOutils';
@@ -134,6 +135,9 @@ function ComposeurEchange({
   genere: boolean;
 }): ReactElement {
   const { courante, conversationActive, moteurPret } = etat;
+  const file = useMessagesEnAttente(conversationActive, genere, fil.brouillon ?? courante.brouillon, (texte) =>
+    envoyer(courante, fil, texte, []),
+  );
   return (
     <Composeur
       genere={genere}
@@ -142,6 +146,8 @@ function ComposeurEchange({
       conversationId={conversationActive}
       onEnvoyer={(contenu, fichierIds) => envoyer(courante, fil, contenu, fichierIds)}
       onAnnuler={() => interrompre(courante, fil)}
+      onGlisser={file.glisser}
+      enAttente={file.enAttente}
     />
   );
 }

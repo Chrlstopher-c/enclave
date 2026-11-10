@@ -140,3 +140,12 @@ def test_une_boucle_enregistree_ne_revient_pas_au_modele() -> None:
     boucle = "Je vais corriger l'application.\n" * 20 + f"Je lis.{bloc}Je vais corriger l'application."
     prose = " ".join(s.contenu for s in deplier(boucle) if s.role == "assistant")
     assert prose.count("Je vais corriger") == 1
+
+
+def test_une_consigne_glissee_redevient_un_message_utilisateur() -> None:
+    """Demandé le 2026-11-10 : un message glissé pendant le travail reste lu aux tours suivants."""
+    texte = (f"Je lis.{_bloc('lire_fichier(chemin : a.py)', 'x')}\n<consigne>id:k1\nUtilise pnpm</consigne>\n"
+             f"{_bloc('executer_commande(commande : ls)', 'ok')}Fini.")
+    segments = deplier(texte)
+    assert [s.role for s in segments] == ["assistant", "tool", "user", "assistant", "tool", "assistant"]
+    assert "Utilise pnpm" in segments[2].contenu and "id:k1" not in segments[2].contenu

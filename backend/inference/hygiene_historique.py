@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 # Noms des balises du harnais ET des déformations observées : le modèle ne doit pouvoir écrire aucune.
-_NOMS = r"(?:outil|entree|etree|entrée|sortie|etape[-_]?fin|otel)"
+_NOMS = r"(?:outil|entree|etree|entrée|sortie|etape[-_]?fin|otel|consigne)"
 _BALISE_IMITEE = re.compile(rf"<(/?){_NOMS}\b", re.IGNORECASE)
 _BALISE_COMPLETE = re.compile(rf"</?{_NOMS}\b[^>]*>", re.IGNORECASE)
 _BLOC = re.compile(
