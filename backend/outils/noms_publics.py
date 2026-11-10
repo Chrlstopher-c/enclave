@@ -13,6 +13,7 @@ traduit dans les deux sens, à un seul endroit :
 
 from __future__ import annotations
 
+import difflib
 import re
 from typing import Any
 
@@ -75,7 +76,12 @@ def nom_interne(nom: str) -> str | None:
     cle = nom.strip()
     if cle in _TABLE:
         return cle
-    return _INTERNE.get(cle) or _REFLEXES.get(cle.lower())
+    connu = _INTERNE.get(cle) or _REFLEXES.get(cle.lower())
+    if connu is not None:
+        return connu
+    # Faute de frappe (« chercher_dans_fichings », Testing 2026-11-10) : l'outil le plus proche, si sans ambiguïté.
+    proches = difflib.get_close_matches(cle.lower(), [*_TABLE, *_INTERNE], n=1, cutoff=0.85)
+    return (_INTERNE.get(proches[0]) or proches[0]) if proches else None
 
 
 def _renommer(valeur: Any, table: dict[str, str]) -> Any:

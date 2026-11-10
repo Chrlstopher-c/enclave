@@ -20,7 +20,8 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import os
-from collections.abc import Iterator
+import re
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,13 @@ from loguru import logger
 
 from backend.agent import PREFIXE as PREFIXE_MAISON
 from backend.agent import racine as racine_maison
-from backend.outils.bac_a_sable import CheminHorsBac, est_maison, preparer_bac, resoudre_dans_bac
+from backend.outils.bac_a_sable import (
+    CheminHorsBac,
+    chemin_dans_atelier,
+    est_maison,
+    preparer_bac,
+    resoudre_dans_bac,
+)
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 
 # Bornes de sortie. Un bac contenant un dépôt cloné dépasse vite le millier de fichiers, et lister
@@ -86,9 +93,9 @@ _SCHEMA_RECHERCHE: dict[str, Any] = {
 DESCRIPTION_RECHERCHE = DescriptionOutil(
     nom="chercher_dans_fichiers",
     description=(
-        "Searches for a literal text across the files of this conversation's sandbox and returns "
-        "each match with its file and line number. Use it to locate a function, a constant or an "
-        "error message inside a project you did not write in full — reading whole files to find "
+        "Searches for a text or a regular expression (like grep, case-insensitive) across the files of "
+        "this conversation's sandbox and returns each match with its file and line number. Use it to "
+        "locate a function, a constant or an error message inside a project you did not write in full — reading whole files to find "
         "one line wastes the context you need for the answer."
     ),
     parametres=_SCHEMA_RECHERCHE,
@@ -117,8 +124,11 @@ def _fichiers(racine: Path, motif: str) -> list[Path]:
     """Fichiers du bac correspondant au motif, triés, hors dossiers cachés et de dépendances."""
     try:
         motif_effectif = motif or "*"
+        # `**` à la façon de grep/glob : « src/**/*.py » et « **/* » couvrent toute la profondeur.
+        a_plat = motif_effectif.replace("**/", "").replace("/**", "/*").replace("**", "*")
         retenus = [c for c in _parcourir(racine)
-                   if c.relative_to(racine).match(motif_effectif) or fnmatch.fnmatch(c.name, motif_effectif)]
+                   if c.relative_to(racine).match(motif_effectif) or fnmatch.fnmatch(c.name, motif_effectif)
+                   or fnmatch.fnmatch(c.relative_to(racine).as_posix(), a_plat)]
     except (OSError, ValueError) as exc:
         raise EchecOutil(f"Pattern « {motif} » cannot be used: {exc}") from exc
     return sorted(retenus)
@@ -144,24 +154,37 @@ def _lister(racine: Path, motif: str, prefixe: str = "") -> str:
     return "\n".join(lignes)
 
 
-def _lignes_correspondantes(chemin: Path, aiguille: str) -> list[tuple[int, str]]:
-    """Lignes d'un fichier contenant l'aiguille. Un fichier illisible est sauté, jamais fatal."""
+def _critere(texte: str) -> Callable[[str], bool]:
+    """Texte littéral OU expression régulière, sans casse : le modèle cherche comme avec grep.
+
+    Conversation « Testing », 2026-11-10 : `\\d+%`, `COLORS\\s*=`, `^.*\\}$` cherchés littéralement rendaient
+    « appears in no file » sur un fichier qui en contenait des dizaines — et l'agent en tirait des conclusions.
+    """
+    aiguille = texte.lower()
+    try:
+        expression = re.compile(texte, re.IGNORECASE)
+    except re.error:
+        return lambda ligne: aiguille in ligne.lower()
+    return lambda ligne: aiguille in ligne.lower() or expression.search(ligne) is not None
+
+
+def _lignes_correspondantes(chemin: Path, critere: Callable[[str], bool]) -> list[tuple[int, str]]:
+    """Lignes d'un fichier qui satisfont le critère. Un fichier illisible est sauté, jamais fatal."""
     try:
         if chemin.stat().st_size > TAILLE_FICHIER_MAX_OCTETS:
             return []
         contenu = chemin.read_text(encoding="utf-8", errors="strict")
     except (OSError, UnicodeDecodeError):
         return []
-    return [(numero, ligne) for numero, ligne in enumerate(contenu.splitlines(), 1)
-            if aiguille in ligne.lower()]
+    return [(numero, ligne) for numero, ligne in enumerate(contenu.splitlines(), 1) if critere(ligne)]
 
 
 def _chercher(racine: Path, texte: str, motif: str, prefixe: str = "") -> str:
-    aiguille = texte.lower()
+    critere = _critere(texte)
     lignes: list[str] = []
     total = 0
     for chemin in _fichiers(racine, motif):
-        for numero, ligne in _lignes_correspondantes(chemin, aiguille):
+        for numero, ligne in _lignes_correspondantes(chemin, critere):
             total += 1
             if len(lignes) < CORRESPONDANCES_MAX:
                 extrait = ligne.strip()[:LONGUEUR_LIGNE_MAX]
@@ -184,7 +207,16 @@ def _cible(contexte: ContexteExecution, motif: str) -> tuple[Path, str, str]:
         except CheminHorsBac as exc:
             raise EchecOutil(f"Pattern refused: {exc}") from exc
         return racine_maison(), reste, PREFIXE_MAISON
+    motif = _relatif_au_projet(contexte, motif)
     return _racine_verifiee(contexte, motif), motif, ""
+
+
+def _relatif_au_projet(contexte: ContexteExecution, motif: str) -> str:
+    """`/projets/tui-test/**/*` (chemin vu du shell) → `**/*` : le modèle nomme souvent son dossier ainsi."""
+    racine = chemin_dans_atelier(contexte.racine_bac).rstrip("/") + "/"
+    if motif.startswith(racine):
+        return motif[len(racine):] or "*"
+    return "*" if motif == racine.rstrip("/") else motif
 
 
 def _racine_verifiee(contexte: ContexteExecution, motif: str) -> Path:

@@ -129,11 +129,11 @@ def _tronquer(flux: str | bytes | None) -> str:
     return f"{texte[:MAX_SORTIE_OCTETS]}\n[sortie tronquée à {MAX_SORTIE_OCTETS} octets]"
 
 
-def _lancer(argv: list[str], cwd: Path, timeout_s: int) -> Resultat:
+def _lancer(argv: list[str], cwd: Path, timeout_s: int, env: dict[str, str] | None = None) -> Resultat:
     """Lance `argv` dans `cwd`, borné en temps, et rend le résultat. Ne lève jamais vers l'appelant."""
     debut = time.monotonic()
     try:
-        proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout_s)
+        proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout_s, env=env)
     except subprocess.TimeoutExpired as exc:
         logger.warning("Commande tuée après {} s dans {} : {}", timeout_s, cwd.name, argv[0])
         return Resultat(code_retour=-1, sortie=_tronquer(exc.stdout),
@@ -158,7 +158,11 @@ def _executer_python(code: str, cwd: Path, timeout_s: int) -> Resultat:
     try:
         fichier.write(code)
         fichier.close()
-        return _lancer(["python3", fichier.name], cwd, timeout_s)
+        # Le fichier vit dans /tmp : sans ceci, `sys.path[0]` vaut /tmp et `import mon_module` du projet échoue
+        # (2026-11-10 : 14 appels perdus à chercher pourquoi). Comme `python -c`, le dossier courant s'importe.
+        chemins = [str(cwd), os.environ.get("PYTHONPATH", "")]
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(c for c in chemins if c)}
+        return _lancer(["python3", fichier.name], cwd, timeout_s, env)
     finally:
         Path(fichier.name).unlink(missing_ok=True)
 

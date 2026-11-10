@@ -59,3 +59,32 @@ def test_tmp_passe_par_l_atelier(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ecrit, modifie, lu = asyncio.run(jouer())
     assert ecrit.succes and modifie.succes and lu.succes, (ecrit.texte, modifie.texte, lu.texte)
     assert "print(2)" in lu.texte and not (tmp_path / "tmp").exists()
+
+
+def test_recherche_regex_et_motif_absolu(tmp_path: Path) -> None:
+    """Testing, 2026-11-10 : `\\d+%` cherché littéralement rendait « appears in no file »."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("width: 100%;\nCOLORS = {}\n")
+    contexte = ContexteExecution(conversation_id="c", racine_bac=tmp_path)
+
+    async def jouer() -> list[Any]:
+        return [await executer("chercher_dans_fichiers", {"texte": r"\d+%"}, contexte),
+                await executer("chercher_dans_fichiers", {"texte": "COLORS ="}, contexte),
+                await executer("chercher_dans_fichiers", {"texte": "print("}, contexte),
+                await executer("lister_fichiers", {"motif": "src/**/*.py"}, contexte)]
+
+    regex, litteral, invalide, liste = asyncio.run(jouer())
+    assert "app.py:1" in regex.texte and "app.py:2" in litteral.texte
+    assert invalide.succes and "appears in no file" in invalide.texte
+    assert "src/app.py" in liste.texte
+
+
+def test_motif_absolu_du_projet_ramene_au_relatif(tmp_path: Path) -> None:
+    from backend.outils.bac_a_sable import chemin_dans_atelier
+    from backend.outils.explorer_bac import _relatif_au_projet
+
+    contexte = ContexteExecution(conversation_id="c", racine_bac=tmp_path)
+    racine = chemin_dans_atelier(tmp_path)
+    assert _relatif_au_projet(contexte, f"{racine}/**/*") == "**/*"
+    assert _relatif_au_projet(contexte, racine) == "*"
+    assert _relatif_au_projet(contexte, "src/*.py") == "src/*.py"

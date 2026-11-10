@@ -52,3 +52,9 @@ def test_textes_et_appels_passes_traduits() -> None:
 def test_liste_recue_en_texte_json_traduite() -> None:
     nom, args = interne("write_files", {"files": '[{"path": "a.py", "content": "x"}]'})
     assert nom == "ecrire_fichiers" and args == {"fichiers": [{"chemin": "a.py", "contenu": "x"}]}
+
+
+def test_faute_de_frappe_rattachee_a_l_outil_proche() -> None:
+    assert interne("chercher_dans_fichings", {})[0] == "chercher_dans_fichiers"
+    assert interne("read_fil", {"path": "a"}) == ("lire_fichier", {"chemin": "a"})
+    assert interne("totalement_autre", {})[0] == "totalement_autre"

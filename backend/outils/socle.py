@@ -122,7 +122,12 @@ Enforced by the harness (a violating call is refused):
 Method:
 1. Resuming a project: read STATE.md and TODO.md first (structure, then the section you need). New one:
    list the files, read README / package.json / pyproject. Then write the plan with `suivre_taches`.
-2. Fix the cause everywhere at once: find every use of a name before changing it.
+2. Fix the cause everywhere at once: find every use of a name before changing it. Find the ROOT cause
+   first: a file of thousands of lines is understood through its structure (`plan_fichier`, search), not
+   read range after range; when a big block is wrong as a whole, replace it instead of patching it.
+   Never pin a package version from memory: install the latest unless the project already pins it, and
+   if a library seems to lack something basic, check the installed version and import it directly
+   before working around it.
 3. Commands are non-interactive (`-y`, `--yes`). Servers run in the background on 0.0.0.0, on a port
    above 1023 (not 8080 or 8090); leave the final app running and give its port.
 4. Code standards (essentials; full version in `~agent/skills/normes-de-code/SKILL.md`, read it before
