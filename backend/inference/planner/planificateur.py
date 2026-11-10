@@ -17,18 +17,29 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
 from backend.core import PlanificationImpossible, RessourceInsuffisante
-from backend.inference.planner.budget import avertissements_metadonnees, utilisation_memoire_gpu
+from backend.inference.planner.budget import (
+    avertissements_metadonnees,
+    reserve_graphes_cuda_octets,
+    utilisation_memoire_gpu,
+)
 from backend.inference.planner.entrees import CauseEchec, DemandeDeChargement, Moteur, TypeCacheKV
 from backend.inference.planner.environnement import construire_environnement
 from backend.inference.planner.moteur import choisir_moteur, flash_attention_active, vram_apres_ejection
 from backend.inference.planner.paliers import NIVEAU_MINIMAL, Palier, niveau_minimum_pour_cause, palier
 from backend.inference.planner.plan import BudgetMemoire, EjectionRequise, PlanDeChargement, ValeurJustifiee
 from backend.inference.planner.postes_memoire import construire_budget
-from backend.inference.planner.reglages import CadreCalcul, Repartition, resoudre_repartition, resoudre_type_kv
+from backend.inference.planner.reglages import (
+    CadreCalcul,
+    Repartition,
+    ratio_fragmentation_moteur,
+    resoudre_repartition,
+    resoudre_type_kv,
+)
 
 # Au-delà de cette part de la RAM libre, le plan reste valide mais le système va commencer à
 # évincer du cache disque : l'utilisateur doit le savoir avant de lancer le chargement.
 SEUIL_ALERTE_RAM = 0.9
+
 
 
 class ContraintesHeritees(BaseModel):
@@ -185,6 +196,7 @@ def _preparer(demande: DemandeDeChargement, palier_actif: Palier,
 
 def _budget_du_plan(cadre: CadreCalcul, repartition: Repartition, demande: DemandeDeChargement) -> BudgetMemoire:
     """Décomposition mémoire du plan, poste par poste."""
+    vllm = cadre.moteur is Moteur.VLLM
     return construire_budget(
         cadre.metadonnees,
         couches_gpu=repartition.couches_gpu.valeur,
@@ -194,8 +206,12 @@ def _budget_du_plan(cadre: CadreCalcul, repartition: Repartition, demande: Deman
         flash_attention=cadre.flash_attention,
         vram_disponible_octets=cadre.vram_disponible_octets,
         ram_disponible_octets=demande.profil.ram_libre_octets,
-        ratio_fragmentation=cadre.preferences.ratio_fragmentation,
+        ratio_fragmentation=ratio_fragmentation_moteur(cadre),
         octets_experts_hote=repartition.octets_experts_hote,
+        vllm=vllm,
+        reserve_graphes_octets=(
+            reserve_graphes_cuda_octets(cadre.metadonnees) if vllm and not repartition.mode_eager else 0
+        ),
     )
 
 
@@ -244,6 +260,7 @@ def _assembler(demande: DemandeDeChargement, niveau: int, preparation: _Preparat
         type_cache_kv=preparation.type_kv,
         flash_attention=preparation.flash_attention,
         utilisation_memoire_gpu=_utilisation_vllm(preparation, budget, demande),
+        mode_eager=repartition.mode_eager,
         variables_environnement=variables,
         variables_refusees=refusees,
         ejections_requises=preparation.ejections,

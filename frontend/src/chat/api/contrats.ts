@@ -155,6 +155,8 @@ export interface PlanDeChargement {
   type_cache_kv: ValeurJustifiee<TypeCacheKV>;
   flash_attention: ValeurJustifiee<boolean>;
   utilisation_memoire_gpu: ValeurJustifiee<number> | null;
+  /** vLLM : vrai quand les graphes CUDA ne sont pas capturés (plus lent, moins de VRAM). */
+  mode_eager?: boolean;
   variables_environnement: VariableEnvironnement[];
   variables_refusees: VariableRefusee[];
   ejections_requises: EjectionRequise[];

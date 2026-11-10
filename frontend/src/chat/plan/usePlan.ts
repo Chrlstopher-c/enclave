@@ -28,6 +28,8 @@ export interface PreferencesLocales {
   typeCacheKv: TypeCacheKV;
   moteur: Moteur | null;
   flashAttention: boolean;
+  /** Graphes CUDA voulus : vitesse de décodage contre un peu de VRAM. */
+  graphesCuda: boolean;
 }
 
 export interface EtatPlan {
@@ -48,6 +50,7 @@ function preferencesInitiales(demande: DemandeDeChargement | null): PreferencesL
     typeCacheKv: source?.type_cache_kv ?? 'f16',
     moteur: source?.moteur ?? null,
     flashAttention: source?.flash_attention ?? true,
+    graphesCuda: !(source?.desactiver_cuda_graphs ?? false),
   };
 }
 
@@ -60,6 +63,7 @@ function fusionner(demande: DemandeDeChargement, locales: PreferencesLocales): D
       type_cache_kv: locales.typeCacheKv,
       moteur: locales.moteur,
       flash_attention: locales.flashAttention,
+      desactiver_cuda_graphs: !locales.graphesCuda,
     },
   };
 }

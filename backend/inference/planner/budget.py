@@ -163,6 +163,7 @@ def octets_tampons_calcul(
     contexte: int,
     batch: int,
     flash_attention: bool,
+    vllm: bool = False,
 ) -> int:
     """Tampons de calcul GPU : activations du graphe, scores d'attention, logits de sortie.
 
@@ -175,10 +176,23 @@ def octets_tampons_calcul(
     """
     largeur_ffn = largeur_activation_ffn(metadonnees) or 0
     largeur_bloc = NB_TENSEURS_ATTENTION * metadonnees.dimension_embedding + NB_TENSEURS_FFN * largeur_ffn
+    if vllm:
+        return _tampons_vllm(metadonnees, batch, largeur_bloc)
     activations = batch * largeur_bloc * OCTETS_ACTIVATION
     scores = 0 if flash_attention else batch * metadonnees.nombre_tetes_attention * contexte * OCTETS_ACTIVATION
     logits = metadonnees.taille_vocabulaire * OCTETS_ACTIVATION
     return int(activations + scores + graphe_attention_par_contexte(metadonnees, contexte) + logits)
+
+
+# vLLM calcule ses activations en bf16 et n'a pas de tampons de graphe par token de contexte (notion
+# ggml). Mesure du 2026-11-10, Ornith 9B W4A16, batch 2048 : pic d'activations 0,27 Gio, là où la
+# formule llama.cpp en prévoyait 0,7 Go à 37K — de quoi brider le contexte à tort.
+OCTETS_ACTIVATION_VLLM = 2
+
+
+def _tampons_vllm(metadonnees: MetadonneesModele, batch: int, largeur_bloc: int) -> int:
+    """Pic d'activations de vLLM : un lot de prefill borné par `--max-num-batched-tokens`, en bf16."""
+    return int(batch * largeur_bloc * OCTETS_ACTIVATION_VLLM + metadonnees.taille_vocabulaire * OCTETS_ACTIVATION)
 
 
 def graphe_attention_par_contexte(metadonnees: MetadonneesModele, contexte: int) -> int:
@@ -319,6 +333,64 @@ def contexte_maximal(
     return aligner(int(tokens), PAS_CONTEXTE)
 
 
+# Réserve des graphes CUDA de vLLM. Mesure du 2026-11-10 (Ornith 9B, `--max-num-seqs 4`, captures 1-8) :
+# pool de graphes 0,01 Gio, compilation comprise dans le pic d'activations. L'ancienne réserve (1,5 x le
+# lm_head, ~3 Go sur un vocabulaire de 248K) datait de `--max-num-seqs 256`, dont le préchauffage du
+# sampler débordait ; elle forçait le mode eager, trois fois plus lent (16 contre 46 tok/s).
+RESERVE_GRAPHES_VLLM = 256 * 1024**2
+
+
+def reserve_graphes_cuda_octets(metadonnees: MetadonneesModele) -> int:
+    """VRAM à réserver pour la capture de graphes CUDA de vLLM (séquences bornées à 4)."""
+    del metadonnees  # mesurée indépendante du modèle à séquences bornées ; signature gardée
+    return RESERVE_GRAPHES_VLLM
+
+
+def contexte_maximal_vllm(
+    metadonnees: MetadonneesModele,
+    *,
+    batch: int,
+    type_kv: TypeCacheKV,
+    flash_attention: bool,
+    vram_disponible_octets: int,
+    ratio_fragmentation: float,
+    reserve_octets: int = 0,
+) -> int:
+    """Contexte maximal pour vLLM : tout le modèle en VRAM, le contexte est ce qu'il reste.
+
+    Distinct de `contexte_maximal`, et pour une raison qui coûtait un refus : là-bas les tampons du
+    graphe d'attention sont provisionnés au plafond d'ENTRAÎNEMENT, ce qui n'est que prudent quand on
+    cherche des couches à offloader. Ici on cherche un contexte, et le graphe grandit avec le contexte
+    RÉELLEMENT SERVI (le `--max-model-len` de vLLM), pas avec l'entraînement. Provisionner 262144
+    réservait ~1,3 Gio fantôme sur ce 9B à contexte natif 262144 et refusait un modèle qui tient très
+    bien à contexte réduit — vLLM ne pouvant, lui, qu'ajuster le contexte, les poids étant incompressibles.
+
+    Forme close : le budget restant après les poids et les tampons indépendants du contexte se divise
+    par le coût par token (cache KV des couches d'attention + graphe d'attention, et matrice de scores
+    si flash attention est absente).
+    """
+    budget = vram_effective(vram_disponible_octets, ratio_fragmentation)
+    budget -= poids_cumule_gpu_octets(metadonnees, metadonnees.nombre_couches)
+    # Tampons indépendants du contexte : activations du bloc et logits. À contexte nul, la matrice de
+    # scores et les tampons du graphe d'attention valent zéro — il ne reste qu'eux.
+    budget -= octets_tampons_calcul(metadonnees, 0, batch, flash_attention, vllm=True)
+    # Réserve laissée à la capture de graphes CUDA quand on veut les garder : la retrancher ici
+    # raccourcit le contexte juste assez pour que la capture ne déborde pas au démarrage.
+    budget -= reserve_octets
+    # État récurrent des blocs hybrides : indépendant du contexte, mais bien compté par
+    # `construire_budget`. L'oublier ici ferait accepter un plan dont le budget affiché déborde.
+    budget -= octets_etat_recurrent(metadonnees, metadonnees.nombre_couches)
+    if budget <= 0:
+        return 0
+    porteuses = couches_attention(metadonnees, metadonnees.nombre_couches)
+    par_token = porteuses * octets_kv_par_token_par_couche(metadonnees, type_kv)
+    if not flash_attention:
+        par_token += batch * metadonnees.nombre_tetes_attention * OCTETS_ACTIVATION
+    if par_token <= 0:
+        return metadonnees.contexte_entrainement_max
+    return min(metadonnees.contexte_entrainement_max, aligner(int(budget / par_token), PAS_CONTEXTE))
+
+
 def aligner(valeur: int, pas: int) -> int:
     """Arrondit à l'inférieur sur un multiple de `pas`, sans jamais rendre zéro pour une valeur > 0."""
     if valeur < pas:
@@ -363,6 +435,12 @@ def avertissements_metadonnees(metadonnees: MetadonneesModele) -> tuple[str, ...
     return tuple(lignes)
 
 
+# Part de la VRAM annoncée que CUDA expose réellement : vLLM calcule sa fraction sur 11,68 Gio d'une
+# carte annoncée 12 Gio (mesure du 2026-11-10). Diviser par la VRAM annoncée sous-dimensionnait le pool
+# d'autant, et le cache KV du contexte prévu n'y tenait plus.
+PART_VRAM_VISIBLE_CUDA = 0.973
+
+
 def utilisation_memoire_gpu(budget: BudgetMemoire, vram_totale_octets: int) -> float:
     """Fraction de VRAM que vLLM doit préallouer, déduite du besoin réel du plan.
 
@@ -371,5 +449,5 @@ def utilisation_memoire_gpu(budget: BudgetMemoire, vram_totale_octets: int) -> f
     """
     if vram_totale_octets <= 0:
         return PLAFOND_UTILISATION_VLLM
-    brute = budget.vram_requise_octets / vram_totale_octets
+    brute = budget.vram_requise_octets / (vram_totale_octets * PART_VRAM_VISIBLE_CUDA)
     return min(PLAFOND_UTILISATION_VLLM, math.ceil(brute * 100) / 100)

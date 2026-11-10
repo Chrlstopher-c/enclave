@@ -98,9 +98,11 @@ function CorpsPlan({ cible, plan, etatPlan, chargement, debitObserve, plafondRep
         plan={plan}
         typeCacheKv={etatPlan.preferences.typeCacheKv}
         flashAttention={etatPlan.preferences.flashAttention}
+        graphesCuda={etatPlan.preferences.graphesCuda}
         desactive={chargement.statut?.etat === 'en_cours'}
         onChangerCache={(typeCacheKv) => etatPlan.ajusterPreferences({ typeCacheKv })}
         onChangerFlash={(flashAttention) => etatPlan.ajusterPreferences({ flashAttention })}
+        onChangerGraphes={(graphesCuda) => etatPlan.ajusterPreferences({ graphesCuda })}
       />
       {/* Ce que le contexte retenu laisse à la réponse : réglé au même endroit que le contexte. */}
       {plafondReponse}

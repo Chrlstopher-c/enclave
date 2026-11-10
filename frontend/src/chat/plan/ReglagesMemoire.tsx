@@ -127,22 +127,64 @@ function ChoixFlash({ valeur, retenu, desactive, onChanger }: ChoixFlashProps): 
   );
 }
 
+interface ChoixGraphesProps {
+  valeur: boolean;
+  retenu: boolean;
+  desactive: boolean;
+  onChanger: (valeur: boolean) => void;
+}
+
+/* Le plan peut refuser les graphes faute de VRAM : la demande et ce qui est retenu restent distincts. */
+function ChoixGraphes({ valeur, retenu, desactive, onChanger }: ChoixGraphesProps): ReactElement {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <label className="flex items-center justify-between gap-3">
+        <span className="min-w-0 text-2xs text-text-2">Graphes CUDA</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {retenu !== valeur && <Badge tone="caution">plan : {retenu ? 'actifs' : 'inactifs'}</Badge>}
+          <input
+            type="checkbox"
+            checked={valeur}
+            disabled={desactive}
+            onChange={(evenement) => onChanger(evenement.target.checked)}
+            className="h-4 w-4 cursor-pointer rounded-sm border border-border bg-surface-2
+              accent-[var(--tone-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </span>
+      </label>
+      <p className="text-2xs leading-relaxed text-text-3">
+        Environ trois fois plus rapide en génération, pour quelques centaines de Mo de VRAM. Sans eux,
+        tout va au contexte.
+      </p>
+    </div>
+  );
+}
+
+/* Ce que le plan applique réellement : vLLM le dit (`mode_eager`), llama.cpp suit la demande. */
+function graphesRetenus(plan: PlanDeChargement, demande: boolean): boolean {
+  return plan.moteur.valeur === 'vllm' ? !(plan.mode_eager ?? false) : demande;
+}
+
 export interface ReglagesMemoireProps {
   plan: PlanDeChargement;
   typeCacheKv: TypeCacheKV;
   flashAttention: boolean;
+  graphesCuda: boolean;
   desactive: boolean;
   onChangerCache: (valeur: TypeCacheKV) => void;
   onChangerFlash: (valeur: boolean) => void;
+  onChangerGraphes: (valeur: boolean) => void;
 }
 
 export function ReglagesMemoire({
   plan,
   typeCacheKv,
   flashAttention,
+  graphesCuda,
   desactive,
   onChangerCache,
   onChangerFlash,
+  onChangerGraphes,
 }: ReglagesMemoireProps): ReactElement {
   return (
     <div className="min-w-0 space-y-3 border-t border-border pt-3">
@@ -157,6 +199,12 @@ export function ReglagesMemoire({
         retenu={plan.flash_attention.valeur}
         desactive={desactive}
         onChanger={onChangerFlash}
+      />
+      <ChoixGraphes
+        valeur={graphesCuda}
+        retenu={graphesRetenus(plan, graphesCuda)}
+        desactive={desactive}
+        onChanger={onChangerGraphes}
       />
     </div>
   );

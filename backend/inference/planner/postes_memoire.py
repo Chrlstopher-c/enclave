@@ -37,6 +37,8 @@ def construire_budget(
     ram_disponible_octets: int,
     ratio_fragmentation: float,
     octets_experts_hote: int = 0,
+    vllm: bool = False,
+    reserve_graphes_octets: int = 0,
 ) -> BudgetMemoire:
     """Décomposition chiffrée et justifiée de la mémoire engagée par le plan, VRAM et RAM."""
     return BudgetMemoire(
@@ -50,6 +52,8 @@ def construire_budget(
             flash_attention=flash_attention,
             ratio_fragmentation=ratio_fragmentation,
             octets_experts_hote=octets_experts_hote,
+            vllm=vllm,
+            reserve_graphes_octets=reserve_graphes_octets,
         ),
         ram_requise_octets=besoin_ram_octets(
             metadonnees,
@@ -72,14 +76,16 @@ def postes_vram(
     flash_attention: bool,
     ratio_fragmentation: float,
     octets_experts_hote: int = 0,
+    vllm: bool = False,
+    reserve_graphes_octets: int = 0,
 ) -> tuple[PosteMemoire, ...]:
     """Postes de VRAM, chacun chiffré et justifié séparément."""
     poids = _postes_poids(metadonnees, couches_gpu, octets_experts_hote)
     porteuses = couches_attention(metadonnees, couches_gpu)
     cache = int(porteuses * contexte * octets_kv_par_token_par_couche(metadonnees, type_kv))
-    tampons = octets_tampons_calcul(metadonnees, contexte, batch, flash_attention)
+    tampons = octets_tampons_calcul(metadonnees, contexte, batch, flash_attention, vllm=vllm)
     recurrent = octets_etat_recurrent(metadonnees, couches_gpu)
-    total = sum(poste.octets for poste in poids) + cache + tampons + recurrent
+    total = sum(poste.octets for poste in poids) + cache + tampons + recurrent + reserve_graphes_octets
     postes = (
         *poids,
         _poste_cache(metadonnees, porteuses, couches_gpu, contexte, type_kv, cache),
@@ -87,7 +93,19 @@ def postes_vram(
     )
     if recurrent:
         postes = (*postes, _poste_recurrent(metadonnees, couches_gpu, porteuses, recurrent))
+    if reserve_graphes_octets:
+        postes = (*postes, _poste_graphes(reserve_graphes_octets))
     return (*postes, _poste_fragmentation(ratio_fragmentation, int(total * ratio_fragmentation)))
+
+
+def _poste_graphes(octets: int) -> PosteMemoire:
+    """Réserve des graphes CUDA de vLLM : la vitesse de décodage se paie ici, et se voit."""
+    return PosteMemoire(
+        libelle="Graphes CUDA",
+        octets=octets,
+        justification="Capture des graphes de décodage (4 séquences au plus) : environ trois fois la "
+                      "vitesse du mode eager, mesuré sur ce poste à 46 contre 16 tok/s.",
+    )
 
 
 def _poste_recurrent(
