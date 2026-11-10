@@ -61,18 +61,35 @@ def deplier(texte: str) -> list[Segment]:
     d'outil qui suivrait directement le message de l'utilisateur casse plusieurs gabarits.
     """
     segments: list[Segment] = []
+    vus: set[str] = set()
     curseur = 0
     for bloc in _BLOC.finditer(texte):
-        prose = pour_le_modele(texte[curseur:bloc.start()])
+        prose = _sans_redites(pour_le_modele(texte[curseur:bloc.start()]), vus)
         if prose or not segments:
             segments.append(Segment("assistant", prose))
         segments.append(Segment("tool", bloc.group("sortie").strip(), bloc.group("entree").strip(),
                                 "echec" in bloc.group("ouvrante")))
         curseur = bloc.end()
-    fin = pour_le_modele(texte[curseur:])
+    fin = _sans_redites(pour_le_modele(texte[curseur:]), vus)
     if fin or not segments:
         segments.append(Segment("assistant", fin))
     return segments
+
+
+def _sans_redites(prose: str, vus: set[str]) -> str:
+    """Paragraphes déjà dits dans ce message retirés : une boucle enregistrée ne doit pas resservir de modèle.
+
+    Mesuré le 2026-11-10 : après une première boucle, CHAQUE message suivant de la conversation bouclait
+    aussi — l'historique lui remontrait vingt fois « Je vais corriger l'application… », et il recopiait.
+    """
+    gardes = []
+    for paragraphe in prose.split("\n"):
+        cle = " ".join(paragraphe.lower().split())
+        if cle and cle in vus:
+            continue
+        vus.add(cle)
+        gardes.append(paragraphe)
+    return "\n".join(gardes).strip()
 
 
 def _resultat(segment: Segment) -> str:

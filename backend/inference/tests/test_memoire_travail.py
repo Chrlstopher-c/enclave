@@ -132,3 +132,11 @@ def test_boucle_sans_fin_coupee_par_le_harnais() -> None:
     from backend.inference.memoire_travail import tourne_en_rond
 
     assert not tourne_en_rond(REDITES_ARRET - 1) and tourne_en_rond(REDITES_ARRET)
+
+
+def test_une_boucle_enregistree_ne_revient_pas_au_modele() -> None:
+    """Après une boucle, l'historique remontrait vingt fois la même annonce, et le modèle la recopiait."""
+    bloc = "<outil><entree>lire_fichier(chemin : a.py)</entree><sortie>ok</sortie></outil>"
+    boucle = "Je vais corriger l'application.\n" * 20 + f"Je lis.{bloc}Je vais corriger l'application."
+    prose = " ".join(s.contenu for s in deplier(boucle) if s.role == "assistant")
+    assert prose.count("Je vais corriger") == 1
