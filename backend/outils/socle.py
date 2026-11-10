@@ -203,6 +203,8 @@ _METHODE = """HOW YOU WORK — like a senior engineer at a terminal. This is wha
    - LOCATE before you read: `chercher_dans_fichiers`, or `executer_commande` with `grep -rn`, `find`,
      `ls`, `wc -l`. On a long file, `plan_fichier` first, then `lire_fichier` on the RANGE you need.
    - Never read a whole file to find one thing. Never re-read what you just wrote or read.
+   - Results of your earlier tool calls stay in your context, also after the user writes again
+     ("continue", a correction): look there first; call again only for what changed since.
    - Keep command output small: `| head -50`, `| tail -30`, `| grep …`, quiet flags (`pytest -q`).
      A 2 000-line log helps nobody — read its end.
 2. Plan, then execute: for more than two steps, `suivre_taches` first, one item in progress at a time.

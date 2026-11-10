@@ -17,6 +17,20 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
+## Session du 2026-11-10 — Mémoire de travail du harnais (relectures après « continue »)
+
+Constat de Chris (modèle 9B) : à chaque « continue », le modèle relisait tous les fichiers déjà lus,
+parfois en boucle. Cause : `pour_le_modele` effaçait les sorties d'outils des messages passés et
+disait « relancer ou relire si besoin ». Corrigé dans `inference/memoire_travail.py` :
+- historique déplié en prose + messages `tool` sans balisage (« Result of lire_fichier(chemin : x) »),
+  sorties récentes entières dans `BUDGET_SORTIES` (48 000 car.), plus anciennes en une ligne ;
+- redite : une sortie déjà mot pour mot au contexte est remplacée par un renvoi ; à la 3ᵉ, consigne
+  d'arrêt ; une redite ne compte pas comme progrès (ne réarme pas les relances) ;
+- socle : « les résultats précédents restent au contexte, regarde d'abord ».
+Tests : `inference/tests/test_memoire_travail.py` (scénario « continue »). **Non éprouvé en génération
+réelle** : Chris reteste. Journal à surveiller : « Redite … renvoi au résultat déjà au contexte ».
+Non redéployé (Docker) : attendre le go de Chris.
+
 ## Session du 2026-10-03 — Moteur Strata pour Qwen3.8-Flash-Next (SC117 abliterated)
 
 llama.cpp rendait ce modèle inutilisable ici (6,6 tok/s, prompt à 5 tok/s, cf. « Mesures »). Strata

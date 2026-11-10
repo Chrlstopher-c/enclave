@@ -50,6 +50,7 @@ from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
 from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
+from backend.inference.memoire_travail import Segment, avis_redite, budgeter, deplier, redite
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -125,12 +126,12 @@ def _messages_depuis(messages: object) -> list[MessageChat]:
     n'est encodée ici : `content` porte encore des CHEMINS disque (`PartieImageChemin`), jamais du
     base64 — c'est l'adaptateur moteur qui encode, au tout dernier moment (plan d'exécution, 2.2.4).
 
-    Les blocs d'outils des tours PASSÉS y sont remplacés par un récapitulatif en prose
-    (`hygiene_historique.pour_le_modele`) : le modèle imitait leur balisage. Ce qui arrive
-    ici vient de l'historique, par définition : les résultats du tour EN COURS sont ajoutés plus
+    Les blocs d'outils des tours PASSÉS sont dépliés en messages `tool` sans balisage, les plus
+    récents entiers dans un budget (`memoire_travail`) : le modèle imitait le balisage, et privé
+    des sorties il relisait tout à chaque message. Les résultats du tour EN COURS sont ajoutés plus
     loin, en entier, par la boucle de `MoteurChat._flux`.
     """
-    convertis: list[MessageChat] = []
+    lus: list[tuple[Segment, object]] = []
     for message in messages or ():
         role = getattr(message, "role", None)
         contenu = getattr(message, "contenu", None)
@@ -139,11 +140,20 @@ def _messages_depuis(messages: object) -> list[MessageChat]:
         if role is None or contenu is None:
             logger.warning("Message ignoré, forme inattendue : {}", type(message).__name__)
             continue
-        if isinstance(contenu, str):
-            contenu = pour_le_modele(_sans_appels_outils(contenu))
         pieces = getattr(message, "pieces", None) or ()
-        convertis.append(MessageChat(role=role, content=_contenu_moteur(contenu, pieces)))
-    return convertis
+        lus.extend((segment, pieces if rang == 0 else ()) for rang, segment in enumerate(_segments(role, contenu)))
+    budgetes = budgeter([segment for segment, _ in lus])
+    return [MessageChat(role=segment.role, content=_contenu_moteur(segment.contenu, pieces))
+            for segment, (_, pieces) in zip(budgetes, lus)]
+
+
+def _segments(role: str, contenu: object) -> list[Segment]:
+    """Un message d'assistant est déplié (prose, résultats d'outils) ; les autres restent un seul segment."""
+    if not isinstance(contenu, str):
+        return [Segment(role, contenu)]  # type: ignore[arg-type] — forme déjà moteur, transmise telle quelle
+    if role == "assistant":
+        return deplier(_sans_appels_outils(contenu))
+    return [Segment(role, pour_le_modele(_sans_appels_outils(contenu)))]
 
 
 def _contenu_moteur(contenu: str, pieces: object) -> str | list[PartieContenu]:
@@ -339,10 +349,11 @@ async def _jouer_appels(
     etat.tours_muets = 0
     etat.textes.append(texte)
     avant = etat.aboutis
-    async for etape in _executer_appels(appels, messages, contexte, etat.echecs_vus):
+    async for etape in _executer_appels(appels, messages, contexte, etat):
         if isinstance(etape.get("texte"), str):
             yield {"texte": etape["texte"]}
-        etat.aboutis += 1 if etape.get("succes") else 0
+        # Une redite n'est pas un progrès : la compter effacerait l'ardoise des relances en boucle.
+        etat.aboutis += 1 if etape.get("succes") and not etape.get("redite") else 0
         if isinstance(etape.get("nom"), str):
             etat.dernier_appel = DernierAppel(etape["nom"], bool(etape.get("succes")), etape.get("sortie", ""))
             if etape["nom"] == "suivre_taches" and etape.get("succes"):
@@ -359,36 +370,49 @@ async def _jouer_appels(
         etat.relances_promesse = 0
 
 
+async def _executer_un(
+    nom: str, arguments: Any, annonce: str, messages: list[MessageChat],
+    contexte: ContexteExecution, etat: EtatBoucle,
+) -> tuple[str, bool, bool]:
+    """Un appel : texte rendu au modèle, succès, et s'il n'a rien appris de neuf (redite)."""
+    from backend.outils import executer
+
+    signature = _signature(nom, arguments)
+    if signature in etat.echecs_vus:
+        logger.warning("Appel {} déjà échoué à l'identique : non réexécuté.", nom)
+        return _REDITE, False, False
+    resultat = await executer(nom, arguments, contexte)
+    if not resultat.succes:
+        etat.echecs_vus.add(signature)
+        return resultat.texte, False, False
+    if redite(resultat.texte, messages):
+        etat.redites += 1
+        logger.info("Redite {} ({} sur cette génération) : renvoi au résultat déjà au contexte.", nom, etat.redites)
+        return avis_redite(annonce, etat.redites), True, True
+    etat.echecs_vus.clear()
+    return resultat.texte, True, False
+
+
 async def _executer_appels(
     appels: list[dict[str, Any]],
     messages: list[MessageChat],
     contexte: ContexteExecution,
-    echecs_vus: set[str],
+    etat: EtatBoucle,
 ) -> AsyncIterator[dict[str, Any]]:
     """Exécute les appels demandés, en annonçant chacun dans le flux, et enrichit la conversation.
 
-    `echecs_vus` porte les appels déjà échoués sans qu'aucun autre n'ait abouti depuis ; voir
-    `_REDITE`. Rend `succes` au fil de l'eau, pour que l'appelant sache si quoi que ce soit a abouti.
+    `etat.echecs_vus` porte les appels déjà échoués sans qu'aucun autre n'ait abouti depuis ; voir
+    `_REDITE`. Une sortie déjà présente au contexte est remplacée par un renvoi (`memoire_travail`).
+    Rend `succes` au fil de l'eau, pour que l'appelant sache si quoi que ce soit a abouti.
     """
-    from backend.outils import executer
-
     for appel in appels:
         nom, arguments = _texte_appel(appel)
+        annonce = _annonce(nom, arguments)
         # L'entrée part AVANT l'exécution : c'est ce qui rend l'attente lisible plutôt que muette.
-        entree = f"{BALISE_ENTREE_OUVRANTE}{_annonce(nom, arguments)}{BALISE_ENTREE_FERMANTE}"
-        yield {"texte": f"{BALISE_OUTIL_OUVRANTE}{entree}"}
-        signature = _signature(nom, arguments)
-        if signature in echecs_vus:
-            logger.warning("Appel {} déjà échoué à l'identique : non réexécuté.", nom)
-            texte, succes = _REDITE, False
-        else:
-            resultat = await executer(nom, arguments, contexte)
-            texte, succes = resultat.texte, resultat.succes
-            if succes:
-                echecs_vus.clear()
-            else:
-                echecs_vus.add(signature)
-        yield {"texte": _bloc_sortie(texte, succes), "succes": succes, "nom": nom, "sortie": texte}
+        yield {"texte": f"{BALISE_OUTIL_OUVRANTE}{BALISE_ENTREE_OUVRANTE}{annonce}{BALISE_ENTREE_FERMANTE}"}
+        texte, succes, deja = await _executer_un(nom, arguments, annonce, messages, contexte, etat)
+        yield {"texte": _bloc_sortie(texte, succes), "succes": succes, "nom": nom, "sortie": texte,
+               "redite": deja}
         # Rôle `tool`, contenu NU. Le gabarit l'enveloppe lui-même dans `<tool_response>` : c'est
         # le canal que le modèle a appris à l'entraînement, et il ne le confond pas avec sa propre
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un

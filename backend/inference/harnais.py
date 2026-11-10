@@ -295,6 +295,8 @@ class EtatBoucle:
     compaction: EtatCompaction = field(default_factory=EtatCompaction)
     relances_taches: int = 0
     ouvertes_a_la_relance: int | None = None
+    # Appels dont la sortie était déjà, mot pour mot, au contexte (`memoire_travail.redite`).
+    redites: int = 0
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
