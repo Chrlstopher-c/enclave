@@ -17,6 +17,24 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
+## EN COURS (2026-11-10, fin de journée) — à reprendre après compaction
+
+- **Modèle en service** : Ornith 1.5 9B huihui abliterated, W4A16 maison
+  (`/mnt/models/echohub/huihui-ai--Huihui-Ornith-1.5-9B-abliterated-W4A16-RTN`, script `/mnt/projects/_quantif/rtn_w4a16.py`),
+  vLLM 0.31, 64K, cache q8_0→fp8, graphes CUDA, fraction 0,77. Ne PAS décharger ni redémarrer sans l'accord de Chris.
+- **Pas encore en service** (commit f21e88e, poussé, CI verte) : carte d'appel d'outil en direct (`AppelEnDirect`).
+  Pour l'activer, À SON GO : `cd frontend && bun run build`, puis `docker compose restart echohub`, puis
+  recharger Ornith 1.5 depuis le panneau (64K, q8_0, graphes). Premier chargement d'une config = compilation à froid,
+  relancée une fois automatiquement.
+- **Téléchargement** : 35B-A3B GGUF `mradermacher/Huihui-Ornith-1.5-35B-A3B-abliterated-i1-GGUF` Q4_K_M (llama.cpp).
+- **Questions ouvertes à Chris** : supprimer l'Ornith 1.0 (7,3 Go) ? dossiers étrangers copiés dans le dépôt
+  par l'app (`hub/`, `mockup*/`, `stockiop-copie/`, `captures/`, `p.xlsx`, `x.mjs`, non suivis) : les supprimer ?
+- Fait aujourd'hui (détail dans les commits du 10/11) : mémoire de travail du harnais, anti-boucle (appels
+  natifs `tool_calls`, relances non cumulées, radotage clos, historique dédoublonné), socle court pour 9B,
+  planificateur vLLM réaliste (64K + graphes, réserve bureau 1 Gio), activité en direct, écriture groupée
+  sauvée fichier par fichier, plan de l'agent visible, plafond de réponse au chargement, comptage de tokens
+  vLLM (auto-compaction), lancement Docker depuis Atrium (`.echoforge.yml` local).
+
 ## Session du 2026-11-10 — Mémoire de travail du harnais (relectures après « continue »)
 
 Constat de Chris (modèle 9B) : à chaque « continue », le modèle relisait tous les fichiers déjà lus,
