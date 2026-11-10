@@ -182,3 +182,25 @@ def test_des_redites_eparses_ne_coupent_pas_la_tache(monkeypatch: pytest.MonkeyP
         return series
 
     assert asyncio.run(jouer()) == [1, 0, 1, 0, 1, 0, 1, 2]
+
+
+def test_une_modification_reussie_n_est_jamais_une_redite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Banc du 2026-11-10 : « Modifié … » identique à chaque fois était pris pour « rien n'a changé »."""
+    message = "Modifié « tests/test_x.py » : un fragment remplacé, le reste du fichier est intact. " * 3
+
+    async def modifier(nom: str, arguments: Any, contexte: ContexteExecution) -> ResultatOutil:
+        return ResultatOutil(nom=nom, succes=True, texte=message)
+
+    monkeypatch.setattr(outils, "executer", modifier)
+    messages = _messages_depuis(HISTORIQUE)
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None)
+    contexte = ContexteExecution(conversation_id="c", racine_bac=Path("/tmp"))
+    appels = [{"name": "modifier_fichier", "arguments": {"chemin": "a.py", "ancien": f"x{i}", "nouveau": "y"}}
+              for i in range(3)] + [{"name": "modifier_fichier", "arguments": {"chemin": "a.py", "ancien": "x0",
+                                                                                  "nouveau": "y"}}]
+
+    async def jouer() -> list[str]:
+        return [e["sortie"] async for e in _executer_appels(appels, messages, contexte, etat) if "sortie" in e]
+
+    recus = asyncio.run(jouer())
+    assert etat.redites == 0 and all(r == message for r in recus)

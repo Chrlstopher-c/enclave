@@ -501,6 +501,8 @@ async def _jouer_appels(
 
 
 MARQUE_REDITE = "[Harness — repeated call removed]"
+OUTILS_LECTURE = frozenset({"lire_fichier", "lister_fichiers", "chercher_dans_fichiers", "plan_fichier",
+                            "recuperer_page", "recherche_web", "mcp_outils"})
 
 
 def _effacer_tour_redit(messages: list[MessageChat], debut: int, appels: list[dict[str, Any]], texte: str) -> None:
@@ -540,7 +542,11 @@ async def _executer_un(
     if not resultat.succes:
         etat.echecs_vus.add(signature)
         return resultat.texte, False, False
-    deja = redite(resultat.texte, messages) or etat.sorties_vues.get(signature) == resultat.texte
+    # Seule une LECTURE peut être une redite. Une écriture, une modification ou une commande agit même quand son
+    # message est identique (« Modifié … : un fragment remplacé ») : banc du 2026-11-10, le harnais répondait
+    # « rien n'a changé » à des modifications réussies, et le modèle les refaisait en boucle.
+    deja = nom in OUTILS_LECTURE and (redite(resultat.texte, messages)
+                                      or etat.sorties_vues.get(signature) == resultat.texte)
     etat.sorties_vues[signature] = resultat.texte
     if deja:
         etat.redites += 1
