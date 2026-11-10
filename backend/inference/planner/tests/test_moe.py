@@ -14,6 +14,8 @@ Comme les autres tests du planificateur, aucun GPU n'est nécessaire : les mesur
 
 from __future__ import annotations
 
+import pytest
+
 from backend.inference.planner import (
     CauseEchec,
     MetadonneesModele,
@@ -69,8 +71,14 @@ def test_moe_ne_facture_le_cache_kv_que_sur_les_couches_dattention(modele_moe: M
     assert _poste(plan, "Cache KV") < 0.7 * GIO, "facturé sur 40 couches, ce poste valait 2,5 Gio"
 
 
-def test_moe_garde_toutes_les_couches_sur_gpu_et_deporte_des_experts(modele_moe: MetadonneesModele) -> None:
-    """Le plan attendu : 40 blocs sur GPU, seuls des groupes d'experts rappelés en mémoire hôte."""
+def test_moe_garde_toutes_les_couches_sur_gpu_et_deporte_des_experts(
+    modele_moe: MetadonneesModele, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Le plan attendu : 40 blocs sur GPU, seuls des groupes d'experts rappelés en mémoire hôte.
+
+    Sans réserve de bureau : les blocs attendus ont été mesurés sur le budget brut de la carte.
+    """
+    monkeypatch.setattr("backend.inference.planner.moteur.RESERVE_BUREAU_OCTETS", 0)
     plan = planifier(demande(modele_moe, preferences=PreferencesUtilisateur(contexte=32768)))
 
     assert plan.couches_gpu.valeur == plan.couches_totales

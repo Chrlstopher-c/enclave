@@ -86,6 +86,13 @@ def ejections_requises(profil: ProfilMachine) -> tuple[EjectionRequise, ...]:
     )
 
 
+# VRAM laissée au bureau EN PLUS de ce qu'il occupe au moment de la mesure. Le navigateur, Discord et
+# Claude Desktop (Electron) allouent de la VRAM au fil de l'usage : un plan qui prenait tout le libre
+# mesuré les privait de cette marge, et ils plantaient (NV_ERR_NO_MEMORY, Chrome en SIGILL, Claude
+# Desktop fermé deux fois en dix minutes le 2026-11-10 avec vLLM à 82 % de la carte).
+RESERVE_BUREAU_OCTETS = 1536 * 1024**2
+
+
 def vram_apres_ejection(profil: ProfilMachine) -> tuple[int, tuple[EjectionRequise, ...]]:
     """VRAM sur laquelle le plan peut compter : le libre mesuré plus ce que les éjections rendront.
 
@@ -114,7 +121,7 @@ def vram_apres_ejection(profil: ProfilMachine) -> tuple[int, tuple[EjectionRequi
     liberee = min(liberee, occupe)
     plafond = profil.vram_totale_octets - (occupe - liberee)
     disponible = min(plafond, profil.vram_libre_octets + liberee)
-    return disponible, ejections
+    return max(0, disponible - RESERVE_BUREAU_OCTETS), ejections
 
 
 def flash_attention_active(

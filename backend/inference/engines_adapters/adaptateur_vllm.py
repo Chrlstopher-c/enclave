@@ -22,6 +22,7 @@ import httpx
 from loguru import logger
 
 from backend.inference.engines_adapters import processus_vllm
+from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur, _lire_flux
 from backend.inference.engines_adapters.base import AdaptateurMoteur, exiger_moteur, exiger_source_lisible
 from backend.inference.engines_adapters.contrat import (
     CauseEchec,
@@ -39,8 +40,6 @@ from backend.inference.engines_adapters.vram import MesureVram, lire_vram
 
 DELAI_GENERATION_S = 600.0
 DELAI_SONDE_S = 5.0
-PREFIXE_SSE = "data: "
-MARQUEUR_FIN_SSE = "[DONE]"
 
 
 class AdaptateurVllm(AdaptateurMoteur):
@@ -202,6 +201,7 @@ class AdaptateurVllm(AdaptateurMoteur):
         self,
         messages: Sequence[MessageChat],
         options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
     ) -> AsyncIterator[MorceauGeneration]:
         if self._etat is None:
             raise EchecChargement(
@@ -211,37 +211,33 @@ class AdaptateurVllm(AdaptateurMoteur):
                     remediation="Charger un modèle avant de générer.",
                 )
             )
-        return self._flux(messages, options)
+        return self._flux(messages, options, outils)
 
     async def _flux(
         self,
         messages: Sequence[MessageChat],
         options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
     ) -> AsyncIterator[MorceauGeneration]:
         """Relaie le flux SSE de vLLM, borné par le contexte servi : un flux sans fin est un bug."""
-        charge_utile = self._charge_utile(messages, options)
+        charge_utile = self._charge_utile(messages, options, outils)
         plafond = options.max_tokens or (self._etat.contexte if self._etat else 0)
-        emis = 0
+        # Avec `--tool-call-parser`, vLLM rend les appels dans `delta.tool_calls` et les RETIRE du texte.
+        # La boucle d'outils les lit dans le texte : ils sont recomposés en `<tool_call>{…}</tool_call>`,
+        # exactement comme pour llama-server. Ignorés, les appels disparaissaient sans un mot.
+        appels = _Accumulateur()
         raison: str | None = None
         async with httpx.AsyncClient(timeout=DELAI_GENERATION_S) as client:
             async with client.stream(
                 "POST", f"{processus_vllm.url_base()}/v1/chat/completions", json=charge_utile
             ) as reponse:
                 await self._verifier_reponse(reponse)
-                async for ligne in reponse.aiter_lines():
-                    morceau = _decoder_evenement(ligne)
-                    if morceau is None:
-                        continue
-                    if morceau.type == "fin":
-                        raison = morceau.raison_arret or raison
-                        break
-                    raison = morceau.raison_arret or raison
-                    if morceau.contenu:
-                        emis += 1
+                async for morceau, arret in _lire_flux(reponse, appels, plafond):
+                    raison = arret or raison
+                    if morceau is not None:
                         yield morceau
-                    if emis >= plafond > 0:
-                        logger.warning("Flux vLLM borné à {} tokens : arrêt", plafond)
-                        break
+        if not appels.vide():
+            yield MorceauGeneration(type="token", contenu=appels.en_texte())
         yield MorceauGeneration(type="fin", raison_arret=raison)
 
     async def _verifier_reponse(self, reponse: httpx.Response) -> None:
@@ -253,7 +249,12 @@ class AdaptateurVllm(AdaptateurMoteur):
         diagnostic = qualifier(corps, source_verifiee=True)
         raise EchecChargement(diagnostic, details={"statut": reponse.status_code})
 
-    def _charge_utile(self, messages: Sequence[MessageChat], options: OptionsGeneration) -> dict[str, Any]:
+    def _charge_utile(
+        self,
+        messages: Sequence[MessageChat],
+        options: OptionsGeneration,
+        outils: Sequence[dict[str, object]] | None = None,
+    ) -> dict[str, Any]:
         charge: dict[str, Any] = {
             "model": self._etat.modele if self._etat else "",
             "messages": [message.model_dump() for message in messages],
@@ -271,21 +272,10 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["stop"] = list(options.stop)
         if options.graine is not None:
             charge["seed"] = options.graine
+        # Outils au format OpenAI, comme l'adaptateur llama-server. `tool_choice: "auto"` exige les
+        # options de lancement `--enable-auto-tool-choice`/`--tool-call-parser` (cf. processus_vllm) ;
+        # transmis seulement s'il y a des outils, une liste vide ferait refuser certains modèles.
+        if outils:
+            charge["tools"] = list(outils)
+            charge["tool_choice"] = "auto"
         return charge
-
-
-def _decoder_evenement(ligne: str) -> MorceauGeneration | None:
-    """Traduit une ligne SSE en morceau. Retourne None pour tout ce qui n'est pas un événement."""
-    if not ligne or not ligne.startswith(PREFIXE_SSE):
-        return None
-    charge = ligne[len(PREFIXE_SSE):].strip()
-    if charge == MARQUEUR_FIN_SSE:
-        return MorceauGeneration(type="fin")
-    try:
-        evenement = json.loads(charge)
-    except json.JSONDecodeError:
-        logger.warning("Événement SSE vLLM illisible, ignoré : {}", charge[:120])
-        return None
-    choix = (evenement.get("choices") or [{}])[0]
-    contenu = (choix.get("delta") or {}).get("content") or ""
-    return MorceauGeneration(type="token", contenu=contenu, raison_arret=choix.get("finish_reason"))
