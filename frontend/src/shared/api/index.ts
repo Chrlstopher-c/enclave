@@ -70,6 +70,7 @@ export {
   listerModelesLocaux,
   listerTelechargements,
   metadonneesModele,
+  metadonneesSafetensors,
   obtenirModele,
   oublierModele,
   rechercherModeles,

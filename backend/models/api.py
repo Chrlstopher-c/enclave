@@ -31,6 +31,7 @@ from backend.core import EchoHubError
 from backend.models import (
     FormatRecherche,
     MetadonneesGGUF,
+    MetadonneesSafetensors,
     ModeleEnregistre,
     Ordre,
     PageRecherche,
@@ -44,6 +45,7 @@ from backend.models import (
     lister_modeles,
     marquer_favori,
     metadonnees_modele,
+    metadonnees_safetensors_modele,
     obtenir_modele,
     oublier_modele,
     rechercher,
@@ -212,6 +214,19 @@ def lire_metadonnees(identifiant: str) -> MetadonneesGGUF | None:
     """
     try:
         return metadonnees_modele(identifiant)
+    except EchoHubError as exc:
+        raise _en_http(exc) from exc
+
+
+@router.get("/registre/{identifiant:path}/metadonnees-safetensors", response_model=MetadonneesSafetensors | None)
+def lire_metadonnees_safetensors(identifiant: str) -> MetadonneesSafetensors | None:
+    """Métadonnées LUES dans le `config.json` safetensors — entrée du planificateur pour ce format.
+
+    `null` quand le modèle n'est pas au format safetensors : symétrique de `/metadonnees` pour le
+    GGUF. Poids par bloc mesuré sur l'index des tenseurs, jamais estimé.
+    """
+    try:
+        return metadonnees_safetensors_modele(identifiant)
     except EchoHubError as exc:
         raise _en_http(exc) from exc
 

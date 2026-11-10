@@ -32,6 +32,7 @@ import type {
 import type {
   EtatMoteurs,
   MetadonneesGGUF,
+  MetadonneesSafetensors,
   ModeleEnregistre,
   ProfilMachine,
   StatutInference,
@@ -145,9 +146,9 @@ interface ChampsRequis {
 }
 
 /** Champ requis absent ou nul : on nomme lequel plutôt que de livrer un plan bâti sur du vide. */
-function exiger(valeur: number | null | undefined, nom: string): number | RefusCible {
+function exiger(valeur: number | null | undefined, nom: string, source = "l'en-tête GGUF"): number | RefusCible {
   if (valeur === null || valeur === undefined || valeur <= 0) {
-    return { manquant: `${nom} absent de l'en-tête GGUF`, remediation: REMEDIATION_METADONNEES };
+    return { manquant: `${nom} absent de ${source}`, remediation: REMEDIATION_METADONNEES };
   }
   return valeur;
 }
@@ -258,6 +259,109 @@ function assembler(modele: ModeleEnregistre, gguf: MetadonneesGGUF, requis: Cham
   };
 }
 
+/*
+ * Assemblage des métadonnées du planificateur à partir d'un `config.json` safetensors — symétrique
+ * de `versMetadonneesPlan`. Le backend a déjà lu et MESURÉ (poids par bloc sur l'index des
+ * tenseurs) ; ici on ne fait que confronter la présence des champs requis et transposer.
+ */
+export function versMetadonneesPlanSafetensors(
+  modele: ModeleEnregistre,
+  meta: MetadonneesSafetensors | null,
+): MetadonneesModele | RefusCible {
+  if (meta === null) {
+    return {
+      manquant: `métadonnées illisibles pour ${modele.id}`,
+      remediation:
+        modele.format === 'safetensors'
+          ? REMEDIATION_METADONNEES
+          : "Ce modèle n'est pas au format safetensors.",
+    };
+  }
+  const estMoe = (meta.nb_experts ?? 0) > 1;
+  const requis: Record<keyof ChampsRequis, number | RefusCible> = {
+    nombre_couches: exiger(meta.nombre_couches, 'nombre de couches', 'le config.json'),
+    dimension_embedding: exiger(meta.dimension_embedding, "dimension d'embedding", 'le config.json'),
+    dimension_ffn: exiger(largeurFfnActiveSafetensors(meta, estMoe), 'dimension FFN', 'le config.json'),
+    nombre_tetes_attention: exiger(meta.nombre_tetes_attention, "nombre de têtes d'attention", 'le config.json'),
+    contexte_entrainement_max: exiger(meta.contexte_entrainement_max, "contexte d'entraînement", 'le config.json'),
+    taille_vocabulaire: exiger(meta.taille_vocabulaire, 'taille du vocabulaire', 'le config.json'),
+    taille_octets: exiger(meta.taille_octets, 'taille du fichier', 'le config.json'),
+  };
+  for (const valeur of Object.values(requis)) {
+    if (estRefus(valeur)) {
+      return valeur;
+    }
+  }
+  return assemblerSafetensors(modele, meta, requis as ChampsRequis, estMoe);
+}
+
+/**
+ * Largeur FFN vive d'un token. Dense : `dimension_ffn` (intermediate_size). MoE : experts routés
+ * plus branche partagée, comme `MetadonneesGGUF.largeur_ffn_active` côté GGUF. `null` si un terme
+ * manque — on ne complète pas une somme de moitié.
+ */
+function largeurFfnActiveSafetensors(meta: MetadonneesSafetensors, estMoe: boolean): number | null {
+  if (!estMoe) {
+    return meta.dimension_ffn;
+  }
+  if (meta.nb_experts_actifs === null || meta.dimension_ffn_expert === null) {
+    return null;
+  }
+  return meta.nb_experts_actifs * meta.dimension_ffn_expert + (meta.dimension_ffn_expert_partage ?? 0);
+}
+
+function assemblerSafetensors(
+  modele: ModeleEnregistre,
+  meta: MetadonneesSafetensors,
+  requis: ChampsRequis,
+  estMoe: boolean,
+): MetadonneesModele {
+  return {
+    identifiant: modele.id,
+    format: modele.format,
+    architecture: meta.architecture,
+    taille_octets: requis.taille_octets,
+    nombre_couches: requis.nombre_couches,
+    dimension_embedding: requis.dimension_embedding,
+    dimension_ffn: requis.dimension_ffn,
+    nombre_tetes_attention: requis.nombre_tetes_attention,
+    nombre_tetes_kv: meta.nombre_tetes_kv ?? requis.nombre_tetes_attention,
+    dimension_tete: meta.dimension_tete,
+    contexte_entrainement_max: requis.contexte_entrainement_max,
+    taille_vocabulaire: requis.taille_vocabulaire,
+    quantification: meta.quantification,
+    est_moe: estMoe,
+    nombre_experts: meta.nb_experts,
+    nombre_experts_actifs: meta.nb_experts_actifs,
+    dimension_ffn_expert: meta.dimension_ffn_expert,
+    dimension_ffn_expert_partage: meta.dimension_ffn_expert_partage,
+    intervalle_attention_pleine: meta.intervalle_attention_pleine,
+    dimension_interne_ssm: meta.dimension_interne_ssm,
+    dimension_etat_ssm: meta.dimension_etat_ssm,
+    noyau_convolution_ssm: meta.noyau_convolution_ssm,
+    ...mesuresParBlocSafetensors(meta, requis.nombre_couches),
+  };
+}
+
+/*
+ * Poids par bloc transmis seulement s'il est COMPLET (une valeur par couche) — sinon le
+ * planificateur le refuse à juste titre et retombe sur le poids moyen. `octets_hors_blocs`
+ * accompagne toujours une mesure par bloc : il porte la tour de vision et les embeddings, que le
+ * chargement vLLM garde résidents en VRAM. Sans lui, ce poids serait perdu du calcul.
+ */
+function mesuresParBlocSafetensors(
+  meta: MetadonneesSafetensors,
+  nombreCouches: number,
+): Pick<MetadonneesModele, 'octets_par_bloc' | 'octets_hors_blocs'> {
+  if (meta.octets_par_bloc.length !== nombreCouches) {
+    return {};
+  }
+  return {
+    octets_par_bloc: meta.octets_par_bloc,
+    octets_hors_blocs: meta.octets_hors_blocs,
+  };
+}
+
 export function construireCible(
   modele: ModeleEnregistre,
   gguf: MetadonneesGGUF | null,
@@ -265,7 +369,27 @@ export function construireCible(
   moteurs: EtatMoteurs | null,
   statut: StatutInference | null,
 ): ResultatCible {
-  const metadonnees = versMetadonneesPlan(modele, gguf);
+  return assemblerCible(modele, versMetadonneesPlan(modele, gguf), profil, moteurs, statut);
+}
+
+export function construireCibleSafetensors(
+  modele: ModeleEnregistre,
+  meta: MetadonneesSafetensors | null,
+  profil: ProfilMachine,
+  moteurs: EtatMoteurs | null,
+  statut: StatutInference | null,
+): ResultatCible {
+  return assemblerCible(modele, versMetadonneesPlanSafetensors(modele, meta), profil, moteurs, statut);
+}
+
+/** Assemble la cible finale une fois les métadonnées résolues — commun aux deux formats. */
+function assemblerCible(
+  modele: ModeleEnregistre,
+  metadonnees: MetadonneesModele | RefusCible,
+  profil: ProfilMachine,
+  moteurs: EtatMoteurs | null,
+  statut: StatutInference | null,
+): ResultatCible {
   if ('manquant' in metadonnees) {
     return { refus: metadonnees };
   }

@@ -212,3 +212,38 @@ export interface MetadonneesGGUF {
   readonly est_moe: boolean;
   readonly largeur_ffn_active: number | null;
 }
+
+/**
+ * Métadonnées LUES dans le `config.json` d'un modèle safetensors — l'équivalent de `MetadonneesGGUF`
+ * pour l'autre format de poids, source du planificateur quand le moteur est vLLM.
+ *
+ * Champs nullables où le planificateur exige une valeur positive : un champ absent produit un refus
+ * NOMMÉ à l'assemblage (`versMetadonneesPlanSafetensors`), jamais une estimation. Le poids par bloc
+ * est mesuré sur l'index des tenseurs (octets réels sur disque), pas déclaré par `config.json`.
+ * Source : `backend/models/safetensors_metadata.py`.
+ */
+export interface MetadonneesSafetensors {
+  readonly chemin: string;
+  readonly architecture: string;
+  readonly multimodal: boolean;
+  readonly taille_octets: number;
+  readonly nombre_couches: number | null;
+  readonly dimension_embedding: number | null;
+  readonly dimension_ffn: number | null;
+  readonly nombre_tetes_attention: number | null;
+  readonly nombre_tetes_kv: number | null;
+  readonly dimension_tete: number | null;
+  readonly contexte_entrainement_max: number | null;
+  readonly taille_vocabulaire: number | null;
+  readonly quantification: string | null;
+  readonly nb_experts: number | null;
+  readonly nb_experts_actifs: number | null;
+  readonly dimension_ffn_expert: number | null;
+  readonly dimension_ffn_expert_partage: number | null;
+  readonly intervalle_attention_pleine: number | null;
+  readonly dimension_interne_ssm: number | null;
+  readonly dimension_etat_ssm: number | null;
+  readonly noyau_convolution_ssm: number | null;
+  readonly octets_par_bloc: readonly number[];
+  readonly octets_hors_blocs: number | null;
+}

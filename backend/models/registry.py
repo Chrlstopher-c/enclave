@@ -25,6 +25,7 @@ from backend.core.errors import MetadonneesIllisibles, ModeleIntrouvable
 from backend.models.capacites import CapaciteDeduite, SignauxDepot, deduire_capacites
 from backend.models.coherence import RapportCoherence, verifier_modele
 from backend.models.gguf_metadata import MetadonneesGGUF, lire_metadonnees
+from backend.models.safetensors_metadata import MetadonneesSafetensors, lire_metadonnees_safetensors
 from backend.models.safetensors_reader import lire_config, lire_index
 from backend.models.storage import (
     FormatModele,
@@ -261,6 +262,18 @@ def metadonnees(identifiant_modele: str) -> MetadonneesGGUF | None:
     if entree.format != FormatModele.GGUF.value:
         return None
     return metadonnees_gguf(Path(entree.chemin))
+
+
+def metadonnees_safetensors(identifiant_modele: str) -> MetadonneesSafetensors | None:
+    """Entrée du planificateur pour un modèle safetensors du registre, ou `None` s'il est GGUF.
+
+    Symétrique de `metadonnees` : `None` dit « ce n'est pas ce format », à l'appelant de décider.
+    Pour un safetensors, `chemin` est le dossier du modèle (cf. `_construire`), pas un fichier.
+    """
+    entree = obtenir(identifiant_modele)
+    if entree.format != FormatModele.SAFETENSORS.value:
+        return None
+    return lire_metadonnees_safetensors(Path(entree.chemin))
 
 
 def verifier(identifiant_modele: str) -> RapportCoherence:

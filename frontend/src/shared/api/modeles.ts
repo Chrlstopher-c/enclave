@@ -18,6 +18,7 @@ import { requeteJson } from './transport';
 import type {
   FormatRecherche,
   MetadonneesGGUF,
+  MetadonneesSafetensors,
   ModeleEnregistre,
   Ordre,
   PageRecherche,
@@ -91,6 +92,20 @@ export function oublierModele(identifiant: string): Promise<{ readonly oublie: b
  */
 export function metadonneesModele(identifiant: string, signal?: AbortSignal): Promise<MetadonneesGGUF | null> {
   return requeteJson<MetadonneesGGUF | null>(cheminEntree(identifiant, '/metadonnees'), { signal });
+}
+
+/**
+ * Métadonnées LUES dans le `config.json` safetensors — source du planificateur pour ce format.
+ * `null` quand le modèle n'est pas au format safetensors. Symétrique de `metadonneesModele`.
+ */
+export function metadonneesSafetensors(
+  identifiant: string,
+  signal?: AbortSignal,
+): Promise<MetadonneesSafetensors | null> {
+  return requeteJson<MetadonneesSafetensors | null>(
+    cheminEntree(identifiant, '/metadonnees-safetensors'),
+    { signal },
+  );
 }
 
 /** Confronte ce que le modèle déclare à ce qu'il contient réellement. */

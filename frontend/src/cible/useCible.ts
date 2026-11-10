@@ -19,10 +19,11 @@ import {
   lireEtatMoteurs,
   lireProfilMachine,
   metadonneesModele,
+  metadonneesSafetensors,
   obtenirModele,
   type ModeleEnregistre,
 } from '../shared/api';
-import { construireCible, type RefusCible } from './conversion';
+import { construireCible, construireCibleSafetensors, type RefusCible } from './conversion';
 
 export interface EtatCible {
   readonly cible: CibleChargement | null;
@@ -54,8 +55,10 @@ export function useCible(): EtatCible {
     setRefus(null);
 
     const mesurer = async (): Promise<void> => {
-      const [gguf, profil, moteurs, statut] = await Promise.all([
-        metadonneesModele(modele.id),
+      // Profil et état partent ensemble ; la source des métadonnées dépend du format et se lit
+      // ensuite (un appel local rapide) — l'en-tête GGUF pour llama.cpp, le config.json safetensors
+      // pour vLLM. Brancher ici, plutôt qu'un cast, garde chaque source à son type exact.
+      const [profil, moteurs, statut] = await Promise.all([
         lireProfilMachine(),
         lireEtatMoteurs().catch((): null => null),
         lireEtatInference().catch((): null => null),
@@ -63,7 +66,13 @@ export function useCible(): EtatCible {
       if (generation.current !== mienne) {
         return;
       }
-      const resultat = construireCible(modele, gguf, profil, moteurs, statut);
+      const resultat =
+        modele.format === 'safetensors'
+          ? construireCibleSafetensors(modele, await metadonneesSafetensors(modele.id), profil, moteurs, statut)
+          : construireCible(modele, await metadonneesModele(modele.id), profil, moteurs, statut);
+      if (generation.current !== mienne) {
+        return;
+      }
       if ('refus' in resultat) {
         setCible(null);
         setRefus(resultat.refus);

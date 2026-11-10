@@ -77,6 +77,8 @@ from backend.models.registry import lister as lister_modeles
 from backend.models.registry import marquer_favori
 from backend.models.registry import metadonnees as metadonnees_modele
 from backend.models.registry import metadonnees_gguf
+from backend.models.registry import metadonnees_safetensors as metadonnees_safetensors_modele
+from backend.models.safetensors_metadata import MetadonneesSafetensors
 from backend.models.registry import obtenir as obtenir_modele
 from backend.models.registry import oublier as oublier_modele
 from backend.models.registry import synchroniser as synchroniser_registre
@@ -101,6 +103,7 @@ __all__ = [
     # Poids safetensors
     "IndexSafetensors",
     "InfoTenseurSafetensors",
+    "MetadonneesSafetensors",
     "lire_index",
     "lire_config",
     # Cohérence
@@ -140,6 +143,7 @@ __all__ = [
     "marquer_favori",
     "metadonnees_modele",
     "metadonnees_gguf",
+    "metadonnees_safetensors_modele",
     "obtenir_modele",
     "oublier_modele",
     "synchroniser_registre",

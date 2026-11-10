@@ -6,9 +6,11 @@
 export { useCible, type EtatCible } from './useCible';
 export {
   construireCible,
+  construireCibleSafetensors,
   modelesCharges,
   moteursUtilisables,
   versMetadonneesPlan,
+  versMetadonneesPlanSafetensors,
   versProfilPlan,
   type RefusCible,
   type ResultatCible,
