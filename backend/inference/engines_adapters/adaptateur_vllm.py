@@ -25,8 +25,8 @@ from backend.inference.engines_adapters import processus_vllm
 from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur
 from backend.inference.engines_adapters.base import AdaptateurMoteur, exiger_moteur, exiger_source_lisible
 from backend.inference.engines_adapters.contrat import (
-    en_charge_moteur,
     CauseEchec,
+    ComptageTokens,
     EtatMoteur,
     MessageChat,
     MorceauGeneration,
@@ -34,6 +34,7 @@ from backend.inference.engines_adapters.contrat import (
     OptionsGeneration,
     PlanChargement,
     Sante,
+    en_charge_moteur,
 )
 from backend.inference.engines_adapters.diagnostic import Diagnostic, EchecChargement, qualifier
 from backend.inference.engines_adapters.journal import NiveauEntree, SessionChargement, journal_chargement
@@ -217,6 +218,33 @@ class AdaptateurVllm(AdaptateurMoteur):
             latence_ms=round((time.perf_counter() - debut) * 1000, 2), detail=detail,
         )
 
+    async def compter_tokens(self, textes: Sequence[str]) -> ComptageTokens:
+        """Compte les tokens par `/tokenize` du serveur vLLM — le tokenizer du modèle chargé.
+
+        Sans lui, la fenêtre était « non mesurable » sous vLLM : l'auto-compaction ne se déclenchait
+        jamais, le contexte montait jusqu'à la limite et vLLM refusait la requête suivante (« maximum
+        context length is 64512 tokens », 2026-11-10 : génération perdue au milieu d'une tâche).
+        """
+        if self._etat is None:
+            return ComptageTokens(possible=False, raison="Aucun modèle servi par vLLM.")
+        comptes: list[int] = []
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                for texte in textes:
+                    comptes.append(await self._tokeniser(client, texte))
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("Décompte de tokens vLLM impossible ({}) : mesure absente.", exc)
+            return ComptageTokens(possible=False, raison=f"vLLM /tokenize a échoué : {exc}")
+        return ComptageTokens(possible=True, tokens_par_texte=comptes, contexte_moteur=self._etat.contexte)
+
+    async def _tokeniser(self, client: httpx.AsyncClient, texte: str) -> int:
+        if not texte:
+            return 0
+        corps = {"model": self._etat.modele if self._etat else "", "prompt": texte, "add_special_tokens": False}
+        reponse = await client.post(f"{processus_vllm.url_base()}/tokenize", json=corps)
+        reponse.raise_for_status()
+        return int(reponse.json()["count"])
+
     def generer(
         self,
         messages: Sequence[MessageChat],
@@ -268,7 +296,14 @@ class AdaptateurVllm(AdaptateurMoteur):
             return
         corps = (await reponse.aread()).decode(errors="replace")
         logger.error("vLLM {} sur /v1/chat/completions : {}", reponse.status_code, corps[:500])
-        diagnostic = qualifier(corps, source_verifiee=True)
+        if "maximum context length" in corps:
+            diagnostic = Diagnostic(
+                cause=CauseEchec.CONTEXTE_TROP_GRAND,
+                message="La conversation dépasse la fenêtre de contexte du modèle (maximum context length).",
+                remediation="Compacter la conversation (/compact) ou recharger le modèle avec un contexte plus grand.",
+            )
+        else:
+            diagnostic = qualifier(corps, source_verifiee=True)
         raise EchecChargement(diagnostic, details={"statut": reponse.status_code})
 
     def _charge_utile(

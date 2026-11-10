@@ -53,6 +53,8 @@ from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
 from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
 from backend.inference.activite import Ecriture, SuiviActivite, progression
+from backend.inference.engines_adapters.contrat import CauseEchec
+from backend.inference.engines_adapters.diagnostic import EchecChargement
 from backend.inference.memoire_travail import (
     CONSIGNE_BOUCLE,
     Segment,
@@ -644,8 +646,17 @@ class MoteurChat:
                 return
             logger.info("Réponse coupée par la fenêtre : reprise {}/{}.", essai + 1, CONTINUATIONS_MAX)
             raisons.clear()
-            async for morceau in self._diffuser(suite, options, outils, recu, raisons, etat):
-                yield morceau
+            try:
+                async for morceau in self._diffuser(suite, options, outils, recu, raisons, etat):
+                    yield morceau
+            except EchecChargement as exc:
+                # Filet : une reprise refusée pour fenêtre pleine ne doit jamais tuer la génération ;
+                # ce qui a été écrit reste, et l'utilisateur lit pourquoi ça s'arrête.
+                if exc.diagnostic.cause is not CauseEchec.CONTEXTE_TROP_GRAND:
+                    raise
+                logger.warning("Reprise refusée par le moteur, fenêtre pleine : arrêt propre.")
+                yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
+                return
         logger.warning("Borne de {} reprises atteinte : la réponse reste incomplète.", CONTINUATIONS_MAX)
         yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
 
@@ -657,7 +668,9 @@ class MoteurChat:
         tokenizer — ne doit pas décider à la place du moteur qu'une réponse est finie.
         """
         try:
-            occupation = await superviseur.compter_contexte("", messages)
+            # Les définitions d'outils occupent la fenêtre aussi (~4K tokens) : les oublier faisait
+            # tenter une reprise qui dépassait la fenêtre — refus 400 de vLLM (2026-11-10).
+            occupation = await superviseur.compter_contexte(_socle_outils_json(), messages)
         except Exception as exc:  # noqa: BLE001 — une mesure absente ne doit jamais couper la réponse
             logger.warning("Place restante non mesurable ({}) : reprise tentée quand même.", exc)
             return None
