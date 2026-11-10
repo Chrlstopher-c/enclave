@@ -75,3 +75,14 @@ def test_boucle_soignee_puis_reprise(monkeypatch: Any) -> None:
 def test_sans_compaction_possible_l_arret_est_explique(monkeypatch: Any) -> None:
     _, texte, forcees = _jouer(monkeypatch, tours=20, compaction_reussie=False)
     assert forcees == [1] and "Arrêt automatique" in texte
+
+
+def test_les_redites_ne_s_empilent_pas_au_contexte(monkeypatch: Any) -> None:
+    """Une seule trace de la lecture et une seule consigne, quel que soit le nombre de redites."""
+    from backend.inference import MARQUE_REDITE
+
+    modele, _, _ = _jouer(monkeypatch, tours=4, compaction_reussie=True)
+    dernier = modele.vus[-1]
+    assert sum(1 for m in dernier if m.role == "tool") == 1, [m.role for m in dernier]
+    assert sum(1 for m in dernier if m.role == "user" and str(m.content).startswith(MARQUE_REDITE)) == 1
+    assert "corrige app.py" in str(dernier[0].content)

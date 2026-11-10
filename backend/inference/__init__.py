@@ -470,7 +470,10 @@ async def _jouer_appels(
     etat.tours_muets = 0
     etat.textes.append(texte)
     avant = etat.aboutis
+    debut_tour = len(messages) - 1  # le tour d'assistant qui porte ces appels, puis leurs résultats
+    redites = 0
     async for etape in _executer_appels(appels, messages, contexte, etat):
+        redites += 1 if etape.get("redite") else 0
         if isinstance(etape.get("texte"), str):
             yield {"texte": etape["texte"]}
         if "activite" in etape:
@@ -485,6 +488,8 @@ async def _jouer_appels(
                 etat.taches_ouvertes = taches_ouvertes(contexte.conversation_id)
                 etat.activite.taches = taches_detaillees(contexte.conversation_id)
                 yield {"activite": etat.activite.instantane(force=True)}
+    if appels and redites == len(appels):
+        _effacer_tour_redit(messages, debut_tour, appels, texte)
     if etat.aboutis > avant:
         # Un outil a abouti : l'ardoise des relances est effacée, comme celle des redites.
         # MESURÉ le 2026-08-16 : relancé une fois, le modèle écrit bien son fichier — puis referme
@@ -493,6 +498,31 @@ async def _jouer_appels(
         # suit un travail réel mérite le même traitement que la première.
         etat.relances = 0
         etat.relances_promesse = 0
+
+
+MARQUE_REDITE = "[Harness — repeated call removed]"
+
+
+def _effacer_tour_redit(messages: list[MessageChat], debut: int, appels: list[dict[str, Any]], texte: str) -> None:
+    """Un tour qui n'a fait que redire ne reste PAS au contexte : une seule consigne le remplace.
+
+    « TUI », 2026-11-10 : à 93K, le 9B recopiait six fois le même couple pensée + appel (lire app.py 72-95) alors que
+    sa pensée disait « cherchons on_mount ». Chaque copie gardée au contexte rendait la suivante plus probable
+    (attracteur de répétition). Retirer la copie et rappeler l'intention casse l'attracteur.
+    """
+    if debut < 0 or debut >= len(messages) or messages[debut].role != "assistant":
+        return
+    del messages[debut:]
+    annonces = ", ".join(_annonce(*_texte_appel(appel)) for appel in appels)
+    intention = pour_le_modele(_sans_appels_outils(texte)).split("</think>")[0].strip()[-400:]
+    consigne = (f"{MARQUE_REDITE} You called again {annonces}; its result is already above and has not changed, so "
+                "this repeated attempt was removed. The answer you need is NOT in that result. Your intention was: "
+                f"« {intention} ». Do something DIFFERENT now: search for the exact name you need (search_files), "
+                "read another file or range, or act (edit, write, run).")
+    if messages and messages[-1].role == "user" and str(messages[-1].content).startswith(MARQUE_REDITE):
+        messages[-1] = MessageChat(role="user", content=consigne)
+    else:
+        messages.append(MessageChat(role="user", content=consigne))
 
 
 async def _executer_un(
