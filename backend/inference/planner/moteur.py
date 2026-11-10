@@ -90,7 +90,9 @@ def ejections_requises(profil: ProfilMachine) -> tuple[EjectionRequise, ...]:
 # Claude Desktop (Electron) allouent de la VRAM au fil de l'usage : un plan qui prenait tout le libre
 # mesuré les privait de cette marge, et ils plantaient (NV_ERR_NO_MEMORY, Chrome en SIGILL, Claude
 # Desktop fermé deux fois en dix minutes le 2026-11-10 avec vLLM à 82 % de la carte).
-RESERVE_BUREAU_OCTETS = 1536 * 1024**2
+# 1 Gio : en service le 2026-11-10, 1,4 Go laissés libres (Ornith 64K + graphes) tiennent des heures,
+# 0,9 Go ont fait planter le bureau.
+RESERVE_BUREAU_OCTETS = 1024 * 1024**2
 
 
 def vram_apres_ejection(profil: ProfilMachine) -> tuple[int, tuple[EjectionRequise, ...]]:
