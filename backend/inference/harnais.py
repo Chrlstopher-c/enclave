@@ -183,6 +183,8 @@ CONSIGNE_TOUR_MUET = (
     "French with what you have, or make the call you need with every argument inline."
 )
 
+RADOTAGE_RELANCES_MAX = 1
+
 CONSIGNE_RADOTAGE = (
     "You wrote the same thing twice. Do something different — a tool call or one precise question — "
     "or say plainly what blocks you and stop."
@@ -303,6 +305,9 @@ class EtatBoucle:
     # Activité diffusée en direct (`activite.py`) et écriture anticipée des fichiers groupés complets.
     activite: SuiviActivite = field(default_factory=SuiviActivite)
     ecrire_tot: Ecriture | None = None
+    # Longueur du contexte avant la première relance en cours : chaque relance repart de là.
+    base_relance: int | None = None
+    relances_radotage: int = 0
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:
@@ -357,6 +362,13 @@ def consigne_de_relance(texte: str, etat: EtatBoucle, avec_outils: bool) -> str 
         return CONSIGNE_TOUR_MUET + (rappel_dernier_appel(etat.dernier_appel) if etat.mode_projet else "")
     etat.textes.append(texte)
     if radote(etat.textes, etat.harnais):
+        if etat.relances_radotage >= RADOTAGE_RELANCES_MAX:
+            # Relancer un modèle qui radote nourrit la boucle (mesuré le 2026-11-10 : sept relances
+            # « tu répètes », sept répétitions). Après une, on clôt : il rend compte, sans outil.
+            etat.promesse_en_suspens = True
+            logger.warning("Radotage persistant après {} relance : clôture.", etat.relances_radotage)
+            return None
+        etat.relances_radotage += 1
         etat.relances += 1
         logger.warning("Texte répété à l'identique sur {} tours : relance {}.",
                        etat.harnais.radotage_tours, etat.relances)

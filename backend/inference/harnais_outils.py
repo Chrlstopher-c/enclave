@@ -184,6 +184,6 @@ def sans_reflexion_passee(messages: list[MessageChat]) -> list[MessageChat]:
     for message in messages:
         if message.role == "assistant" and isinstance(message.content, str) and "<think>" in message.content:
             visible, _ = separer_raisonnement(message.content)
-            message = MessageChat(role="assistant", content=visible.strip())
+            message = message.model_copy(update={"content": visible.strip()})
         nettoyes.append(message)
     return nettoyes

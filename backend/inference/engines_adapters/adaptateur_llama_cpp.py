@@ -134,7 +134,7 @@ def _partie_moteur(partie: PartieContenu) -> PartieContenu | None:
 def _message_pour_moteur(message: MessageChat) -> dict[str, Any]:
     """Un message prêt pour `create_chat_completion` : images encodées, jamais avant."""
     if isinstance(message.content, str):
-        return message.model_dump()
+        return message.model_dump(exclude_none=True)
     parties = [_partie_moteur(partie) for partie in message.content]
     return {"role": message.role, "content": [partie.model_dump() for partie in parties if partie is not None]}
 
@@ -213,7 +213,7 @@ def _message_pour_moteur_sans_vision(message: MessageChat) -> dict[str, Any]:
     partie devient une ligne, journalisée, et le texte original reste intact autour d'elle.
     """
     if isinstance(message.content, str):
-        return message.model_dump()
+        return message.model_dump(exclude_none=True)
     morceaux: list[str] = []
     images_repliees = 0
     for partie in message.content:

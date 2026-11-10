@@ -18,6 +18,8 @@ normaliser — c'est exactement le point de souplesse que ce module documente.
 
 from __future__ import annotations
 
+import json
+
 import time
 from dataclasses import dataclass, field
 from collections.abc import AsyncIterator
@@ -308,9 +310,41 @@ def _sans_pre_remplissage(messages: list[MessageChat], etat: EtatBoucle) -> list
     return list(messages[:-1])
 
 
+def _id_appel(etat: EtatBoucle, rang: int) -> str:
+    """Identifiant qui relie un appel à son résultat ; unique dans la génération (tour, rang)."""
+    return f"appel-{etat.tours_faits}-{rang}"
+
+
+def _appels_natifs(appels: list[dict[str, Any]], etat: EtatBoucle) -> list[dict[str, Any]]:
+    """Appels du tour au format OpenAI, que le gabarit rend dans la syntaxe d'appel native du modèle."""
+    natifs = []
+    for rang, appel in enumerate(appels):
+        nom, arguments = _texte_appel(appel)
+        brut = arguments if isinstance(arguments, str) else json.dumps(arguments, ensure_ascii=False)
+        natifs.append({"id": _id_appel(etat, rang), "type": "function", "function": {"name": nom, "arguments": brut}})
+    return natifs
+
+
+def _sans_relances(messages: list[MessageChat], etat: EtatBoucle) -> list[MessageChat]:
+    """Le contexte tel qu'avant la première relance en cours : les tentatives ratées n'y restent pas."""
+    base, etat.base_relance = etat.base_relance, None
+    if base is None:
+        return list(messages)
+    etat.pre_rempli = False
+    return list(messages[:base])
+
+
 def _relancer_ou_pre_remplir(messages: list[MessageChat], texte: str, consigne: str,
                              etat: EtatBoucle) -> list[MessageChat]:
-    messages = _sans_pre_remplissage(messages, etat)
+    # Une relance REMPLACE la précédente au lieu de s'y ajouter. Mesuré le 2026-11-10 (Ornith 9B) :
+    # dix relances empilées — dix « je vais corriger… » suivis de dix consignes — et le modèle n'a
+    # plus fait que recopier la paire qu'il voyait répétée. Il ne garde que la dernière tentative.
+    if etat.base_relance is None:
+        messages = _sans_pre_remplissage(messages, etat)
+        etat.base_relance = len(messages)
+    else:
+        etat.pre_rempli = False  # le tour pré-rempli est au-delà de la base : la coupe l'emporte
+        messages = list(messages[: etat.base_relance])
     if consigne != harnais.PRE_REMPLISSAGE:
         return relancer(messages, texte, consigne)
     etat.pre_rempli = True
@@ -420,7 +454,7 @@ async def _executer_appels(
     `_REDITE`. Une sortie déjà présente au contexte est remplacée par un renvoi (`memoire_travail`).
     Rend `succes` au fil de l'eau, pour que l'appelant sache si quoi que ce soit a abouti.
     """
-    for appel in appels:
+    for rang, appel in enumerate(appels):
         nom, arguments = _texte_appel(appel)
         annonce = _annonce(nom, arguments)
         # L'entrée part AVANT l'exécution : c'est ce qui rend l'attente lisible plutôt que muette.
@@ -434,7 +468,7 @@ async def _executer_appels(
         # le canal que le modèle a appris à l'entraînement, et il ne le confond pas avec sa propre
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un
         # format inventé par nous, et le modèle a fini par l'imiter au lieu d'appeler l'outil.
-        messages.append(MessageChat(role="tool", content=texte))
+        messages.append(MessageChat(role="tool", content=texte, tool_call_id=_id_appel(etat, rang)))
 
 
 async def _suivre(suivi: SuiviActivite, morceau: MorceauGeneration, etat: EtatBoucle | None) -> None:
@@ -642,7 +676,8 @@ class MoteurChat:
                 return _FIN, messages
             # Clôturer plutôt que rendre la main : le tour final doit produire une VRAIE réponse là
             # où le modèle n'a laissé qu'une intention.
-            return _CLOTURE, relancer(_sans_pre_remplissage(messages, etat), texte, CONSIGNE_CLOTURE_PROMESSE)
+            base = _sans_relances(messages, etat)
+            return _CLOTURE, relancer(_sans_pre_remplissage(base, etat), texte, CONSIGNE_CLOTURE_PROMESSE)
         return _CONTINUE, _relancer_ou_pre_remplir(messages, texte, consigne, etat)
 
     async def _boucle_outils(
@@ -674,8 +709,10 @@ class MoteurChat:
                     break
                 continue
             yield {"texte": BALISE_FIN_ETAPE}
-            messages = sans_reflexion_passee(_sans_pre_remplissage(messages, etat)) + [
-                MessageChat(role="assistant", content=pour_le_modele(_sans_appels_outils(texte)))
+            # La relance ratée qui a précédé cet appel n'a plus lieu d'être dans le contexte.
+            messages = sans_reflexion_passee(_sans_pre_remplissage(_sans_relances(messages, etat), etat)) + [
+                MessageChat(role="assistant", content=pour_le_modele(_sans_appels_outils(texte)),
+                            tool_calls=_appels_natifs(appels, etat))
             ]
             async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):
                 yield etape

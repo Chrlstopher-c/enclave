@@ -181,6 +181,18 @@ class MessageChat(BaseModel):
     # reproduit ; le canal natif du gabarit est le seul que le modèle ne confond pas avec sa prose.
     role: Literal["system", "user", "assistant", "tool"]
     content: str | list[PartieContenu]
+    # Appels d'outils au format OpenAI, portés par le tour d'assistant QUI LES A FAITS, et l'identifiant
+    # qui relie chaque résultat à son appel. Ajoutés le 2026-11-10 : privé de ses appels, le modèle
+    # relisait des tours d'assistant faits de seules annonces (« je vais corriger… ») suivies de
+    # résultats tombés du ciel — et il imitait ce qu'il voyait : annoncer, puis s'arrêter. Le gabarit
+    # rend ces champs dans le format d'appel natif du modèle, celui qu'il a appris.
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
+
+
+def en_charge_moteur(message: MessageChat) -> dict[str, Any]:
+    """Message tel qu'il part en JSON à un serveur OpenAI : les champs absents ne sont pas envoyés."""
+    return message.model_dump(exclude_none=True)
 
 
 def texte_de(message: MessageChat) -> str:

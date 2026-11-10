@@ -46,6 +46,7 @@ from backend.inference.engines_adapters.base import (
     exiger_source_lisible,
 )
 from backend.inference.engines_adapters.contrat import (
+    en_charge_moteur,
     CauseEchec,
     ComptageTokens,
     EtatMoteur,
@@ -280,7 +281,7 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
                       outils: Sequence[dict[str, object]] | None) -> dict[str, Any]:
         charge: dict[str, Any] = {
             "model": self._etat.modele if self._etat else "",
-            "messages": [message.model_dump() for message in messages],
+            "messages": [en_charge_moteur(message) for message in messages],
             "temperature": options.temperature,
             "top_p": options.top_p,
             "stream": True,

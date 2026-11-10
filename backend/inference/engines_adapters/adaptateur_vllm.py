@@ -25,6 +25,7 @@ from backend.inference.engines_adapters import processus_vllm
 from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur
 from backend.inference.engines_adapters.base import AdaptateurMoteur, exiger_moteur, exiger_source_lisible
 from backend.inference.engines_adapters.contrat import (
+    en_charge_moteur,
     CauseEchec,
     EtatMoteur,
     MessageChat,
@@ -259,7 +260,7 @@ class AdaptateurVllm(AdaptateurMoteur):
     ) -> dict[str, Any]:
         charge: dict[str, Any] = {
             "model": self._etat.modele if self._etat else "",
-            "messages": [message.model_dump() for message in messages],
+            "messages": [en_charge_moteur(message) for message in messages],
             "temperature": options.temperature,
             "top_p": options.top_p,
             "stream": True,
@@ -271,6 +272,12 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["top_k"] = options.top_k
         if options.repetition_penalty is not None:
             charge["repetition_penalty"] = options.repetition_penalty
+        # Jamais transmis jusqu'ici à vLLM : la carte Qwen3.5 recommande `presence_penalty` (0 à 2)
+        # précisément « pour réduire les répétitions sans fin » (vérifié le 2026-11-10).
+        if options.presence_penalty is not None:
+            charge["presence_penalty"] = options.presence_penalty
+        if options.min_p is not None:
+            charge["min_p"] = options.min_p
         if options.max_tokens is not None:
             charge["max_tokens"] = options.max_tokens
         if options.stop:
