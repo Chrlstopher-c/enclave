@@ -44,6 +44,11 @@ DELAI_GENERATION_S = 600.0
 DELAI_SONDE_S = 5.0
 
 
+# Deux formulations du même échec d'un premier chargement à froid (mesure de mémoire faussée par la
+# compilation) ; la seconde, vue le 2026-11-10 sur un contexte de 128K, réussit au réessai cache chaud.
+SIGNES_COMPILATION_FROIDE = ("No available memory for the cache blocks", "larger than the available KV cache memory")
+
+
 class AdaptateurVllm(AdaptateurMoteur):
     """Pilote un serveur vLLM local, un modèle à la fois."""
 
@@ -110,7 +115,8 @@ class AdaptateurVllm(AdaptateurMoteur):
 
     def _compilation_froide(self, plan: PlanChargement, chemin_journal: Path) -> bool:
         """Échec typique d'un premier lancement compilé : plus de place pour le cache KV au profilage."""
-        return not plan.mode_eager and "No available memory for the cache blocks" in self._lire_journal(chemin_journal)
+        journal = self._lire_journal(chemin_journal)
+        return not plan.mode_eager and any(signe in journal for signe in SIGNES_COMPILATION_FROIDE)
 
     def _ouvrir_journal(self, chemin: Path) -> IO[bytes]:
         """Journal remis à zéro à chaque démarrage : un fichier qui couvre le run en cours est lisible."""
