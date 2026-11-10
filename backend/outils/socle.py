@@ -87,8 +87,9 @@ goes in the call itself), named exactly as declared. Never an empty call."""
 _CONSEILS = {
     "chercher_dans_fichiers": "`chercher_dans_fichiers` finds a text with its file and line; `plan_fichier` "
                               "shows a long file's structure; then `lire_fichier` with `ligne_debut`/`ligne_fin`.",
-    "modifier_fichier": "`modifier_fichier` changes a fragment of a file you have read; `ecrire_fichiers` writes "
-                        "several independent files in one call.",
+    "modifier_fichier": "`modifier_fichier` changes a fragment of a file you have read. One file: `ecrire_fichier`. "
+                        "`ecrire_fichiers` only for a few SMALL independent files; a large file gets its own "
+                        "`ecrire_fichier` call, so it is saved and visible as soon as it is written.",
     "executer_commande": "`executer_commande` is a real shell, as root, in an isolated workshop with network. Install "
                          "what you miss (`apt-get install -y`, `pip install`); it persists. Keep output short "
                          "(`| tail -30`, `-q`).",
@@ -142,8 +143,8 @@ def construire(outils: Sequence[DescriptionOutil], modele: str = "", projet: str
     La consigne de langue est posée EN PREMIER, avant les faits sur les outils : constaté le
     2026-08-15, les modèles répondent souvent en anglais, y compris leur raisonnement — le socle
     décrivait des capacités sans jamais dire dans quelle langue les exprimer, et un modèle entraîné
-    majoritairement en anglais y retombe par défaut. Depuis le 2026-11-10 la consigne ne vise plus que ce que l'utilisateur LIT : imposer le français
-    au raisonnement dégradait celui des modèles de 9B et le rallongeait.
+    majoritairement en anglais y retombe par défaut. Depuis le 2026-11-10 la consigne ne vise plus que
+    ce que l'utilisateur LIT : imposer le français au raisonnement dégradait celui des modèles de 9B.
 
     Le socle lui-même est RÉDIGÉ EN ANGLAIS, et ce n'est pas une contradiction avec la consigne
     qu'il porte : la langue du prompt et la langue attendue en sortie sont deux choses distinctes.

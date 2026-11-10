@@ -347,6 +347,7 @@ async def _lire_flux(
     porte aucun texte, et la perdre ferait attribuer un arrêt sur plafond à une fin naturelle.
     """
     emis = 0
+    derniere = 0.0
     async for ligne in reponse.aiter_lines():
         delta = _decoder_evenement(ligne)
         if delta is None:
@@ -358,6 +359,13 @@ async def _lire_flux(
         if delta.contenu:
             emis += 1
             yield MorceauGeneration(type="token", contenu=delta.contenu), delta.raison_arret
+        elif delta.fragments:
+            # Arguments d'un appel en cours : progression, avec l'appel déjà écrit toutes les 0,5 s.
+            details: dict[str, Any] = {"jetons": 1}
+            if time.monotonic() - derniere >= 0.5:
+                derniere = time.monotonic()
+                details["outil"] = appels.en_cours()
+            yield MorceauGeneration(type="progression", details=details), delta.raison_arret
         else:
             yield None, delta.raison_arret
         if emis >= plafond > 0:
@@ -453,6 +461,13 @@ class _Accumulateur:
 
     def vide(self) -> bool:
         return not self._noms
+
+    def en_cours(self) -> dict[str, str]:
+        """Dernier appel en cours d'écriture : son nom et ses arguments déjà reçus, bruts."""
+        if not self._noms:
+            return {"nom": "", "brut": ""}
+        index = max(self._noms)
+        return {"nom": self._noms[index], "brut": "".join(self._arguments.get(index, []))}
 
     def en_texte(self) -> str:
         """Appels complets, dans la forme `<tool_call>` que la boucle d'outils sait lire.

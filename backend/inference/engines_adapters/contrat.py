@@ -215,7 +215,10 @@ class OptionsGeneration(BaseModel):
 class MorceauGeneration(BaseModel):
     """Unité du flux de génération. `fin` clôt toujours un flux qui n'a pas levé d'exception."""
 
-    type: Literal["token", "fin", "erreur"]
+    # `progression` : le moteur avance sans texte visible (arguments d'un appel d'outil, réflexion
+    # séparée). `details` porte `jetons` (combien) et, au plus toutes les demi-secondes, `outil`
+    # (`nom`, `brut` = arguments déjà écrits). Ignoré par qui n'en a pas besoin.
+    type: Literal["token", "fin", "erreur", "progression"]
     contenu: str = ""
     raison_arret: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)

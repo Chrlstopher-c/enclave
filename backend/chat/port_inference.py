@@ -22,9 +22,10 @@ annule proprement.
 
 from __future__ import annotations
 
+
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
@@ -121,7 +122,20 @@ class StatistiquesGeneration(BaseModel):
     tokens_par_seconde: float | None = Field(default=None, ge=0)
 
 
-ElementFlux = FragmentTexte | StatistiquesGeneration
+class ActiviteGeneration(BaseModel):
+    """Instantané de l'activité du moteur pendant la génération : diffusé, jamais persisté.
+
+    Sa forme appartient au domaine `inference` (`activite.py`) ; `chat` la relaie telle quelle à
+    l'interface, sans l'interpréter. Le recevoir réarme aussi le délai d'inactivité : un moteur qui
+    écrit un long appel d'outil n'est plus pris pour un moteur muet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    activite: dict[str, Any]
+
+
+ElementFlux = FragmentTexte | StatistiquesGeneration | ActiviteGeneration
 
 
 @runtime_checkable

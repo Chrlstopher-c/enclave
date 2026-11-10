@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 
 from loguru import logger
 
-from backend.chat.modeles import EvenementFlux, EvenementFragment
+from backend.chat.modeles import EvenementActivite, EvenementFlux, EvenementFragment
 
 _DIFFUSIONS: dict[str, Diffusion] = {}
 
@@ -32,6 +32,10 @@ class Diffusion:
         if evenement is None:
             self._finie = True
             liberer(self)
+        elif isinstance(evenement, EvenementActivite) and self._journal and isinstance(
+            self._journal[-1], EvenementActivite
+        ):
+            self._journal[-1] = evenement  # un état, pas un historique : le journal n'en garde qu'un d'affilée
         else:
             self._journal.append(evenement)
         for file in self._abonnes:
@@ -40,7 +44,12 @@ class Diffusion:
     def _rejeu(self) -> list[EvenementFlux]:
         """Le déjà-produit, fragments consécutifs fusionnés : un retour ne rejoue pas 5 000 morceaux."""
         rejeu: list[EvenementFlux] = []
+        activites = [e for e in self._journal if isinstance(e, EvenementActivite)]
         for evenement in self._journal:
+            if isinstance(evenement, EvenementActivite):
+                if evenement is activites[-1]:
+                    rejeu.append(evenement)
+                continue
             if isinstance(evenement, EvenementFragment) and rejeu and isinstance(rejeu[-1], EvenementFragment):
                 rejeu[-1] = EvenementFragment(texte=rejeu[-1].texte + evenement.texte)
             else:

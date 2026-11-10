@@ -14,10 +14,11 @@ import type {
   MajReglages,
   MessageChat,
   ReglagesConversation,
+  TacheAgent,
 } from '../api/contrats';
 import { compacterConversation, ecrireReglages, lireConversation, listerMessages } from '../api/conversations-api';
 import { journal } from '../api/journal';
-import { useGeneration } from './useGeneration';
+import { useGeneration, type ActiviteRecue } from './useGeneration';
 
 export interface EtatConversation {
   detail: ConversationDetaillee | null;
@@ -29,6 +30,10 @@ export interface EtatConversation {
   debitObserve: number | null;
   /** Balise de compaction du tour en cours, à rendre au-dessus du brouillon ; `null` sinon. */
   compactionEnCours: InfoCompaction | null;
+  /** Activité du moteur en direct (débit, phase, outil en cours) ; `null` hors génération. */
+  activite: ActiviteRecue | null;
+  /** Dernier plan de tâches de l'agent vu dans cette conversation ; survit à la fin du tour. */
+  taches: TacheAgent[] | null;
   envoyer: (contenu: string, fichierIds?: string[]) => Promise<void>;
   annuler: () => Promise<void>;
   enregistrerReglages: (patch: MajReglages) => Promise<void>;
@@ -140,12 +145,27 @@ function useRelectureMessages(
   );
 }
 
+/** Le plan reste affiché après le tour qui l'a posé ; il repart de zéro en changeant de conversation. */
+function useDernieresTaches(conversationId: string | null, recues: TacheAgent[] | null): TacheAgent[] | null {
+  const [taches, setTaches] = useState<TacheAgent[] | null>(null);
+  useEffect((): void => {
+    setTaches(null);
+  }, [conversationId]);
+  useEffect((): void => {
+    if (recues !== null && recues.length > 0) {
+      setTaches(recues);
+    }
+  }, [recues]);
+  return taches;
+}
+
 export function useConversation(conversationId: string | null): EtatConversation {
   const socle = useSocle(conversationId);
   const { setMessages, setErreur } = socle;
   const rafraichirMessages = useRelectureMessages(conversationId, setMessages, setErreur);
 
   const generation = useGeneration(conversationId, rafraichirMessages);
+  const taches = useDernieresTaches(conversationId, generation.activite?.activite.taches ?? null);
   const enregistrerReglages = useEnregistrementReglages(conversationId, socle);
   const { detail, setDetail } = socle;
   const appliquerReglages = useCallback(
@@ -167,6 +187,8 @@ export function useConversation(conversationId: string | null): EtatConversation
     erreur: generation.erreur ?? socle.erreur,
     debitObserve: dernierDebit(socle.messages),
     compactionEnCours: generation.compactionEnCours,
+    activite: generation.activite,
+    taches,
     envoyer,
     annuler: generation.annuler,
     enregistrerReglages,

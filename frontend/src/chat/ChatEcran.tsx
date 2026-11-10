@@ -19,6 +19,7 @@ import { useSelectionOutils } from './conversation/useSelectionOutils';
 import { EnTeteChat, type EnTeteChatProps } from './EnTeteChat';
 import { ModaleProjet, PanneauFichiers, useProjetEcran } from './projet';
 import { ModaleReglages, PlafondReponseRapide } from './reglages';
+import { PlanAgent } from './plan/PlanAgent';
 import { PanneauPlan } from './plan/PanneauPlan';
 import type { CibleChargement } from './plan/cible';
 import { useEcranChat, type EtatEcranChat } from './useEcranChat';
@@ -113,6 +114,7 @@ function ColonneEchange(props: ColonneEchangeProps): ReactElement {
             messages={fil.messages ?? courante.messages}
             brouillon={fil.brouillon ?? courante.brouillon}
             compactionEnCours={courante.compactionEnCours}
+            activite={courante.activite}
             vide={<FilVide cible={cible} />}
           />
         </FournisseurAtelier>
@@ -203,6 +205,7 @@ function ColonnePlan({ etat, cible }: ColonneProps): ReactElement {
   return (
     // Dans le tiroir, la largeur vient du panneau : une largeur fixe y déborderait à 390 px.
     <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3">
+      <PlanAgent taches={etat.courante.taches} />
       <PanneauPlan
         cible={cible}
         etatPlan={etat.etatPlan}

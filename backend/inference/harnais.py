@@ -52,6 +52,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.inference.activite import Ecriture, SuiviActivite
+
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -298,6 +300,9 @@ class EtatBoucle:
     # Dernière sortie de chaque appel (signature → texte) : une redite COURTE (« [lignes 439-438 sur
     # 438] ») échappe à la comparaison avec le contexte, pas à celle avec l'appel identique.
     sorties_vues: dict[str, str] = field(default_factory=dict)
+    # Activité diffusée en direct (`activite.py`) et écriture anticipée des fichiers groupés complets.
+    activite: SuiviActivite = field(default_factory=SuiviActivite)
+    ecrire_tot: Ecriture | None = None
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:

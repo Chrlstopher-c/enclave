@@ -14,7 +14,9 @@ import type { ReactElement } from 'react';
 import { cn, fadeUp } from '../../shared/design';
 import type { InfoCompaction, MessageChat } from '../api/contrats';
 import { BaliseCompaction } from './BaliseCompaction';
+import { ActiviteEnDirect } from './ActiviteEnDirect';
 import { Message, MessageEnCours } from './Message';
+import type { ActiviteRecue } from './useGeneration';
 
 /* Marge sous laquelle on considère l'utilisateur « au bas du fil ». */
 const SEUIL_BAS_PX = 64;
@@ -55,6 +57,8 @@ export interface FilMessagesProps {
    * au-dessus du brouillon. Au rechargement, la même balise revient portée par `message.compaction`.
    */
   compactionEnCours: InfoCompaction | null;
+  /** Ce que le moteur fait en ce moment : débit, phase, fichier en cours d'écriture. */
+  activite?: ActiviteRecue | null;
   vide: ReactElement;
 }
 
@@ -104,6 +108,7 @@ export function FilMessages({
   messages,
   brouillon,
   compactionEnCours,
+  activite = null,
   vide,
 }: FilMessagesProps): ReactElement {
   const { conteneur, decroche, surDefilement, reprendre } = useSuiviDefilement(messages, brouillon);
@@ -131,6 +136,7 @@ export function FilMessages({
             ))}
             {compactionEnCours != null && <BaliseCompaction compaction={compactionEnCours} />}
             {brouillon !== null && <MessageEnCours texte={brouillon} />}
+            {brouillon !== null && <ActiviteEnDirect activite={activite} />}
           </div>
         )}
       </div>

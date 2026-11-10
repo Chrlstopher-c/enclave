@@ -50,6 +50,7 @@ from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
 from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
+from backend.inference.activite import Ecriture, SuiviActivite, progression
 from backend.inference.memoire_travail import (
     CONSIGNE_BOUCLE,
     Segment,
@@ -360,14 +361,18 @@ async def _jouer_appels(
     async for etape in _executer_appels(appels, messages, contexte, etat):
         if isinstance(etape.get("texte"), str):
             yield {"texte": etape["texte"]}
+        if "activite" in etape:
+            yield {"activite": etape["activite"]}
         # Une redite n'est pas un progrès : la compter effacerait l'ardoise des relances en boucle.
         etat.aboutis += 1 if etape.get("succes") and not etape.get("redite") else 0
         if isinstance(etape.get("nom"), str):
             etat.dernier_appel = DernierAppel(etape["nom"], bool(etape.get("succes")), etape.get("sortie", ""))
             if etape["nom"] == "suivre_taches" and etape.get("succes"):
-                from backend.outils import taches_ouvertes
+                from backend.outils import taches_detaillees, taches_ouvertes
 
                 etat.taches_ouvertes = taches_ouvertes(contexte.conversation_id)
+                etat.activite.taches = taches_detaillees(contexte.conversation_id)
+                yield {"activite": etat.activite.instantane(force=True)}
     if etat.aboutis > avant:
         # Un outil a abouti : l'ardoise des relances est effacée, comme celle des redites.
         # MESURÉ le 2026-08-16 : relancé une fois, le modèle écrit bien son fichier — puis referme
@@ -420,6 +425,8 @@ async def _executer_appels(
         annonce = _annonce(nom, arguments)
         # L'entrée part AVANT l'exécution : c'est ce qui rend l'attente lisible plutôt que muette.
         yield {"texte": f"{BALISE_OUTIL_OUVRANTE}{BALISE_ENTREE_OUVRANTE}{annonce}{BALISE_ENTREE_FERMANTE}"}
+        etat.activite.execution(nom)
+        yield {"activite": etat.activite.instantane(force=True)}
         texte, succes, deja = await _executer_un(nom, arguments, annonce, messages, contexte, etat)
         yield {"texte": _bloc_sortie(texte, succes), "succes": succes, "nom": nom, "sortie": texte,
                "redite": deja}
@@ -428,6 +435,33 @@ async def _executer_appels(
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un
         # format inventé par nous, et le modèle a fini par l'imiter au lieu d'appeler l'outil.
         messages.append(MessageChat(role="tool", content=texte))
+
+
+async def _suivre(suivi: SuiviActivite, morceau: MorceauGeneration, etat: EtatBoucle | None) -> None:
+    """Nourrit le suivi d'activité : texte visible, ou progression (appel d'outil en cours d'écriture)."""
+    if morceau.type == "token" and morceau.contenu:
+        suivi.compter(1, progression=False)
+        suivi.texte(morceau.contenu)
+    elif morceau.type == "progression":
+        await progression(suivi, morceau.details, etat.ecrire_tot if etat is not None else None)
+
+
+def _ecriture_anticipee(contexte: ContexteExecution) -> Ecriture:
+    """Écrit un fichier d'une écriture groupée dès qu'il est complet, par l'outil réel `ecrire_fichier`.
+
+    L'appel entier réécrira le même contenu à son exécution : l'écriture anticipée ne remplace rien,
+    elle garantit seulement qu'un plantage au milieu d'un long appel ne perd pas ce qui était fini.
+    """
+    async def ecrire(chemin: str, contenu: str) -> None:
+        from backend.outils import executer
+
+        try:
+            resultat = await executer("ecrire_fichier", {"chemin": chemin, "contenu": contenu}, contexte)
+            logger.info("Écriture anticipée de {} : {}", chemin, "ok" if resultat.succes else resultat.texte[:120])
+        except Exception as exc:  # noqa: BLE001 — l'appel complet réessaiera ; ne jamais casser le flux
+            logger.warning("Écriture anticipée de {} impossible : {}", chemin, exc)
+
+    return ecrire
 
 
 def _motif_cloture(etat: EtatBoucle) -> str:
@@ -489,6 +523,8 @@ class MoteurChat:
             tokens += int(etape.pop("tokens", 0) or 0)
             if "texte" in etape:
                 yield {"texte": etape["texte"]}
+            elif "activite" in etape:
+                yield {"activite": etape["activite"]}
 
         ecoule = time.monotonic() - debut
         # Le compte de tokens est celui des morceaux réellement reçus, et le débit en découle. Si
@@ -505,6 +541,7 @@ class MoteurChat:
         outils: list[dict[str, Any]] | None,
         recu: list[str],
         raisons: list[str | None],
+        etat: EtatBoucle | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Un tour de moteur, diffusé token par token, en accumulant le texte reçu dans `recu`.
 
@@ -515,7 +552,13 @@ class MoteurChat:
         `raisons` recueille la raison d'arrêt du moteur. Elle existait déjà sur le morceau de fin et
         n'était lue par personne : c'est elle qui dit si la réponse est complète ou tronquée.
         """
+        suivi = etat.activite if etat is not None else None
         async for morceau in superviseur.generer(messages, options, outils):
+            if suivi is not None:
+                await _suivre(suivi, morceau, etat)
+                instantane = suivi.instantane()
+                if instantane is not None:
+                    yield {"activite": instantane}
             if morceau.type == "token" and morceau.contenu:
                 recu.append(morceau.contenu)
                 yield {"texte": morceau.contenu}
@@ -532,6 +575,7 @@ class MoteurChat:
         options: OptionsGeneration,
         outils: list[dict[str, Any]] | None,
         recu: list[str],
+        etat: EtatBoucle | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Diffuse un tour et le REPREND tant que le moteur l'a coupé faute de place.
 
@@ -545,7 +589,7 @@ class MoteurChat:
         milieu d'un appel, et c'est le cas qu'il faut pouvoir réparer.
         """
         raisons: list[str | None] = []
-        async for morceau in self._diffuser(messages, options, outils, recu, raisons):
+        async for morceau in self._diffuser(messages, options, outils, recu, raisons, etat):
             yield morceau
         # `length` recouvre DEUX causes que le moteur ne distingue pas : la fenêtre est pleine, ou
         # le plafond demandé est atteint. Reprendre dans le second cas reviendrait à passer outre un
@@ -566,7 +610,7 @@ class MoteurChat:
                 return
             logger.info("Réponse coupée par la fenêtre : reprise {}/{}.", essai + 1, CONTINUATIONS_MAX)
             raisons.clear()
-            async for morceau in self._diffuser(suite, options, outils, recu, raisons):
+            async for morceau in self._diffuser(suite, options, outils, recu, raisons, etat):
                 yield morceau
         logger.warning("Borne de {} reprises atteinte : la réponse reste incomplète.", CONTINUATIONS_MAX)
         yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
@@ -613,10 +657,12 @@ class MoteurChat:
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
                           outils_declares=outils or None, mode_projet=contexte.projet is not None,
                           pre_remplissage_permis=_moteur_pre_remplit(), compaction=demarrer(messages))
+        etat.ecrire_tot = _ecriture_anticipee(contexte)
         while not budget_epuise(etat) and not tourne_en_rond(etat.redites):
             messages = _avec_avertissement(messages, etat)
             async for morceau in self._diffuser_tour(messages, options, etat):
                 yield morceau
+            etat.activite.fin_de_tour()
             texte = etat.texte_recu
             appels = _appels_demandes(texte) if outils else []
             if not appels:
@@ -645,7 +691,7 @@ class MoteurChat:
         tour) : la boucle n'a plus à tenir elle-même le tampon.
         """
         recu: list[str] = []
-        flux = sans_balises_imitees(self._diffuser_complet(messages, options, etat.outils_declares, recu))
+        flux = sans_balises_imitees(self._diffuser_complet(messages, options, etat.outils_declares, recu, etat))
         if etat.pre_rempli:
             flux = sans_echo(flux, etat.texte_pre_rempli)
         async for morceau in flux:

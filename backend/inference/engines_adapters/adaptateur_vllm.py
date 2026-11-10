@@ -22,7 +22,7 @@ import httpx
 from loguru import logger
 
 from backend.inference.engines_adapters import processus_vllm
-from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur, _lire_flux
+from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur
 from backend.inference.engines_adapters.base import AdaptateurMoteur, exiger_moteur, exiger_source_lisible
 from backend.inference.engines_adapters.contrat import (
     CauseEchec,
@@ -226,16 +226,18 @@ class AdaptateurVllm(AdaptateurMoteur):
         # La boucle d'outils les lit dans le texte : ils sont recomposés en `<tool_call>{…}</tool_call>`,
         # exactement comme pour llama-server. Ignorés, les appels disparaissaient sans un mot.
         appels = _Accumulateur()
-        raison: str | None = None
+        lecteur = _LecteurVllm(appels, plafond)
         async with httpx.AsyncClient(timeout=DELAI_GENERATION_S) as client:
             async with client.stream(
                 "POST", f"{processus_vllm.url_base()}/v1/chat/completions", json=charge_utile
             ) as reponse:
                 await self._verifier_reponse(reponse)
-                async for morceau, arret in _lire_flux(reponse, appels, plafond):
-                    raison = arret or raison
-                    if morceau is not None:
+                async for ligne in reponse.aiter_lines():
+                    async for morceau in lecteur.lire(ligne, client):
                         yield morceau
+                    if lecteur.termine:
+                        break
+        raison = lecteur.raison
         if not appels.vide():
             yield MorceauGeneration(type="token", contenu=appels.en_texte())
         yield MorceauGeneration(type="fin", raison_arret=raison)
@@ -261,6 +263,9 @@ class AdaptateurVllm(AdaptateurMoteur):
             "temperature": options.temperature,
             "top_p": options.top_p,
             "stream": True,
+            # Les jetons bruts arrivent même quand le parseur d'outils retient les arguments jusqu'à la
+            # fin d'un paramètre : c'est ce qui rend visible, en direct, un fichier en cours d'écriture.
+            "return_token_ids": True,
         }
         if options.top_k is not None:
             charge["top_k"] = options.top_k
@@ -279,3 +284,82 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["tools"] = list(outils)
             charge["tool_choice"] = "auto"
         return charge
+
+
+class _LecteurVllm:
+    """Lit le flux SSE de vLLM : texte, fragments d'appels, et progression d'un appel en cours.
+
+    `qwen3_xml` retient tout un paramètre (la liste `fichiers` entière) avant de l'émettre : pendant
+    une écriture groupée, rien n'arrivait pendant des minutes. Les `token_ids` de chaque événement,
+    eux, arrivent au fil de l'eau ; ceux de l'appel en cours sont détokénisés par vLLM au plus toutes
+    les `INTERVALLE_DETOK_S`, pour montrer le fichier en cours et sauver ceux qui sont complets.
+    """
+
+    INTERVALLE_DETOK_S = 0.5
+
+    def __init__(self, appels: _Accumulateur, plafond: int) -> None:
+        self.appels, self.plafond = appels, plafond
+        self.emis, self.raison, self.termine = 0, None, False
+        self.nom_outil: str | None = None
+        self.ids_outil: list[int] = []
+        self.derniere_detok = 0.0
+
+    async def lire(self, ligne: str, client: httpx.AsyncClient) -> AsyncIterator[MorceauGeneration]:
+        evenement = _evenement_json(ligne)
+        if evenement is None:
+            if ligne.strip() == "data: [DONE]":
+                self.termine = True
+            return
+        choix = (evenement.get("choices") or [{}])[0]
+        delta = choix.get("delta") or {}
+        self.raison = choix.get("finish_reason") or self.raison
+        fragments = list(delta.get("tool_calls") or [])
+        self.appels.ajouter(fragments)
+        for fragment in fragments:
+            nom = (fragment.get("function") or {}).get("name")
+            if isinstance(nom, str) and nom:
+                self.nom_outil, self.ids_outil = nom, []
+        ids = [i for i in (choix.get("token_ids") or []) if isinstance(i, int)]
+        if self.nom_outil is not None:
+            self.ids_outil.extend(ids)
+        contenu = delta.get("content") or ""
+        if contenu:
+            self.emis += 1
+            yield MorceauGeneration(type="token", contenu=contenu)
+        yield await self._progression(len(ids) or (1 if contenu or fragments else 0), client)
+        if self.emis >= self.plafond > 0:
+            logger.warning("Flux vLLM borné à {} tokens : arrêt", self.plafond)
+            self.termine = True
+
+    async def _progression(self, jetons: int, client: httpx.AsyncClient) -> MorceauGeneration:
+        details: dict[str, Any] = {"jetons": jetons}
+        maintenant = time.monotonic()
+        if self.nom_outil is not None and maintenant - self.derniere_detok >= self.INTERVALLE_DETOK_S:
+            self.derniere_detok = maintenant
+            details["outil"] = {"nom": self.nom_outil, "brut": await _detokeniser(client, self.ids_outil)}
+        return MorceauGeneration(type="progression", details=details)
+
+
+def _evenement_json(ligne: str) -> dict[str, Any] | None:
+    if not ligne.startswith("data: ") or ligne.strip() == "data: [DONE]":
+        return None
+    try:
+        evenement = json.loads(ligne[len("data: "):])
+    except json.JSONDecodeError:
+        logger.warning("Événement SSE vLLM illisible, ignoré : {}", ligne[:120])
+        return None
+    return evenement if isinstance(evenement, dict) else None
+
+
+async def _detokeniser(client: httpx.AsyncClient, ids: list[int]) -> str:
+    """Texte des jetons de l'appel en cours, par l'API de vLLM ; vide si elle refuse (rien n'est bloqué)."""
+    if not ids:
+        return ""
+    try:
+        reponse = await client.post(f"{processus_vllm.url_base()}/detokenize", json={"tokens": ids}, timeout=5.0)
+        reponse.raise_for_status()
+        texte = reponse.json().get("prompt", "")
+        return texte if isinstance(texte, str) else ""
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.debug("Détokénisation vLLM indisponible : {}", exc)
+        return ""

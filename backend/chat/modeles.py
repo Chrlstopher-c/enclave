@@ -12,7 +12,7 @@ touche à rien obtient le comportement natif du moteur, pas un réglage inventé
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -349,8 +349,20 @@ class EvenementCompaction(BaseModel):
     compaction: InfoCompaction
 
 
+class EvenementActivite(BaseModel):
+    """Activité du moteur en direct (débit, phase, appel d'outil en cours, plan de tâches).
+
+    Jamais persistée, et seule la DERNIÈRE est rejouée à un client qui se reconnecte : c'est un
+    état, pas un historique. Un client qui ne connaît pas ce type l'ignore (mobile compris).
+    """
+
+    type: Literal["activite"] = "activite"
+    activite: dict[str, Any]
+
+
 EvenementFlux = (
     EvenementDebut | EvenementFragment | EvenementCompaction | EvenementFin | EvenementErreur
+    | EvenementActivite
 )
 
 

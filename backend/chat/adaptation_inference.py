@@ -22,6 +22,7 @@ from loguru import logger
 
 from backend.chat.erreurs import ContratInferenceInvalide
 from backend.chat.port_inference import (
+    ActiviteGeneration,
     ElementFlux,
     FragmentTexte,
     MessageInference,
@@ -82,7 +83,7 @@ def normaliser_element(element: object) -> ElementFlux | None:
     Volontairement tolérante en entrée, stricte en sortie : ce qui n'est pas reconnu est journalisé
     et écarté plutôt que transformé en texte approximatif.
     """
-    if isinstance(element, (FragmentTexte, StatistiquesGeneration)):
+    if isinstance(element, (FragmentTexte, StatistiquesGeneration, ActiviteGeneration)):
         return element
     if isinstance(element, str):
         return FragmentTexte(texte=element)
@@ -117,6 +118,9 @@ def _occupation_depuis(brut: object) -> OccupationContexte:
 
 
 def _normaliser_dictionnaire(element: dict[str, object]) -> ElementFlux | None:
+    activite = element.get("activite")
+    if isinstance(activite, dict):
+        return ActiviteGeneration(activite=activite)
     if any(cle in element for cle in _CLES_STATISTIQUES):
         tokens = element.get("tokens_generes")
         debit = element.get("tokens_par_seconde")

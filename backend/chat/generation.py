@@ -31,6 +31,7 @@ from backend.chat.modeles import (
     DemandeEdition,
     DemandeGeneration,
     DemandeRejeu,
+    EvenementActivite,
     EvenementCompaction,
     EvenementDebut,
     EvenementErreur,
@@ -43,6 +44,7 @@ from backend.chat.modeles import (
     ReglagesConversation,
 )
 from backend.chat.port_inference import (
+    ActiviteGeneration,
     FragmentTexte,
     MessageInference,
     PieceJointe,
@@ -434,8 +436,11 @@ async def _produire(
     try:
         await _instantane_projet(preparation)
         await _compacter_si_besoin(preparation, file)
-        async for texte in _fragments(preparation, etat):
-            await file.put(EvenementFragment(texte=texte))
+        async for sortie in _fragments(preparation, etat):
+            if isinstance(sortie, ActiviteGeneration):
+                await file.put(EvenementActivite(activite=sortie.activite))
+            else:
+                await file.put(EvenementFragment(texte=sortie))
     except EchoHubError as exc:
         logger.error("Génération interrompue sur {} : {}", preparation.conversation_id, exc)
         erreur = EvenementErreur(code=exc.code, message=exc.message, remediation=exc.remediation)
@@ -559,7 +564,9 @@ def _evenement_fin(preparation: PreparationGeneration, etat: _EtatFlux) -> Evene
     )
 
 
-async def _fragments(preparation: PreparationGeneration, etat: _EtatFlux) -> AsyncIterator[str]:
+async def _fragments(
+    preparation: PreparationGeneration, etat: _EtatFlux
+) -> AsyncIterator[str | ActiviteGeneration]:
     """Boucle de lecture du moteur : bornée en itérations et en inactivité, annulable à chaque tour."""
     moteur = port_inference.obtenir_moteur()
     # `max_tokens` à `None` signifie « pas de plafond demandé » : la boucle reste bornée par le
@@ -581,6 +588,9 @@ async def _fragments(preparation: PreparationGeneration, etat: _EtatFlux) -> Asy
                 break
             if element is None:
                 break
+            if isinstance(element, ActiviteGeneration):
+                yield element  # ne compte pas dans le plafond de fragments : ce n'est pas du texte
+                continue
             etat.fragments += 1
             texte = _appliquer(element, etat)
             if texte:

@@ -34,7 +34,7 @@ from backend.outils.registre import (
 from backend.agent import bloc_socle
 from backend.outils.awareness import regenerer as regenerer_awareness
 from backend.outils.socle import composer, construire
-from backend.outils.suivre_taches import liste_taches, taches_ouvertes
+from backend.outils.suivre_taches import liste_taches, taches_detaillees, taches_ouvertes
 
 
 def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: str | None = None) -> str:
@@ -83,5 +83,6 @@ __all__ = [
     "prompt_socle",
     "prompt_systeme",
     "liste_taches",
+    "taches_detaillees",
     "taches_ouvertes",
 ]

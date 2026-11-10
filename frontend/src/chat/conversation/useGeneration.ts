@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { messageErreur } from '../api/client';
-import type { EvenementFlux, InfoCompaction } from '../api/contrats';
+import type { ActiviteMoteur, EvenementFlux, InfoCompaction } from '../api/contrats';
 import { annulerGeneration } from '../api/conversations-api';
 import { ouvrirFluxGeneration, rejoindreFluxGeneration, type RappelsFlux } from '../api/flux-generation';
 import { journal } from '../api/journal';
@@ -45,13 +45,21 @@ export interface EtatGeneration {
   erreur: string | null;
   /** Balise de compaction émise pour la réponse en cours ; `null` tant qu'aucune n'a eu lieu. */
   compactionEnCours: InfoCompaction | null;
+  /** Dernière activité reçue du moteur et son heure de réception (ms) ; `null` hors génération. */
+  activite: ActiviteRecue | null;
   envoyer: (contenu: string, fichierIds?: string[]) => Promise<void>;
   annuler: () => Promise<void>;
 }
 
 /** État produit par un flux, indissociable de la conversation qui l'a ouvert. */
+export interface ActiviteRecue {
+  readonly activite: ActiviteMoteur;
+  readonly recueMs: number;
+}
+
 interface FluxCourant {
   readonly proprietaire: string;
+  readonly activite?: ActiviteRecue | null;
   readonly brouillon: string | null;
   readonly actif: boolean;
   readonly erreur: string | null;
@@ -72,6 +80,10 @@ function avecFragment(texte: string): Transformation {
   return (courant): FluxCourant => ({ ...courant, brouillon: (courant.brouillon ?? '') + texte });
 }
 
+function avecActivite(activite: ActiviteMoteur): Transformation {
+  return (courant): FluxCourant => ({ ...courant, activite: { activite, recueMs: Date.now() } });
+}
+
 function avecErreur(message: string): Transformation {
   return (courant): FluxCourant => ({ ...courant, erreur: message });
 }
@@ -83,7 +95,7 @@ function avecCompaction(compaction: InfoCompaction): Transformation {
 function termine(courant: FluxCourant): FluxCourant {
   // La balise du direct disparaît à la clôture : la version persistée revient portée par le message
   // relu (`message.compaction`), au même endroit. Deux balises pour un seul événement dérouteraient.
-  return { ...courant, brouillon: null, actif: false, compaction: null };
+  return { ...courant, brouillon: null, actif: false, compaction: null, activite: null };
 }
 
 /**
@@ -107,6 +119,10 @@ async function couperFlux(id: string, controle: AbortController): Promise<void> 
 function appliquer(majFlux: MajFlux, id: string, evenement: EvenementFlux): void {
   if (evenement.type === 'fragment') {
     majFlux(id, avecFragment(evenement.texte));
+    return;
+  }
+  if (evenement.type === 'activite') {
+    majFlux(id, avecActivite(evenement.activite));
     return;
   }
   if (evenement.type === 'compaction') {
@@ -301,6 +317,7 @@ export function useGeneration(
     genere: affiche?.actif ?? false,
     erreur: affiche?.erreur ?? null,
     compactionEnCours: affiche?.compaction ?? null,
+    activite: affiche?.activite ?? null,
     envoyer,
     annuler,
   };

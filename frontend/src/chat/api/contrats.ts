@@ -445,7 +445,36 @@ export interface EvenementCompaction {
   compaction: InfoCompaction;
 }
 
+/** Tâche du plan de l'agent (`suivre_taches`), telle qu'il la tient à jour. */
+export interface TacheAgent {
+  titre: string;
+  etat: 'a_faire' | 'en_cours' | 'fait' | 'bloque' | 'abandonne';
+}
+
+/** Appel d'outil en cours d'écriture par le modèle, ou en cours d'exécution. */
+export interface OutilEnDirect {
+  nom: string;
+  chemin: string | null;
+  caracteres: number;
+  fichiers_sauves: string[];
+}
+
+/** Instantané de l'activité du moteur, diffusé au plus deux fois par seconde, jamais persisté. */
+export interface ActiviteMoteur {
+  phase: 'reflexion' | 'texte' | 'outil' | 'execution';
+  tokens: number;
+  tokens_par_seconde: number;
+  outil?: OutilEnDirect | null;
+  taches?: TacheAgent[] | null;
+}
+
+export interface EvenementActivite {
+  type: 'activite';
+  activite: ActiviteMoteur;
+}
+
 export type EvenementFlux =
+  | EvenementActivite
   | EvenementDebut
   | EvenementFragment
   | EvenementCompaction
