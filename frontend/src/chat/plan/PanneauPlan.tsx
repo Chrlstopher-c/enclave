@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Badge, Button, Card, fadeUp } from '../../shared/design';
 import type { PlanDeChargement } from '../api/contrats';
 import { ArbitrageContexte } from './ArbitrageContexte';
@@ -74,9 +74,10 @@ interface CorpsProps {
   etatPlan: EtatPlan;
   chargement: EtatChargementModele;
   debitObserve: number | null;
+  plafondReponse?: ReactNode;
 }
 
-function CorpsPlan({ cible, plan, etatPlan, chargement, debitObserve }: CorpsProps): ReactElement {
+function CorpsPlan({ cible, plan, etatPlan, chargement, debitObserve, plafondReponse }: CorpsProps): ReactElement {
   const [detailOuvert, setDetailOuvert] = useState<boolean>(false);
   return (
     <>
@@ -101,6 +102,8 @@ function CorpsPlan({ cible, plan, etatPlan, chargement, debitObserve }: CorpsPro
         onChangerCache={(typeCacheKv) => etatPlan.ajusterPreferences({ typeCacheKv })}
         onChangerFlash={(flashAttention) => etatPlan.ajusterPreferences({ flashAttention })}
       />
+      {/* Ce que le contexte retenu laisse à la réponse : réglé au même endroit que le contexte. */}
+      {plafondReponse}
       <Button variant="ghost" size="sm" onClick={() => setDetailOuvert(!detailOuvert)} aria-expanded={detailOuvert}>
         {detailOuvert ? 'Masquer le détail du plan' : 'Pourquoi ces valeurs ?'}
       </Button>
@@ -163,9 +166,17 @@ export interface PanneauPlanProps {
   chargement: EtatChargementModele;
   /** Débit réellement mesuré sur la dernière génération, quand il y en a eu une. */
   debitObserve: number | null;
+  /** Champ du plafond de réponse de la conversation ouverte, fourni par l'écran (domaine réglages). */
+  plafondReponse?: ReactNode;
 }
 
-export function PanneauPlan({ cible, etatPlan, chargement, debitObserve }: PanneauPlanProps): ReactElement {
+export function PanneauPlan({
+  cible,
+  etatPlan,
+  chargement,
+  debitObserve,
+  plafondReponse,
+}: PanneauPlanProps): ReactElement {
   if (cible === null) {
     return <PlanAbsent />;
   }
@@ -186,6 +197,7 @@ export function PanneauPlan({ cible, etatPlan, chargement, debitObserve }: Panne
             etatPlan={etatPlan}
             chargement={chargement}
             debitObserve={debitObserve}
+            plafondReponse={plafondReponse}
           />
         )}
         <SuiviChargement cible={cible} plan={plan} etatPlan={etatPlan} chargement={chargement} />

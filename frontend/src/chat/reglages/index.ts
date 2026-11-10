@@ -17,5 +17,6 @@
 
 export { ModaleReglages, type ModaleReglagesProps } from './ModaleReglages';
 export { PanneauReglages, type PanneauReglagesProps } from './PanneauReglages';
+export { PlafondReponseRapide, type PlafondReponseRapideProps } from './PlafondReponseRapide';
 export type { MajParametres, MajReglages, Reglages } from './contrat';
 export { useReglagesConversation, type EtatEnregistrement, type PilotageReglages } from './useReglagesConversation';

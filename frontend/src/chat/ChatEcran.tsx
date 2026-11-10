@@ -18,7 +18,7 @@ import { PanneauOutils } from './conversation/PanneauOutils';
 import { useSelectionOutils } from './conversation/useSelectionOutils';
 import { EnTeteChat, type EnTeteChatProps } from './EnTeteChat';
 import { ModaleProjet, PanneauFichiers, useProjetEcran } from './projet';
-import { ModaleReglages } from './reglages';
+import { ModaleReglages, PlafondReponseRapide } from './reglages';
 import { PanneauPlan } from './plan/PanneauPlan';
 import type { CibleChargement } from './plan/cible';
 import { useEcranChat, type EtatEcranChat } from './useEcranChat';
@@ -181,6 +181,20 @@ function interrompre(courante: EtatEcranChat['courante'], fil: EtatActionsFil): 
  * persiste en français, le contrat des moteurs est en anglais. Compter les tokens exige la forme
  * qui repart réellement au modèle.
  */
+function PlafondDeConversation({ etat }: { etat: EtatEcranChat }): ReactElement | null {
+  const detail = etat.courante.detail;
+  if (detail === null || etat.conversationActive === null) {
+    return null;
+  }
+  return (
+    <PlafondReponseRapide
+      conversationId={etat.conversationActive}
+      reglages={detail.reglages}
+      onEnregistre={etat.courante.appliquerReglages}
+    />
+  );
+}
+
 function ColonnePlan({ etat, cible }: ColonneProps): ReactElement {
   const messagesMoteur = etat.courante.messages.map((message) => ({
     role: message.role,
@@ -194,6 +208,7 @@ function ColonnePlan({ etat, cible }: ColonneProps): ReactElement {
         etatPlan={etat.etatPlan}
         chargement={etat.chargement}
         debitObserve={etat.courante.debitObserve}
+        plafondReponse={<PlafondDeConversation etat={etat} />}
       />
       <PanneauContexte
         promptSysteme={etat.courante.detail?.reglages.prompt_systeme ?? ''}

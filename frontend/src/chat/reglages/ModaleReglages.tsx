@@ -25,10 +25,8 @@ import { PanneauReglages } from './PanneauReglages';
  * que cet écran ne relit pas la conversation. Ce qui est affiché reste dans tous les cas une réponse
  * du backend : celle du parent, ou celle du dernier PATCH.
  *
- * Contrepartie assumée, à connaître avant d'intégrer : à conversation constante, une nouvelle valeur
- * de la propriété `reglages` n'est pas reprise. Rien ne la modifie aujourd'hui hors de ce panneau ;
- * le jour où un autre écran écrira ces réglages, c'est le changement de `conversationId` — ou un
- * remontage — qui les fera revenir.
+ * Une nouvelle valeur de la propriété `reglages` est reprise : depuis le 2026-11-10, le panneau de
+ * chargement écrit aussi le plafond de réponse, et l'écran remonte ce qu'il a confirmé.
  */
 function useReglagesConnus(conversationId: string, reglages: Reglages): [Reglages, (recus: Reglages) => void] {
   const [connus, setConnus] = useState<Reglages>(reglages);
@@ -38,7 +36,7 @@ function useReglagesConnus(conversationId: string, reglages: Reglages): [Reglage
   });
   useEffect((): void => {
     setConnus(derniers.current);
-  }, [conversationId]);
+  }, [conversationId, reglages]);
   return [connus, setConnus];
 }
 

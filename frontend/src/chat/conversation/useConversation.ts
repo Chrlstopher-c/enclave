@@ -32,6 +32,8 @@ export interface EtatConversation {
   envoyer: (contenu: string, fichierIds?: string[]) => Promise<void>;
   annuler: () => Promise<void>;
   enregistrerReglages: (patch: MajReglages) => Promise<void>;
+  /** Réglages confirmés ailleurs (panneau de chargement, modale) : la vérité affichée suit. */
+  appliquerReglages: (reglages: ReglagesConversation) => void;
 }
 
 interface Socle {
@@ -145,6 +147,15 @@ export function useConversation(conversationId: string | null): EtatConversation
 
   const generation = useGeneration(conversationId, rafraichirMessages);
   const enregistrerReglages = useEnregistrementReglages(conversationId, socle);
+  const { detail, setDetail } = socle;
+  const appliquerReglages = useCallback(
+    (reglages: ReglagesConversation): void => {
+      if (detail !== null) {
+        setDetail({ ...detail, reglages });
+      }
+    },
+    [detail, setDetail],
+  );
 
   const envoyer = useEnvoi(conversationId, socle, generation.envoyer, rafraichirMessages);
 
@@ -159,6 +170,7 @@ export function useConversation(conversationId: string | null): EtatConversation
     envoyer,
     annuler: generation.annuler,
     enregistrerReglages,
+    appliquerReglages,
   };
 }
 

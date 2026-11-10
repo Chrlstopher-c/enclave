@@ -247,7 +247,8 @@ export interface ParametresEchantillonnage {
   min_p: number;
   penalite_repetition: number;
   penalite_presence: number;
-  max_tokens: number;
+  /** `null` = aucun plafond posé : le moteur s'arrête sur la fenêtre de contexte qu'il sert. */
+  max_tokens: number | null;
   sequences_arret: string[];
   graine: number | null;
 }
