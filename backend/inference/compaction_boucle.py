@@ -67,6 +67,8 @@ class EtatCompaction:
     directives: list[str] = field(default_factory=list)
     # Définitions d'outils envoyées à chaque tour (~4K tokens) : comptées dans la mesure, comme par le moteur.
     socle_outils: str = ""
+    # Dernière occupation connue (mesurée, ou estimée entre deux mesures) : affichée en direct au panneau.
+    occupation: int | None = None
 
 
 def demarrer(messages: Sequence[MessageChat], projet: bool = False, socle_outils: str = "") -> EtatCompaction:
@@ -129,6 +131,7 @@ async def _mesurer(messages: Sequence[MessageChat], etat: EtatCompaction) -> int
     if occupation.tokens_mesures:
         etat.caracteres_par_token = max(1.0, (_caracteres(messages) + len(etat.socle_outils))
                                         / occupation.tokens_mesures)
+    etat.occupation = occupation.tokens_mesures
     logger.info("Occupation mesurée dans la boucle : {} / {} tokens.", occupation.tokens_mesures, etat.fenetre)
     return occupation.tokens_mesures
 
@@ -138,6 +141,7 @@ def _estimation_sous_seuil(messages: Sequence[MessageChat], etat: EtatCompaction
     if etat.fenetre is None:
         return False
     estime = int((_caracteres(messages) + len(etat.socle_outils)) / (etat.caracteres_par_token * MARGE_ESTIMATION))
+    etat.occupation = int(estime * MARGE_ESTIMATION)
     return decider(estime, etat.fenetre, etape) is None
 
 

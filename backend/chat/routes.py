@@ -362,3 +362,28 @@ async def glisser_consigne(conversation_id: str, corps: ConsigneGlissee) -> dict
         return {"acceptee": False}
     consignes.deposer(conversation_id, corps.id, corps.texte)
     return {"acceptee": True}
+
+
+@routeur.get("/conversations/{conversation_id}/contexte")
+@_traduire_erreurs
+async def mesurer_contexte(conversation_id: str) -> dict[str, object]:
+    """Occupation de la fenêtre pour ce que la génération enverrait VRAIMENT au prochain message.
+
+    Socle et prompt système, définitions d'outils, historique déplié et budgété, compaction active : la
+    même construction que `generation`. L'ancienne mesure (`/inference/contexte`) ne voyait ni le socle ni
+    les outils et retirait les sorties d'outils — 24K affichés pour un contexte bien plus lourd (2026-11-10).
+    """
+    from backend.chat import compaction, port_inference
+    from backend.chat.generation import contexte_de_branche
+
+    depot.exiger_conversation(conversation_id)
+    contexte = contexte_de_branche(conversation_id, depot.feuille_active(conversation_id))
+    active = depot.lire_compaction_active(conversation_id, {a.id for a in contexte.ancres})
+    messages = compaction.appliquer(contexte.entete, contexte.ancres, active)
+    mesurer = getattr(port_inference.obtenir_moteur(), "mesurer_detail", None)
+    detail = await mesurer(messages) if mesurer is not None else None
+    if detail is None:
+        return {"mesurable": False, "raison": "Le moteur ne sait pas mesurer le contexte.", "postes": [],
+                "avertissements": [], "moteur": None, "modele": None, "contexte_total": None,
+                "contexte_plan": None, "tokens_mesures": None, "tokens_libres": None, "depassement_tokens": None}
+    return detail

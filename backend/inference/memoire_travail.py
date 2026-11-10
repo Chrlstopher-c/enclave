@@ -28,9 +28,9 @@ from backend.inference.hygiene_historique import pour_le_modele
 BUDGET_SORTIES = 48_000
 # En dessous, une sortie (« Écrit … », « ok ») ne vaut pas un renvoi : elle est rendue telle quelle.
 LONGUEUR_REDITE_MIN = 120
-# Redites dans une même génération à partir desquelles l'avis devient une consigne d'arrêt.
+# Redites D'AFFILÉE (sans résultat neuf entre elles) à partir desquelles l'avis devient une consigne d'arrêt.
 REDITES_INSISTANTES = 3
-# Redites à partir desquelles le harnais retire les outils et fait conclure (photo de Chris, 2026-11-10 :
+# Redites d'affilée à partir desquelles le harnais retire les outils et fait conclure (photo de Chris, 2026-11-10 :
 # quinze relectures identiques d'une plage au-delà de la fin du fichier, sans fin possible en FORGE).
 REDITES_ARRET = 5
 

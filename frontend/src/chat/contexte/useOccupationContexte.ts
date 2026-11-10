@@ -16,6 +16,7 @@ import type { MessageMoteur, OccupationContexte } from '../../shared/api';
 // `shared/api/index.ts` réexporte déjà les TYPES de ce domaine, mais pas encore cette fonction.
 // Import direct assumé le temps que la ligne d'export y soit ajoutée (cf. rapport de livraison).
 import { mesurerOccupationContexte } from '../../shared/api/inference';
+import { getJson } from '../api/client';
 
 /*
  * Assez long pour absorber un flux de tokens sans jamais laisser passer une requête, assez court
@@ -24,6 +25,11 @@ import { mesurerOccupationContexte } from '../../shared/api/inference';
 const DELAI_ANTI_REBOND_MS = 500;
 
 export interface EntreeOccupation {
+  /**
+   * Conversation affichée : la mesure porte alors sur ce que la génération enverrait VRAIMENT (socle,
+   * outils, historique budgété, compaction) — l'ancienne mesure ne voyait ni le socle ni les outils.
+   */
+  readonly conversationId?: string | null;
   readonly promptSysteme: string;
   readonly messages: readonly MessageMoteur[];
   /** Modèle chargé : sa bascule relance la mesure, la fenêtre servie changeant avec lui. */
@@ -49,7 +55,8 @@ export interface EtatOccupation {
  */
 function empreinte(entree: EntreeOccupation): string {
   const messages = entree.messages.map((message) => `${message.role}:${message.content.length}`);
-  return `${entree.modeleCharge ?? ''}#${entree.promptSysteme.length}#${messages.join('|')}`;
+  const tete = `${entree.conversationId ?? ''}#${entree.modeleCharge ?? ''}#${entree.promptSysteme.length}`;
+  return `${tete}#${messages.join('|')}`;
 }
 
 function messageDe(cause: unknown): string {
@@ -80,10 +87,14 @@ export function useOccupationContexte(entree: EntreeOccupation): EtatOccupation 
       controleur.current?.abort();
       const controle = new AbortController();
       controleur.current = controle;
-      const { promptSysteme, messages } = derniere.current;
+      const { promptSysteme, messages, conversationId } = derniere.current;
+      const mesure =
+        conversationId !== null && conversationId !== undefined
+          ? getJson<OccupationContexte>(`/chat/conversations/${conversationId}/contexte`, controle.signal)
+          : mesurerOccupationContexte({ prompt_systeme: promptSysteme, messages }, controle.signal);
       // Promesse volontairement non attendue : le hook n'est pas asynchrone, l'issue passe par
       // l'état React. Le rejet est traité dans `catch`, il n'y a pas d'échec silencieux.
-      void mesurerOccupationContexte({ prompt_systeme: promptSysteme, messages }, controle.signal)
+      void mesure
         .then((resultat): void => {
           if (controle.signal.aborted) {
             return;

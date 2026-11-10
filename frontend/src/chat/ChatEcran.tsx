@@ -220,6 +220,8 @@ function ColonnePlan({ etat, cible }: ColonneProps): ReactElement {
         plafondReponse={<PlafondDeConversation etat={etat} />}
       />
       <PanneauContexte
+        conversationId={etat.conversationActive}
+        direct={etat.courante.genere ? (etat.courante.activite?.activite.contexte ?? null) : null}
         promptSysteme={etat.courante.detail?.reglages.prompt_systeme ?? ''}
         messages={messagesMoteur}
         modeleCharge={cible?.demande.metadonnees.identifiant ?? null}

@@ -118,6 +118,8 @@ class SuiviActivite:
     brut: str = ""
     sauves: list[str] = field(default_factory=list)
     taches: list[dict[str, str]] | None = None
+    # Occupation réelle de la fenêtre pendant la tâche, `{"tokens", "total"}` (compaction de boucle).
+    contexte: dict[str, int] | None = None
     _horodatages: deque[tuple[float, int]] = field(default_factory=deque)
     _dernier_envoi: float = 0.0
     _dans_reflexion: bool = False
@@ -180,7 +182,7 @@ class SuiviActivite:
                      "fichiers_sauves": list(self.sauves),
                      "parametres": parametres_internes(self.outil, parametres_partiels(self.brut))[1]}
         return {"phase": self.phase, "tokens": self.jetons, "tokens_par_seconde": self.debit(),
-                "outil": outil, "taches": self.taches}
+                "outil": outil, "taches": self.taches, "contexte": self.contexte}
 
 
 async def progression(suivi: SuiviActivite, details: dict[str, Any], ecrire: Ecriture | None) -> None:

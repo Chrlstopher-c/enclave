@@ -160,6 +160,15 @@ class _MoteurNormalise:
         brut = await mesurer(messages)
         return _occupation_depuis(brut)
 
+    async def mesurer_detail(self, messages: Sequence[MessageInference]) -> dict[str, object] | None:
+        """Occupation COMPLÈTE (postes, avertissements) pour le panneau, ou `None` si le moteur ne mesure pas."""
+        mesurer = getattr(self._moteur, "mesurer_occupation", None)
+        if mesurer is None:
+            return None
+        brut = await mesurer(messages)
+        dump = getattr(brut, "model_dump", None)
+        return dump(mode="json") if callable(dump) else None
+
     async def resumer(
         self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
     ) -> str | None:

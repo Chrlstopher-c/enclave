@@ -159,3 +159,26 @@ def test_une_relecture_remplace_les_lectures_precedentes() -> None:
     rendus = budgeter(segments)
     assert "superseded" in rendus[0].contenu and "superseded" in rendus[1].contenu
     assert "autre" in rendus[2].contenu and "v2" in rendus[3].contenu
+
+
+def test_des_redites_eparses_ne_coupent_pas_la_tache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """« Testing », 2026-11-10 : 5 redites sur 5 minutes de travail utile coupaient les outils."""
+    sorties = iter([FICHIER, "nouveau 1", FICHIER, "nouveau 2", FICHIER, "nouveau 3", FICHIER, FICHIER])
+
+    async def outil(nom: str, arguments: Any, contexte: ContexteExecution) -> ResultatOutil:
+        return ResultatOutil(nom=nom, succes=True, texte=next(sorties))
+
+    monkeypatch.setattr(outils, "executer", outil)
+    messages = _messages_depuis(HISTORIQUE)
+    etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None)
+    contexte = ContexteExecution(conversation_id="c", racine_bac=Path("/tmp"))
+    appels = [{"name": "lire_fichier", "arguments": {"chemin": f"f{i}.py"}} for i in range(8)]
+
+    async def jouer() -> list[int]:
+        series = []
+        async for e in _executer_appels(appels, messages, contexte, etat):
+            if "sortie" in e:
+                series.append(etat.redites)
+        return series
+
+    assert asyncio.run(jouer()) == [1, 0, 1, 0, 1, 0, 1, 2]

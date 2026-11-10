@@ -488,9 +488,12 @@ async def _executer_un(
     etat.sorties_vues[signature] = resultat.texte
     if deja:
         etat.redites += 1
-        logger.info("Redite {} ({} sur cette génération) : renvoi au résultat déjà au contexte.", nom, etat.redites)
+        logger.info("Redite {} ({} d'affilée) : renvoi au résultat déjà au contexte.", nom, etat.redites)
         return avis_redite(annonce, etat.redites), True, True
     etat.echecs_vus.clear()
+    # Un résultat NEUF : la série de redites est rompue. Sans ceci, cinq redites éparses sur cent appels utiles
+    # coupaient les outils en pleine tâche (« Testing », 2026-11-10, 11:18 → 11:23). Seule une série compte.
+    etat.redites = 0
     return resultat.texte, True, False
 
 
@@ -852,6 +855,9 @@ class MoteurChat:
         note = await compacter_si_besoin(messages, etat.compaction, etape_terminee, _taches(contexte))
         if note is not None:
             yield {"texte": note}
+        if etat.compaction.occupation is not None and etat.compaction.fenetre:
+            etat.activite.contexte = {"tokens": etat.compaction.occupation, "total": etat.compaction.fenetre}
+            yield {"activite": etat.activite.instantane(force=True)}
 
     async def _cloturer(
         self, messages: list[MessageChat], options: OptionsGeneration, aboutis: int, motif: str = "borne",

@@ -478,6 +478,8 @@ export interface ActiviteMoteur {
   tokens_par_seconde: number;
   outil?: OutilEnDirect | null;
   taches?: TacheAgent[] | null;
+  /** Occupation réelle de la fenêtre pendant la tâche (mesurée ou estimée par la boucle). */
+  contexte?: { tokens: number; total: number } | null;
 }
 
 export interface EvenementActivite {

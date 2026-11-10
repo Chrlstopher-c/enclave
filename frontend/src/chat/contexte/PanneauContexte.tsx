@@ -50,6 +50,31 @@ function fermer(occupation: OccupationContexte | null): MesureFermee | null {
   };
 }
 
+/** Occupation de la tâche en cours, rapportée par la boucle d'outils pendant la génération. */
+export interface OccupationDirecte {
+  readonly tokens: number;
+  readonly total: number;
+}
+
+/**
+ * Pendant une tâche, la mesure du prochain message ne dit rien de ce que le modèle porte MAINTENANT
+ * (24K affichés pour 58K réels, 2026-11-10) : la boucle rapporte son occupation, on l'affiche telle quelle.
+ */
+function mesureDirecte(direct: OccupationDirecte): MesureFermee {
+  const tokens = Math.min(direct.tokens, direct.total);
+  const postes: PartContexte[] = [
+    { poste: 'assistant', tokens, part: tokens / direct.total, segments: 0 },
+    { poste: 'libre', tokens: direct.total - tokens, part: (direct.total - tokens) / direct.total, segments: 0 },
+  ];
+  return {
+    utilises: tokens,
+    total: direct.total,
+    depassement: Math.max(0, direct.tokens - direct.total),
+    postes,
+    avertissements: ['En direct : contexte complet de la tâche en cours (socle, outils, historique, travail).'],
+  };
+}
+
 function Entete({ mesure, enAttente }: { mesure: MesureFermee | null; enAttente: boolean }): ReactElement | null {
   if (mesure === null) {
     return null;
@@ -116,6 +141,10 @@ function Notes({ lignes }: { lignes: readonly string[] }): ReactElement | null {
 }
 
 export interface PanneauContexteProps {
+  /** Conversation affichée : la mesure suit alors exactement ce que la génération enverrait. */
+  conversationId?: string | null;
+  /** Occupation rapportée par la tâche en cours ; prioritaire tant qu'elle est là. */
+  direct?: OccupationDirecte | null;
   /** Prompt système de la conversation, tel qu'il repart au modèle à chaque tour. */
   promptSysteme?: string;
   /** Messages au format moteur (`role` / `content`), dans l'ordre d'envoi. */
@@ -128,19 +157,17 @@ export interface PanneauContexteProps {
 }
 
 export function PanneauContexte({
+  conversationId = null,
+  direct = null,
   promptSysteme = '',
   messages,
   modeleCharge = null,
   actif = true,
   className,
 }: PanneauContexteProps): ReactElement {
-  const { occupation, enAttente, erreur } = useOccupationContexte({
-    promptSysteme,
-    messages,
-    modeleCharge,
-    actif,
-  });
-  const mesure = fermer(occupation);
+  const entree = { conversationId, promptSysteme, messages, modeleCharge, actif };
+  const { occupation, enAttente, erreur } = useOccupationContexte(entree);
+  const mesure = direct !== null && direct.total > 0 ? mesureDirecte(direct) : fermer(occupation);
   return (
     <Card
       level="surface"
