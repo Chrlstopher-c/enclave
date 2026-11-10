@@ -42,6 +42,50 @@ def chemin_courant(brut: str) -> str | None:
         return trouves[-1]
 
 
+_PARAMETRE_XML = re.compile(r"<parameter=([\w.-]+)>\n?(.*?)(?:\n?</parameter>|\Z)", re.DOTALL)
+_CLE_JSON = re.compile(r'"([\w.-]+)"\s*:\s*"')
+APERCU_MAX = 6000
+
+
+def _chaine_json_partielle(brut: str, debut: int) -> str:
+    """Chaîne JSON commencée à `debut` (après le guillemet), décodée jusqu'à sa fin ou celle du texte."""
+    morceaux, i = [], debut
+    while i < len(brut):
+        c = brut[i]
+        if c == '"':
+            break
+        if c == "\\" and i + 1 < len(brut):
+            suivant = brut[i + 1]
+            if suivant == "u" and i + 5 < len(brut):
+                try:
+                    morceaux.append(chr(int(brut[i + 2:i + 6], 16)))
+                except ValueError:
+                    pass
+                i += 6
+                continue
+            morceaux.append({"n": "\n", "t": "\t", "r": "", '"': '"', "\\": "\\", "/": "/"}.get(suivant, suivant))
+            i += 2
+            continue
+        morceaux.append(c)
+        i += 1
+    return "".join(morceaux)
+
+
+def parametres_partiels(brut: str) -> dict[str, str]:
+    """Arguments déjà écrits d'un appel en cours, lisibles : XML `<parameter=…>` ou JSON partiel.
+
+    Les valeurs longues ne gardent que leur FIN (`APERCU_MAX`) : l'écran montre ce qui s'écrit en ce moment.
+    """
+    valeurs: dict[str, str] = {}
+    if "<parameter=" in brut:
+        for nom, valeur in _PARAMETRE_XML.findall(brut):
+            valeurs[nom] = valeur
+    else:
+        for trouve in _CLE_JSON.finditer(brut):
+            valeurs.setdefault(trouve.group(1), _chaine_json_partielle(brut, trouve.end()))
+    return {nom: valeur[-APERCU_MAX:] for nom, valeur in valeurs.items()}
+
+
 def fichiers_termines(brut: str) -> list[dict[str, str]]:
     """Objets `{chemin, contenu}` COMPLETS de la liste `fichiers`, dans l'ordre ; le dernier, partiel, est exclu."""
     debut = _DEBUT_LISTE.search(brut)
@@ -130,7 +174,7 @@ class SuiviActivite:
         outil = None
         if self.outil is not None:
             outil = {"nom": self.outil, "chemin": chemin_courant(self.brut), "caracteres": len(self.brut),
-                     "fichiers_sauves": list(self.sauves)}
+                     "fichiers_sauves": list(self.sauves), "parametres": parametres_partiels(self.brut)}
         return {"phase": self.phase, "tokens": self.jetons, "tokens_par_seconde": self.debit(),
                 "outil": outil, "taches": self.taches}
 
@@ -148,4 +192,7 @@ async def progression(suivi: SuiviActivite, details: dict[str, Any], ecrire: Ecr
             await ecrire(fichier["chemin"], fichier["contenu"])
 
 
-__all__ = ["INTERVALLE_S", "Ecriture", "SuiviActivite", "chemin_courant", "fichiers_termines", "progression"]
+__all__ = [
+    "INTERVALLE_S", "Ecriture", "SuiviActivite", "chemin_courant", "fichiers_termines", "parametres_partiels",
+    "progression",
+]

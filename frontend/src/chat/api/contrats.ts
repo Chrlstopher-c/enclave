@@ -457,6 +457,8 @@ export interface OutilEnDirect {
   chemin: string | null;
   caracteres: number;
   fichiers_sauves: string[];
+  /** Arguments déjà écrits, lisibles (fin des valeurs longues seulement) : ce qui s'affiche en direct. */
+  parametres?: Record<string, string>;
 }
 
 /** Instantané de l'activité du moteur, diffusé au plus deux fois par seconde, jamais persisté. */

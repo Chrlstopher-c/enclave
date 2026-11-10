@@ -62,3 +62,12 @@ def test_les_instantanes_sont_espaces() -> None:
     assert suivi.instantane() is not None
     assert suivi.instantane() is None
     assert suivi.instantane(force=True) is not None
+
+
+def test_arguments_partiels_lisibles_xml_et_json() -> None:
+    from backend.inference.activite import parametres_partiels
+
+    xml = "<function=executer_commande>\n<parameter=commande>\npytest -q | tail -2"
+    assert parametres_partiels(xml) == {"commande": "pytest -q | tail -2"}
+    ecriture = '{"chemin": "b.py", "contenu": "x = \\"a\\"\\nprint(x'
+    assert parametres_partiels(ecriture) == {"chemin": "b.py", "contenu": 'x = "a"\nprint(x'}
