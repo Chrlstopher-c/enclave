@@ -29,7 +29,18 @@ disait « relancer ou relire si besoin ». Corrigé dans `inference/memoire_trav
 - socle : « les résultats précédents restent au contexte, regarde d'abord ».
 Tests : `inference/tests/test_memoire_travail.py` (scénario « continue »). **Non éprouvé en génération
 réelle** : Chris reteste. Journal à surveiller : « Redite … renvoi au résultat déjà au contexte ».
-Non redéployé (Docker) : attendre le go de Chris.
+Redéployé le 2026-11-10 (`docker compose restart echohub`).
+
+**Suite (même jour) — boucle de la photo + socle court.** Photo de Chris : 15 relectures de
+`lire_fichier(ligne_debut=439)` sur un fichier de 438 lignes, sortie « [lignes 439-438 sur 438] ».
+- lire après la fin = échec explicite (« n'a que N lignes, rien plus loin ») ;
+- redite aussi par appel identique + sortie identique (les sorties courtes échappaient) ;
+- `REDITES_ARRET` = 5 : outils retirés, clôture avec `CONSIGNE_BOUCLE` (FORGE n'avait aucune borne) ;
+- `_cloturer` journalise son vrai motif (borne / promesse / boucle).
+- Socle réécrit pour les 9B : ~25 500 → ~8 500 car. en mode projet (outils plus recopiés, déjà dans
+  leurs définitions), boucle de travail en 7 points + exemple en prose, contradictions retirées,
+  raisonnement libre (réponse en français), pnpm au lieu de Bun-seul. Relances raccourcies.
+  Compaction : garde ce qui a été lu et appris des fichiers, au lieu de « l'agent relira ».
 
 ## Session du 2026-10-03 — Moteur Strata pour Qwen3.8-Flash-Next (SC117 abliterated)
 

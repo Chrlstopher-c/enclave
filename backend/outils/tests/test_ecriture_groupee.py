@@ -66,6 +66,12 @@ def test_lecture_d_une_plage_de_lignes(contexte: ContexteExecution) -> None:
     assert extrait == "[lignes 10-12 sur 50]\nligne 10\nligne 11\nligne 12\n"
 
 
+def test_lire_apres_la_fin_du_fichier_est_un_echec_explicite(contexte: ContexteExecution) -> None:
+    _executer({"fichiers": [{"chemin": "court.py", "contenu": "a\nb\n"}]}, contexte)
+    with pytest.raises(EchecOutil, match="n'a que 2 lignes"):
+        asyncio.run(OUTIL_LIRE.executer({"chemin": "court.py", "ligne_debut": 3}, contexte))
+
+
 def test_une_erreur_de_syntaxe_est_signalee_a_l_ecriture(contexte: ContexteExecution) -> None:
     sortie = _executer({"fichiers": [{"chemin": "casse.py", "contenu": "def f(:\n    pass\n"},
                                      {"chemin": "ok.py", "contenu": "x = 1\n"},

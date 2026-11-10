@@ -29,6 +29,14 @@ BUDGET_SORTIES = 48_000
 LONGUEUR_REDITE_MIN = 120
 # Redites dans une même génération à partir desquelles l'avis devient une consigne d'arrêt.
 REDITES_INSISTANTES = 3
+# Redites à partir desquelles le harnais retire les outils et fait conclure (photo de Chris, 2026-11-10 :
+# quinze relectures identiques d'une plage au-delà de la fin du fichier, sans fin possible en FORGE).
+REDITES_ARRET = 5
+
+CONSIGNE_BOUCLE = (
+    "You kept making calls that returned nothing new. Tools are off for this turn. Answer the user "
+    "now: what you did, what you found, and what exactly blocks you."
+)
 
 _BLOC = re.compile(
     r"<outil>\s*<entree>(?P<entree>.*?)</entree>\s*(?P<ouvrante><sortie[^>]*>)(?P<sortie>.*?)</sortie>\s*</outil>",
@@ -110,6 +118,11 @@ def redite(texte: str, contexte: list[object]) -> bool:
     return False
 
 
+def tourne_en_rond(redites: int) -> bool:
+    """Assez de redites pour retirer les outils : la boucle ne produira plus rien."""
+    return redites >= REDITES_ARRET
+
+
 def avis_redite(annonce: str, redites: int) -> str:
     """Ce qui remplace une sortie déjà présente au contexte ; ferme à partir de la 3ᵉ redite."""
     avis = (f"Same output as the result of {annonce} already in your context above: nothing changed "
@@ -120,4 +133,5 @@ def avis_redite(annonce: str, redites: int) -> str:
     return avis
 
 
-__all__ = ["BUDGET_SORTIES", "Segment", "avis_redite", "budgeter", "deplier", "redite"]
+__all__ = ["BUDGET_SORTIES", "CONSIGNE_BOUCLE", "Segment", "avis_redite", "budgeter", "deplier", "redite",
+           "tourne_en_rond"]

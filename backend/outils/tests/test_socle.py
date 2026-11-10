@@ -71,7 +71,10 @@ def test_l_honnetete_precede_les_capacites() -> None:
 
 
 def test_la_recherche_web_est_presentee_comme_le_moyen_de_verifier() -> None:
-    assert "recherche_web" in construire(_OUTIL_FACTICE)
+    recherche = DescriptionOutil(nom="recherche_web", description="test", parametres={"type": "object"})
+    assert "`recherche_web` then `recuperer_page`" in construire((recherche,))
+    # Un conseil d'usage n'est donné que pour un outil branché : annoncer un outil absent est un mensonge.
+    assert "`recherche_web` then" not in construire(_OUTIL_FACTICE)
 
 
 def test_le_socle_interdit_de_finir_sur_une_promesse() -> None:

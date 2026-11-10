@@ -123,7 +123,7 @@ sélection d'outils affiche un mode dégradé ASSUMÉ (« sélection non persist
       À MESURER D'ABORD : ce fil précis échouait parce que `requests` manquait au bac (corrigé
       depuis). Vérifier si le réflexe survit au correctif avant d'ajouter une règle au socle —
       empiler une consigne sur un problème disparu, c'est du contexte payé à chaque tour pour rien.
-- [ ] **Message de clôture trompeur.** Quand le harnais clôt sur une promesse non tenue, il
+- [x] ~~**Message de clôture trompeur.**~~ — fait le 2026-11-10 (`_motif_cloture` : borne, promesse, boucle). Quand le harnais clôt sur une promesse non tenue, il
       journalise « Borne de 10 tours d'outils atteinte » alors que ce n'est pas le motif. Purement
       cosmétique aujourd'hui, et c'est exactement le genre de ligne qui enverra sur une fausse piste
       dans six mois. `_cloturer` doit dire POURQUOI il clôt.

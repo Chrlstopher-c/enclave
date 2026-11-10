@@ -286,6 +286,15 @@ async def _lire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
         texte = cible.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise EchecOutil(f"Échec : « {chemin_demande} » illisible en texte ({exc}).") from exc
+    total = len(texte.splitlines())
+    debut = _entier(arguments.get("ligne_debut")) or 1
+    if debut > max(total, 1):
+        # Rendre « [lignes 439-438 sur 438] » comme un succès vide a fait boucler un 9B quinze fois
+        # (photo de Chris, 2026-11-10) : il relisait la même plage pour trouver ce qui n'y est pas.
+        raise EchecOutil(
+            f"Échec : « {chemin_demande} » n'a que {total} lignes ; ligne_debut {debut} est après la fin. "
+            "Il n'y a rien plus loin : ce que tu cherches n'est pas dans la suite de ce fichier. "
+            "Cherche-le avec `chercher_dans_fichiers`, ou travaille avec ce que tu as déjà lu.")
     texte, entete = _extrait(texte, arguments.get("ligne_debut"), arguments.get("ligne_fin"))
     if len(texte) > LONGUEUR_LECTURE_MAX:
         coupe = texte[:LONGUEUR_LECTURE_MAX]

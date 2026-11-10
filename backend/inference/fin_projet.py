@@ -50,23 +50,20 @@ LIGNES_CODE_MONTRE_MAX = 8
 _FIN_DE_PHRASE = re.compile(r"(?<=[.!?…])\s+|\n+")
 
 CONSIGNE_SUITE_PROJET = (
-    "You stopped without calling a tool, and what you wrote is not a final report. You are working "
-    "on the project: call the next tool NOW (run the command, write the file). Only if the whole "
-    "task is really finished, write the final report instead: what was built, how to run it, what "
-    "you actually verified, and what remains."
+    "You stopped without a tool call, and this is not a final report. Make the next call now (run, "
+    "write, fix). If the whole task is really finished, write the final report instead: what was "
+    "built, how to run it, what you actually verified, what remains."
 )
 
 CONSIGNE_CODE_MONTRE = (
-    "You displayed code in your message instead of writing it to the project. Code shown in the chat "
-    "changes nothing on disk. Write it NOW with `ecrire_fichier` / `ecrire_fichiers` (or fix the exact "
-    "lines with `modifier_fichier`), then run the check that proves it works."
+    "Code shown in the chat is not on disk. Write it now with `ecrire_fichier` / `ecrire_fichiers` "
+    "(or fix the exact lines with `modifier_fichier`), then run the check that proves it works."
 )
 
 CONSIGNE_RESTE_FAISABLE = (
-    "Your report lists remaining work that you can do yourself with your tools (a command to run, "
-    "tests to fix, a server to start and check with curl). Do not hand it to the user: do it NOW, "
-    "starting with a tool call in this turn. Only items that truly need the user (a secret, a "
-    "decision) may stay in the report — say so explicitly for each."
+    "Your report leaves the user work you can do yourself (a command, tests to fix, a server to "
+    "start and check). Do it now, starting with a tool call. Keep only what truly needs the user "
+    "(a secret, a decision), and say why for each."
 )
 
 

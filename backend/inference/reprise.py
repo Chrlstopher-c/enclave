@@ -136,16 +136,12 @@ _FINS_DE_PROMESSE = (
 # se termine par deux-points et n'appelle rien —, le troisième ferme la sortie « je vais » en ne
 # laissant que deux issues, l'appel ou l'aveu.
 CONSIGNES_PROMESSE = (
-    "Your message ended by announcing something you did not do: no tool call followed it, so "
-    "nothing was created and the user sees nothing. Do it NOW, in this turn — emit the call with "
-    "every argument inline. If you cannot do it, say plainly what is blocking you, instead of "
-    "announcing it a second time.",
-    "You announced it again instead of doing it. Stop writing introductions. This turn must START "
-    "with the tool call itself — no sentence before it, no colon, no plan. If the tool is not the "
-    "right one, call a different one. Announcing a third time produces nothing for the user.",
-    "This is the last rappel. Two outcomes are acceptable now, and only two: either this turn "
-    "contains a tool call, or it states — in plain words, to the user — what you were unable to do "
-    "and why. Do not describe what you are about to do. There is no next turn to do it in.",
+    "You announced an action but made no call, so nothing happened. Make the call now, with every "
+    "argument inline — or say plainly what blocks you.",
+    "Start this turn with the tool call itself, no sentence before it. If it is the wrong tool, "
+    "call another one.",
+    "Last reminder: this turn either contains a tool call, or tells the user plainly what you could "
+    "not do and why.",
 )
 
 # Conservé : d'autres modules l'importent, et c'est le premier rang.
@@ -156,10 +152,8 @@ CONSIGNE_PROMESSE = CONSIGNES_PROMESSE[0]
 # que la parole. C'est ce qui fait la différence avec une quatrième relance — on ne lui redemande
 # pas d'agir, on lui demande de rendre compte.
 CONSIGNE_CLOTURE_PROMESSE = (
-    "You are out of turns, and no tool is available in this one. Everything you announced and did "
-    "not do will not happen. Write the user a real answer now: what you actually accomplished, "
-    "what you did not, and — if it is useful to them — the content itself, written out here in "
-    "your message. Do not announce anything further."
+    "No tools are available anymore. Answer the user now: what you accomplished, what you did not, "
+    "and — if useful — the content itself, written here. Do not announce anything further."
 )
 
 

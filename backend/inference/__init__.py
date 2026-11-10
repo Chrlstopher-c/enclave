@@ -50,7 +50,15 @@ from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
 from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
-from backend.inference.memoire_travail import Segment, avis_redite, budgeter, deplier, redite
+from backend.inference.memoire_travail import (
+    CONSIGNE_BOUCLE,
+    Segment,
+    avis_redite,
+    budgeter,
+    deplier,
+    redite,
+    tourne_en_rond,
+)
 from backend.inference.harnais_outils import (
     BALISE_ENTREE_FERMANTE,
     BALISE_ENTREE_OUVRANTE,
@@ -385,7 +393,9 @@ async def _executer_un(
     if not resultat.succes:
         etat.echecs_vus.add(signature)
         return resultat.texte, False, False
-    if redite(resultat.texte, messages):
+    deja = redite(resultat.texte, messages) or etat.sorties_vues.get(signature) == resultat.texte
+    etat.sorties_vues[signature] = resultat.texte
+    if deja:
         etat.redites += 1
         logger.info("Redite {} ({} sur cette génération) : renvoi au résultat déjà au contexte.", nom, etat.redites)
         return avis_redite(annonce, etat.redites), True, True
@@ -418,6 +428,13 @@ async def _executer_appels(
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un
         # format inventé par nous, et le modèle a fini par l'imiter au lieu d'appeler l'outil.
         messages.append(MessageChat(role="tool", content=texte))
+
+
+def _motif_cloture(etat: EtatBoucle) -> str:
+    """Pourquoi la boucle s'arrête : le journal doit le dire, pas toujours « borne atteinte »."""
+    if tourne_en_rond(etat.redites):
+        return "boucle"
+    return "borne" if budget_epuise(etat) else "promesse"
 
 
 # Marqueurs de la suite d'un tour sans appel d'outil : finir le flux, clôturer, ou continuer la boucle.
@@ -596,7 +613,7 @@ class MoteurChat:
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
                           outils_declares=outils or None, mode_projet=contexte.projet is not None,
                           pre_remplissage_permis=_moteur_pre_remplit(), compaction=demarrer(messages))
-        while not budget_epuise(etat):
+        while not budget_epuise(etat) and not tourne_en_rond(etat.redites):
             messages = _avec_avertissement(messages, etat)
             async for morceau in self._diffuser_tour(messages, options, etat):
                 yield morceau
@@ -616,7 +633,7 @@ class MoteurChat:
             ]
             async for etape in self._jouer_tour_outil(appels, messages, contexte, etat, texte):
                 yield etape
-        async for morceau in self._cloturer(messages, options, etat.aboutis, etat.harnais):
+        async for morceau in self._cloturer(messages, options, etat.aboutis, _motif_cloture(etat)):
             yield morceau
 
     async def _diffuser_tour(
@@ -657,8 +674,7 @@ class MoteurChat:
             yield {"texte": note}
 
     async def _cloturer(
-        self, messages: list[MessageChat], options: OptionsGeneration, aboutis: int,
-        conduite: harnais.Harnais = harnais.DEFAUT,
+        self, messages: list[MessageChat], options: OptionsGeneration, aboutis: int, motif: str = "borne",
     ) -> AsyncIterator[dict[str, Any]]:
         """Tour final sans outil, quand les trois tours ont tous demandé un outil.
 
@@ -671,9 +687,10 @@ class MoteurChat:
         qu'aucune carte n'était affichée (mesuré le 2026-08-16). Laisser annoncer un résultat
         inexistant est pire qu'échouer : l'utilisateur ne peut même pas savoir que ça a raté.
         """
-        logger.warning("Borne de {} tours d'outils atteinte ({}) : tour de clôture sans outil.",
-                       conduite.tours_outils_max, conduite.nom)
-        if aboutis == 0:
+        logger.warning("Clôture sans outil, motif : {}.", motif)
+        if motif == "boucle":
+            messages = list(messages) + [MessageChat(role="tool", content=CONSIGNE_BOUCLE)]
+        elif aboutis == 0:
             logger.warning("Aucun outil abouti sur ce tour : clôture avec consigne explicite.")
             messages = list(messages) + [MessageChat(role="tool", content=_AUCUN_OUTIL_ABOUTI)]
         yield {"texte": BALISE_FIN_ETAPE}

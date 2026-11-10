@@ -15,6 +15,7 @@ import pytest
 import backend.outils as outils
 from backend.inference import _executer_appels, _messages_depuis, harnais
 from backend.inference.memoire_travail import (
+    REDITES_ARRET,
     REDITES_INSISTANTES,
     Segment,
     avis_redite,
@@ -85,14 +86,15 @@ def test_l_avis_devient_une_consigne_d_arret_quand_le_modele_insiste() -> None:
     assert "Stop reading" in avis_redite("lire_fichier(chemin : a.py)", REDITES_INSISTANTES)
 
 
-def _rejouer(monkeypatch: pytest.MonkeyPatch, contenu_disque: str, appels: int) -> tuple[list[str], int]:
+def _rejouer(monkeypatch: pytest.MonkeyPatch, contenu_disque: str, appels: int,
+             historique: list[_Message] | None = None) -> tuple[list[str], int]:
     """Le modèle relit app.py `appels` fois après « continue » ; rend ce qu'il reçoit et les redites."""
 
     async def lire(nom: str, arguments: Any, contexte: ContexteExecution) -> ResultatOutil:
         return ResultatOutil(nom=nom, succes=True, texte=contenu_disque)
 
     monkeypatch.setattr(outils, "executer", lire)
-    messages = _messages_depuis(HISTORIQUE)
+    messages = _messages_depuis(HISTORIQUE if historique is None else historique)
     etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None)
     contexte = ContexteExecution(conversation_id="c", racine_bac=Path("/tmp"))
     appel = {"name": "lire_fichier", "arguments": {"chemin": "app.py"}}
@@ -118,3 +120,15 @@ def test_scenario_fichier_modifie_entre_temps_relu_en_entier(monkeypatch: pytest
     modifie = FICHIER.replace("ligne 3 ", "ligne 3 corrigée ")
     recus, redites = _rejouer(monkeypatch, modifie, appels=1)
     assert redites == 0 and recus == [modifie]
+
+
+def test_redite_courte_du_meme_appel_reconnue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Photo du 2026-11-10 : « [lignes 439-438 sur 438] » (24 car.) relu quinze fois."""
+    recus, redites = _rejouer(monkeypatch, "[lignes 439-438 sur 438]", appels=3, historique=HISTORIQUE[:1])
+    assert recus[0] == "[lignes 439-438 sur 438]" and redites == 2
+
+
+def test_boucle_sans_fin_coupee_par_le_harnais() -> None:
+    from backend.inference.memoire_travail import tourne_en_rond
+
+    assert not tourne_en_rond(REDITES_ARRET - 1) and tourne_en_rond(REDITES_ARRET)

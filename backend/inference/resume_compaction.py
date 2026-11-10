@@ -36,12 +36,14 @@ PROMPT_RESUME_SYSTEME = (
     "- OBJECTIF : le but de la tâche, tel que l'utilisateur l'a demandé.\n"
     "- ÉTAT : l'étape en cours et les suivantes ; la liste de tâches si elle existe, avec l'état de chacune.\n"
     "- DÉCISIONS : les choix faits et POURQUOI.\n"
-    "- FICHIERS : fichiers créés ou modifiés, et leur rôle (pas leur contenu).\n"
+    "- FICHIERS : fichiers lus, créés ou modifiés, avec pour chacun ce qu'on y a appris ou changé "
+    "(fonctions clés, numéros de ligne utiles, taille) — pas leur contenu.\n"
     "- COMMANDES : les commandes de build, de test et de lancement qui MARCHENT, telles quelles ; "
     "les serveurs lancés et leurs ports ; l'état git s'il y en a un.\n"
     "- PIÈGES : les erreurs rencontrées, leur cause et leur correctif.\n"
-    "JETTE : les sorties d'outils (garde-en seulement la conclusion), les explorations closes, et le "
-    "code déjà écrit — il est sur disque, l'agent le relira s'il en a besoin.\n"
+    "JETTE : les sorties brutes des outils (garde la conclusion et les faits utiles : noms, lignes, "
+    "erreurs), les explorations closes, et le code déjà écrit — il est sur disque. Écris ce qui a été "
+    "lu et compris pour que l'agent n'ait PAS à le relire.\n"
     "Si un résumé antérieur est fourni, ENGLOBE-le : n'oublie rien de ce qu'il portait."
 )
 

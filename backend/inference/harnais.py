@@ -177,15 +177,13 @@ def _a_travaille(etat: EtatBoucle) -> bool:
 
 
 CONSIGNE_TOUR_MUET = (
-    "Your last turn produced nothing: no tool call, and no answer to the user — only reasoning, "
-    "which the user does not see. Answer NOW, in French, with what you have. If you need a tool, "
-    "call it in this turn with every argument inline."
+    "Your last turn had no call and no answer, only reasoning the user does not see. Answer now in "
+    "French with what you have, or make the call you need with every argument inline."
 )
 
 CONSIGNE_RADOTAGE = (
-    "You have just written the same thing twice in a row. Repeating it a third time will not help "
-    "the user. Either do something different — call a tool, ask a precise question — or say "
-    "plainly what is blocking you and stop."
+    "You wrote the same thing twice. Do something different — a tool call or one precise question — "
+    "or say plainly what blocks you and stop."
 )
 
 
@@ -297,6 +295,9 @@ class EtatBoucle:
     ouvertes_a_la_relance: int | None = None
     # Appels dont la sortie était déjà, mot pour mot, au contexte (`memoire_travail.redite`).
     redites: int = 0
+    # Dernière sortie de chaque appel (signature → texte) : une redite COURTE (« [lignes 439-438 sur
+    # 438] ») échappe à la comparaison avec le contexte, pas à celle avec l'appel identique.
+    sorties_vues: dict[str, str] = field(default_factory=dict)
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:

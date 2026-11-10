@@ -23,18 +23,15 @@ if TYPE_CHECKING:
 # s'arrêtait là. Il ne pouvait pas savoir qu'on venait de lui retirer ses moyens. Un couperet muet
 # fait passer pour de l'incapacité ce qui est une contrainte du harnais.
 CONSIGNE_AVERTISSEMENT = (
-    "Harness notice — you have made {faits} consecutive tool calls, and {restants} remain before "
-    "the harness stops offering tools and asks you to answer with what you have.\n"
-    "If the task genuinely needs more steps, say so in one short sentence and keep calling: the "
-    "budget will be extended. If you already have what you need, stop calling and answer now."
+    "Harness notice: {faits} tool calls in a row, {restants} left before tools pause. Need more steps? "
+    "Keep calling: the budget extends. Already have what you need? Answer now."
 )
 
 # Dernier avertissement : plus aucune extension ne sera accordée. Dire qu'il reste un tour serait
 # faux, et le modèle organiserait la suite sur une promesse que le harnais ne tiendra pas.
 CONSIGNE_DERNIER_TOUR = (
-    "Harness notice — this is your LAST tool call. No further extension will be granted. Make it "
-    "count, then answer the user with what you have. Do not announce a step you will not be able "
-    "to take."
+    "Harness notice: this is your LAST tool call. Make it count, then answer the user with what you "
+    "have. Do not announce a step you will not be able to take."
 )
 
 
