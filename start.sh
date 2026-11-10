@@ -156,11 +156,18 @@ demarrer_docker() {
     # garde, CUDA meurt dans le conteneur après un reboot (docker/cdi/README.md).
     local recreer=""
     if [ -x /usr/local/sbin/echohub-cdi-regenerer ]; then
-        sudo /usr/local/sbin/echohub-cdi-regenerer && true
+        # Sans terminal (lancement depuis Atrium), sudo ne peut pas demander le mot de passe : le
+        # script tourne alors sans droits. Il lit /proc/devices et le spec (lisibles par tous) et
+        # rend 0 si le spec est à jour ; seule une régénération réelle exige root.
+        if [ -t 0 ]; then
+            sudo /usr/local/sbin/echohub-cdi-regenerer && true
+        else
+            /usr/local/sbin/echohub-cdi-regenerer && true
+        fi
         case $? in
             0) ;;
             3) recreer="--force-recreate" ;;
-            *) echec "régénération du spec CDI impossible" ;;
+            *) echec "spec CDI à régénérer (tour redémarrée ?) : lancer une fois ./start.sh --docker dans un terminal de la tour" ;;
         esac
     else
         journal "AVERTISSEMENT : echohub-cdi-regenerer absent — voir docker/cdi/README.md"
@@ -169,8 +176,17 @@ demarrer_docker() {
     # d'avant les derniers changements de l'interface (panneau Fichiers absent, 2026-10-02).
     journal "construction de l'interface (frontend/dist)"
     (cd "$RACINE/frontend" && bun run build >>"$LOGS/frontend-build.log" 2>&1) || echec "build du frontend en échec (logs/frontend-build.log)"
-    journal "construction et démarrage du conteneur (première fois : compilation CUDA, longue)"
-    (cd "$RACINE" && docker compose up -d --build $recreer) || echec "docker compose up a échoué"
+    # Le backend est MONTÉ dans le conteneur : un changement de code ne demande qu'un redémarrage.
+    # Reconstruire l'image à chaque lancement relançait la compilation CUDA dès que le cache de build
+    # avait été purgé (2026-11-10, lancement depuis Atrium) : elle n'est faite que si l'image manque,
+    # ou sur demande (ECHOHUB_RECONSTRUIRE=1).
+    local construire=""
+    if [ "${ECHOHUB_RECONSTRUIRE:-0}" = "1" ] || ! docker image inspect echohub:v2 >/dev/null 2>&1; then
+        construire="--build"
+        journal "construction de l'image (compilation CUDA, longue)"
+    fi
+    journal "démarrage des conteneurs"
+    (cd "$RACINE" && docker compose up -d $construire $recreer) || echec "docker compose up a échoué"
     # Strata (Qwen3.8-Flash-Next) vit sur l'hôte : lancé à vide, le backend le charge à la demande.
     "$RACINE/docker/strata-hote.sh" demarrer || journal "AVERTISSEMENT : Strata non démarré (logs/strata.log)"
     journal "interface : http://127.0.0.1:${ECHOHUB_PORT_WEB:-37920}"
