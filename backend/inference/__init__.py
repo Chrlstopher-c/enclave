@@ -256,6 +256,29 @@ def _appels_demandes(texte: str) -> list[dict[str, Any]]:
     return appels
 
 
+def _signaler_pleine(etat: EtatBoucle | None) -> bool:
+    """Dans une tâche d'agent, une fenêtre pleine n'arrête plus rien : la boucle compacte et reprend."""
+    if etat is None or etat.outils_declares is None:
+        return False
+    etat.fenetre_pleine = True
+    return True
+
+
+async def _compacter_fenetre_pleine(messages: list[MessageChat], etat: EtatBoucle) -> str | None:
+    """Le tour a buté sur la fenêtre : on garde ce qu'il avait écrit, on compacte, la tâche continue."""
+    etat.fenetre_pleine = False
+    partiel = pour_le_modele(_sans_appels_outils(etat.texte_recu)).strip()
+    if partiel:
+        messages.append(MessageChat(role="assistant", content=partiel[-4_000:]))
+    messages.append(MessageChat(role="user", content=CONSIGNE_APRES_FENETRE))
+    return await compacter_si_besoin(messages, etat.compaction, etape_terminee=True, forcer=True)
+
+
+CONSIGNE_APRES_FENETRE = ("Your last turn was cut off: the context window was full. Older work has been "
+                          "summarized above. Continue the task from where you stopped; if you were writing a "
+                          "file, write it again in full.")
+
+
 def _consignes_en_attente(contexte: ContexteExecution) -> bool:
     from backend.inference import consignes
 
@@ -662,8 +685,14 @@ class MoteurChat:
         milieu d'un appel, et c'est le cas qu'il faut pouvoir réparer.
         """
         raisons: list[str | None] = []
-        async for morceau in self._diffuser(messages, options, outils, recu, raisons, etat):
-            yield morceau
+        try:
+            async for morceau in self._diffuser(messages, options, outils, recu, raisons, etat):
+                yield morceau
+        except EchecChargement as exc:
+            if exc.diagnostic.cause is not CauseEchec.CONTEXTE_TROP_GRAND or not _signaler_pleine(etat):
+                raise
+            logger.warning("Requête refusée, fenêtre pleine : compaction forcée par la boucle.")
+            return
         # `length` recouvre DEUX causes que le moteur ne distingue pas : la fenêtre est pleine, ou
         # le plafond demandé est atteint. Reprendre dans le second cas reviendrait à passer outre un
         # réglage que l'utilisateur a posé exprès. `max_tokens` absent veut dire « aucun plafond » :
@@ -679,7 +708,8 @@ class MoteurChat:
             libres = await self._tokens_libres(suite)
             if libres is not None and libres < MARGE_CONTINUATION_TOKENS:
                 logger.warning("Reprise impossible : {} tokens libres dans la fenêtre.", libres)
-                yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
+                if not _signaler_pleine(etat):
+                    yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
                 return
             logger.info("Réponse coupée par la fenêtre : reprise {}/{}.", essai + 1, CONTINUATIONS_MAX)
             raisons.clear()
@@ -692,7 +722,8 @@ class MoteurChat:
                 if exc.diagnostic.cause is not CauseEchec.CONTEXTE_TROP_GRAND:
                     raise
                 logger.warning("Reprise refusée par le moteur, fenêtre pleine : arrêt propre.")
-                yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
+                if not _signaler_pleine(etat):
+                    yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
                 return
         logger.warning("Borne de {} reprises atteinte : la réponse reste incomplète.", CONTINUATIONS_MAX)
         yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
@@ -742,13 +773,21 @@ class MoteurChat:
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
                           outils_declares=outils or None, mode_projet=contexte.projet is not None,
                           pre_remplissage_permis=_moteur_pre_remplit(),
-                          compaction=demarrer(messages, projet=contexte.projet is not None))
+                          compaction=demarrer(messages, projet=contexte.projet is not None,
+                                              socle_outils=_socle_outils_json() if outils else ""))
         etat.ecrire_tot = _ecriture_anticipee(contexte)
         while not budget_epuise(etat) and not tourne_en_rond(etat.redites):
             messages = _avec_avertissement(messages, etat)
             async for morceau in self._diffuser_tour(messages, options, etat):
                 yield morceau
             etat.activite.fin_de_tour()
+            if etat.fenetre_pleine:
+                note = await _compacter_fenetre_pleine(messages, etat)
+                if note is None:
+                    yield {"texte": AVERTISSEMENT_FENETRE_PLEINE}
+                    return
+                yield {"texte": note}
+                continue
             texte = etat.texte_recu
             appels = _appels_demandes(texte) if outils else []
             if not appels:

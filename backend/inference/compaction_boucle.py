@@ -13,12 +13,20 @@ d'outil ne soit jamais séparée de l'appel qui l'a produite.
 
 from __future__ import annotations
 
+import json
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from loguru import logger
 
-from backend.core.politique_compaction import budget_queue, decider
+from backend.core.politique_compaction import (
+    DIRECTIVES_MAX_TOKENS,
+    FICHIERS_MAX_TOKENS,
+    RESUME_MAX_TOKENS,
+    budget_queue,
+    decider,
+)
 from backend.inference.engines_adapters import MessageChat, superviseur
 from backend.inference.fichiers_travail import selection, suivre
 from backend.inference.resume_compaction import produire_resume
@@ -33,13 +41,9 @@ EXTRAIT_SORTIE_DEBUT = 300
 EXTRAIT_SORTIE_FIN = 900
 # L'estimation surévalue les tokens de 15 % : mieux vaut une mesure de trop qu'un seuil franchi sans le voir.
 MARGE_ESTIMATION = 0.85
-FRACTION_MAX_RESUME = 0.05
-RESUME_MAX_TOKENS_PLANCHER = 512
 # Réglages de Chris (2026-11-10) : ses DERNIÈRES consignes restent mot pour mot dans ~2K tokens (≈ 1 500
 # mots) ; au-delà elles ne vivent que condensées dans le résumé (DIRECTIVES ACTIVES), si elles valent encore.
-DIRECTIVES_BRUTES_TOKENS = 2_000
-# Fichiers de travail réinjectés après compaction (dernière version connue, les plus récents d'abord).
-FRACTION_FICHIERS = 0.15
+DIRECTIVES_BRUTES_TOKENS = DIRECTIVES_MAX_TOKENS
 # Matériau donné au résumeur : borné pour que SA requête tienne aussi dans la fenêtre (les plus récents gardés).
 FRACTION_MATERIAU = 0.45
 PREFIXE_CONSIGNE = "[Message from the user"
@@ -61,15 +65,20 @@ class EtatCompaction:
     projet: bool = False
     # Consignes de l'utilisateur gardées mot pour mot d'une compaction à la suivante (plus anciennes d'abord).
     directives: list[str] = field(default_factory=list)
+    # Définitions d'outils envoyées à chaque tour (~4K tokens) : comptées dans la mesure, comme par le moteur.
+    socle_outils: str = ""
 
 
-def demarrer(messages: Sequence[MessageChat], projet: bool = False) -> EtatCompaction:
+def demarrer(messages: Sequence[MessageChat], projet: bool = False, socle_outils: str = "") -> EtatCompaction:
     """État de compaction d'une boucle : la demande est le dernier `user` AVANT le premier tour d'outil."""
-    return EtatCompaction(demande=next((m for m in reversed(messages) if m.role == "user"), None), projet=projet)
+    return EtatCompaction(demande=next((m for m in reversed(messages) if m.role == "user"), None), projet=projet,
+                          socle_outils=socle_outils)
 
 
 def _caracteres(messages: Sequence[MessageChat]) -> int:
-    return sum(len(m.content) if isinstance(m.content, str) else 2_000 for m in messages)
+    """Taille estimée, arguments d'appels compris : un `write_file` porte tout le fichier dans son appel."""
+    return sum((len(m.content) if isinstance(m.content, str) else 2_000)
+               + (len(json.dumps(m.tool_calls, ensure_ascii=False)) if m.tool_calls else 0) for m in messages)
 
 
 def _tete(messages: Sequence[MessageChat]) -> int:
@@ -110,7 +119,7 @@ def _extrait(message: MessageChat) -> str:
 
 async def _mesurer(messages: Sequence[MessageChat], etat: EtatCompaction) -> int | None:
     try:
-        occupation = await superviseur.compter_contexte("", list(messages))
+        occupation = await superviseur.compter_contexte(etat.socle_outils, list(messages))
     except Exception as exc:  # noqa: BLE001 — une mesure absente ne doit jamais casser la tâche
         logger.warning("Occupation non mesurable dans la boucle ({}) : pas de compaction.", exc)
         return None
@@ -118,7 +127,9 @@ async def _mesurer(messages: Sequence[MessageChat], etat: EtatCompaction) -> int
         return None
     etat.fenetre = occupation.contexte_total
     if occupation.tokens_mesures:
-        etat.caracteres_par_token = max(1.0, _caracteres(messages) / occupation.tokens_mesures)
+        etat.caracteres_par_token = max(1.0, (_caracteres(messages) + len(etat.socle_outils))
+                                        / occupation.tokens_mesures)
+    logger.info("Occupation mesurée dans la boucle : {} / {} tokens.", occupation.tokens_mesures, etat.fenetre)
     return occupation.tokens_mesures
 
 
@@ -126,17 +137,19 @@ def _estimation_sous_seuil(messages: Sequence[MessageChat], etat: EtatCompaction
     """Le contexte est-il SÛREMENT sous le seuil ? Évite une tokenisation complète à chaque tour."""
     if etat.fenetre is None:
         return False
-    estime = int(_caracteres(messages) / (etat.caracteres_par_token * MARGE_ESTIMATION))
+    estime = int((_caracteres(messages) + len(etat.socle_outils)) / (etat.caracteres_par_token * MARGE_ESTIMATION))
     return decider(estime, etat.fenetre, etape) is None
 
 
 async def compacter_si_besoin(messages: list[MessageChat], etat: EtatCompaction, etape_terminee: bool,
-                              taches: str = "") -> str | None:
-    """Compacte `messages` SUR PLACE si la règle le demande. Rend une note pour l'utilisateur, ou `None`."""
-    if _estimation_sous_seuil(messages, etat, etape_terminee):
+                              taches: str = "", forcer: bool = False) -> str | None:
+    """Compacte `messages` SUR PLACE si la règle le demande (ou `forcer`). Rend une note, ou `None`."""
+    if not forcer and _estimation_sous_seuil(messages, etat, etape_terminee):
         return None
     tokens = await _mesurer(messages, etat)
-    if tokens is None or etat.fenetre is None or decider(tokens, etat.fenetre, etape_terminee) is None:
+    if tokens is None or etat.fenetre is None:
+        return None
+    if not forcer and decider(tokens, etat.fenetre, etape_terminee) is None:
         return None
     note = await _compacter(messages, etat, tokens, taches)
     if note is not None:
@@ -211,7 +224,7 @@ def _fichiers(messages: list[MessageChat], tete: int, debut: int, etat: EtatComp
     deja = set(suivre(queue))
     connus = {chemin: f for chemin, f in suivre(messages[tete:debut]).items() if chemin not in deja}
     recents = " ".join(str(m.content) for m in queue if isinstance(m.content, str))[-20_000:]
-    budget = int(FRACTION_FICHIERS * etat.fenetre * etat.caracteres_par_token)
+    budget = int(FICHIERS_MAX_TOKENS * etat.caracteres_par_token)
     return "\n\n".join(f.rendu() for f in selection(connus, budget, recents))
 
 
@@ -226,7 +239,7 @@ async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: i
     if not replies:
         logger.info("Compaction de boucle : rien à replier sous la queue minimale.")
         return None
-    plafond = max(RESUME_MAX_TOKENS_PLANCHER, int(FRACTION_MAX_RESUME * etat.fenetre))
+    plafond = RESUME_MAX_TOKENS
     resume = await produire_resume(_materiau(replies, etat), _precedent(messages[tete:debut]), "", plafond,
                                    projet=etat.projet)
     if resume is None:

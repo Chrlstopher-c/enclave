@@ -29,6 +29,13 @@ DUR_FRACTION = 0.80
 # de la FENÊTRE : le contexte retombe vers 45 %, ce qui laisse ~35 % de travail avant la suivante.
 QUEUE_FRACTION_FENETRE = 0.30
 
+# Taille FIXE de ce qu'une compaction réinjecte, auto ou manuelle (Chris, 2026-11-10) : au plus 10K tokens,
+# quelle que soit la fenêtre — résumé 4K, dernières consignes mot pour mot 2K, fichiers de travail 4K.
+RESUME_MAX_TOKENS = 4_000
+DIRECTIVES_MAX_TOKENS = 2_000
+FICHIERS_MAX_TOKENS = 4_000
+COMPACTION_MAX_TOKENS = RESUME_MAX_TOKENS + DIRECTIVES_MAX_TOKENS + FICHIERS_MAX_TOKENS
+
 Raison = Literal["etape", "seuil"]
 
 
@@ -58,4 +65,7 @@ def budget_queue(fenetre: int) -> int:
     return min(int(fenetre * QUEUE_FRACTION_FENETRE), seuils_pour(fenetre).etape // 2)
 
 
-__all__ = ["Raison", "Seuils", "budget_queue", "decider", "seuils_pour"]
+__all__ = [
+    "COMPACTION_MAX_TOKENS", "DIRECTIVES_MAX_TOKENS", "FICHIERS_MAX_TOKENS", "RESUME_MAX_TOKENS", "Raison", "Seuils",
+    "budget_queue", "decider", "seuils_pour",
+]

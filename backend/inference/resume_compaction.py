@@ -12,6 +12,8 @@ permet à une session longue de ne pas oublier sa tâche.
 
 from __future__ import annotations
 
+import re
+
 from loguru import logger
 
 from backend.inference.engines_adapters import (
@@ -64,12 +66,25 @@ COMPLEMENT_PROJET = (
 )
 
 
+# Rappel APRÈS le matériau (2026-11-10, Ornith 9B) : placée seulement avant 30K de transcription, la consigne
+# était oubliée et le modèle CONTINUAIT la conversation — code recopié, 4 000 tokens, 90 s, résumé inutilisable.
+RAPPEL_FINAL = (
+    "Fin de la transcription. Ne la continue PAS et n'y réponds pas : écris maintenant le RÉSUMÉ CUMULATIF "
+    "demandé, avec ses sections, en 700 mots au plus. Aucun code, aucune sortie d'outil recopiée."
+)
+_REFLEXION = re.compile(r"<think>.*?</think>|<think>.*\Z|^.*?</think>", re.DOTALL)
+
+
+def _sans_reflexion(texte: str) -> str:
+    return _REFLEXION.sub("", texte)
+
+
 def construire_messages_resume(a_resumer: str, resume_precedent: str) -> list[MessageChat]:
-    """Prompt de résumé : consigne système + le matériau à condenser, résumé antérieur en tête."""
+    """Prompt de résumé : consigne système, matériau ENCADRÉ comme donnée, puis rappel de la consigne."""
     corps = ""
     if resume_precedent.strip():
         corps += f"{_ENTETE_RESUME_ANTERIEUR}\n{resume_precedent.strip()}\n\n"
-    corps += f"{_ENTETE_ECHANGES}\n{a_resumer.strip()}"
+    corps += f"{_ENTETE_ECHANGES}\n<transcript>\n{_sans_reflexion(a_resumer).strip()}\n</transcript>\n\n{RAPPEL_FINAL}"
     return [
         MessageChat(role="system", content=PROMPT_RESUME_SYSTEME),
         MessageChat(role="user", content=corps),

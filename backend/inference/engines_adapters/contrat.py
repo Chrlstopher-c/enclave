@@ -11,6 +11,8 @@ attribut lu à `None` qui se transformerait plus loin en « Failed to load model
 
 from __future__ import annotations
 
+import json
+
 from enum import Enum
 from typing import Any, Literal, Sequence
 
@@ -426,6 +428,12 @@ def decouper_segments(prompt_systeme: str, messages: Sequence[MessageChat]) -> l
         segments.append(SegmentContexte(poste=PosteContexte.SYSTEME, texte=prompt_systeme))
     for message in messages:
         texte = texte_de(message)
+        if message.tool_calls:
+            # Les ARGUMENTS d'appel (code, contenu de fichier écrit…) occupent la fenêtre comme le reste.
+            # Oubliés jusqu'au 2026-11-10 : la mesure sous-estimait de ~20K tokens une tâche qui écrivait
+            # beaucoup, la compaction ne se déclenchait jamais et vLLM refusait « maximum context length ».
+            segments.append(SegmentContexte(poste=PosteContexte.ASSISTANT, texte=json.dumps(
+                message.tool_calls, ensure_ascii=False)))
         if not texte:
             continue
         if message.role != "assistant":

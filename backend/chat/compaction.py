@@ -30,7 +30,7 @@ from loguru import logger
 from backend.chat.modeles import InfoCompaction
 from backend.chat.port_inference import MessageInference, MoteurGeneration, OccupationContexte
 from backend.core import maintenant
-from backend.core.politique_compaction import budget_queue, decider
+from backend.core.politique_compaction import RESUME_MAX_TOKENS, budget_queue, decider
 
 # Seuils et budget de queue : la règle de Quart, commune à `chat` (ici, au départ d'un message) et à
 # `inference` (dans la boucle d'outils) — `backend.core.politique_compaction`. Un nouveau message de
@@ -40,8 +40,8 @@ from backend.core.politique_compaction import budget_queue, decider
 # doit jamais partir dans le résumé, sous peine de résumer la question à laquelle le modèle répond.
 GARDER_MINIMUM = 2
 
-# Plafond du résumé, en fraction de la fenêtre : un résumé qui remplirait lui-même la fenêtre n'aurait
-# rien compacté. Borné aussi par un plancher pour rester utile sur une petite fenêtre.
+# Plafond du résumé : la même taille FIXE que la compaction de boucle (`RESUME_MAX_TOKENS`, Chris
+# 2026-11-10), auto ou manuelle. Sur une petite fenêtre, jamais plus du quart de celle-ci.
 FRACTION_MAX_RESUME = 0.25
 RESUME_MAX_TOKENS_PLANCHER = 256
 
@@ -207,7 +207,7 @@ async def preparer_compaction(
         _texte_des(replies),
         active.resume if active is not None else "",
         langue,
-        max(RESUME_MAX_TOKENS_PLANCHER, int(FRACTION_MAX_RESUME * contexte_total)),
+        max(RESUME_MAX_TOKENS_PLANCHER, min(RESUME_MAX_TOKENS, int(FRACTION_MAX_RESUME * contexte_total))),
         **({"consigne": consigne} if consigne.strip() else {}),
     )
     if resume is None:

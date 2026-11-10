@@ -18,3 +18,12 @@ def test_resume_de_compaction_fusionne_et_system_tardif_rendu_user() -> None:
 def test_rien_a_faire_rend_la_meme_suite() -> None:
     messages = [MessageChat(role="system", content="socle"), MessageChat(role="user", content="a")]
     assert un_seul_systeme(messages) == messages
+
+
+def test_les_arguments_d_appel_sont_comptes() -> None:
+    """2026-11-10 : un `write_file` porte tout le fichier dans son appel ; la mesure l'ignorait."""
+    from backend.inference.engines_adapters.contrat import decouper_segments
+
+    appel = MessageChat(role="assistant", content="J'écris.", tool_calls=[{"id": "1", "type": "function", "function": {
+        "name": "ecrire_fichier", "arguments": '{"chemin": "a.py", "contenu": "' + "x" * 5000 + '"}'}}])
+    assert sum(len(s.texte) for s in decouper_segments("", [appel])) > 5000

@@ -47,3 +47,8 @@ def test_textes_et_appels_passes_traduits() -> None:
     publie = publier_messages([message])[0]
     assert publie.tool_calls[0]["function"] == {"name": "run_command", "arguments": '{"command": "ls"}'}
     assert message.tool_calls[0]["function"]["name"] == "executer_commande", "l'original ne bouge pas"
+
+
+def test_liste_recue_en_texte_json_traduite() -> None:
+    nom, args = interne("write_files", {"files": '[{"path": "a.py", "content": "x"}]'})
+    assert nom == "ecrire_fichiers" and args == {"fichiers": [{"chemin": "a.py", "contenu": "x"}]}

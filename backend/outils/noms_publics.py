@@ -93,7 +93,25 @@ def interne(nom: str, arguments: Any) -> tuple[str, Any]:
     if cible is None:
         return nom, arguments
     inverse = {public: interne_ for interne_, public in _TABLE[cible][1].items()}
-    return cible, _renommer(arguments, inverse) if isinstance(arguments, (dict, list)) else arguments
+    if not isinstance(arguments, dict):
+        return cible, _renommer(arguments, inverse) if isinstance(arguments, list) else arguments
+    return cible, {inverse.get(cle, cle): _renommer(_json_si_structure(v), inverse) for cle, v in arguments.items()}
+
+
+def _json_si_structure(valeur: Any) -> Any:
+    """Une liste ou un objet arrivé en TEXTE JSON (parseur XML de vLLM) : décodé pour que ses clés soient traduites.
+
+    Banc du 2026-11-10 : `write_files` reçu avec `files` en chaîne ; les `path`/`content` qu'elle portait
+    restaient anglais et l'outil refusait chaque fichier.
+    """
+    if isinstance(valeur, str) and valeur.lstrip()[:1] in ("[", "{"):
+        import json
+
+        try:
+            return json.loads(valeur)
+        except ValueError:
+            return valeur
+    return valeur
 
 
 def parametres_internes(nom_public: str, parametres: dict[str, str]) -> tuple[str, dict[str, str]]:

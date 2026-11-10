@@ -146,3 +146,11 @@ def test_compaction_garde_consignes_et_fichiers(faux: _FauxSuperviseur) -> None:
     resume = str(messages[1].content)
     assert "- Utilise pnpm." in resume and "### main.py\nprint('todo')" in resume
     assert "CARTE" in faux.systemes[-1], "le résumé d'un projet demande la carte des chemins"
+
+
+def test_compaction_forcee_meme_sous_le_seuil(faux: _FauxSuperviseur) -> None:
+    """Fenêtre pleine en plein tour : la boucle compacte de force au lieu d'abandonner la tâche."""
+    messages = _tache(3)
+    etat = demarrer(messages)
+    assert asyncio.run(compacter_si_besoin(list(messages), etat, etape_terminee=False)) is None
+    assert asyncio.run(compacter_si_besoin(messages, etat, etape_terminee=False, forcer=True)) is not None
