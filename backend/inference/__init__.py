@@ -741,7 +741,8 @@ class MoteurChat:
         """
         etat = EtatBoucle(harnais=harnais.choisir(harnais.harnais_demande(options)),
                           outils_declares=outils or None, mode_projet=contexte.projet is not None,
-                          pre_remplissage_permis=_moteur_pre_remplit(), compaction=demarrer(messages))
+                          pre_remplissage_permis=_moteur_pre_remplit(),
+                          compaction=demarrer(messages, projet=contexte.projet is not None))
         etat.ecrire_tot = _ecriture_anticipee(contexte)
         while not budget_epuise(etat) and not tourne_en_rond(etat.redites):
             messages = _avec_avertissement(messages, etat)

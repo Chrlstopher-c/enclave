@@ -60,9 +60,9 @@ class _FauxMoteur:
 
 def test_depasse_seuil_franchi_au_seuil_d_etape() -> None:
     """Fenêtre de 100 : seuil d'étape = 40 % (règle de Quart), plafond 120 k sans effet ici."""
-    assert depasse_seuil(_occupation(40)) is True
-    assert depasse_seuil(_occupation(41)) is True
-    assert depasse_seuil(_occupation(39)) is False
+    assert depasse_seuil(_occupation(70)) is True
+    assert depasse_seuil(_occupation(71)) is True
+    assert depasse_seuil(_occupation(69)) is False
 
 
 def test_une_mesure_absente_ne_declenche_jamais() -> None:

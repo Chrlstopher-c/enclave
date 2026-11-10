@@ -202,6 +202,16 @@ export interface EtatMoteur {
   vram_apres_octets: number | null;
 }
 
+/** Dernier plan qui a réellement chargé un modèle, rejouable tel quel (`/inference/plans-eprouves`). */
+export interface PlanEprouve {
+  moteur: Moteur;
+  identifiant_modele: string;
+  contexte: number;
+  type_kv_cache: string | null;
+  fraction_vram: number | null;
+  mode_eager: boolean;
+}
+
 export interface StatutInference {
   etat: EtatMoteurChargement;
   moteur: Moteur | null;

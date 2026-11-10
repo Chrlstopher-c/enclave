@@ -14,12 +14,13 @@ d'outil ne soit jamais séparée de l'appel qui l'a produite.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loguru import logger
 
 from backend.core.politique_compaction import budget_queue, decider
 from backend.inference.engines_adapters import MessageChat, superviseur
+from backend.inference.fichiers_travail import selection, suivre
 from backend.inference.resume_compaction import produire_resume
 
 MARQUEUR_RESUME = "[RÉSUMÉ DU TRAVAIL DÉJÀ FAIT DANS CETTE TÂCHE — relu à la place des tours repliés]"
@@ -34,6 +35,17 @@ EXTRAIT_SORTIE_FIN = 900
 MARGE_ESTIMATION = 0.85
 FRACTION_MAX_RESUME = 0.05
 RESUME_MAX_TOKENS_PLANCHER = 512
+# Réglages de Chris (2026-11-10) : ses DERNIÈRES consignes restent mot pour mot dans ~2K tokens (≈ 1 500
+# mots) ; au-delà elles ne vivent que condensées dans le résumé (DIRECTIVES ACTIVES), si elles valent encore.
+DIRECTIVES_BRUTES_TOKENS = 2_000
+# Fichiers de travail réinjectés après compaction (dernière version connue, les plus récents d'abord).
+FRACTION_FICHIERS = 0.15
+# Matériau donné au résumeur : borné pour que SA requête tienne aussi dans la fenêtre (les plus récents gardés).
+FRACTION_MATERIAU = 0.45
+PREFIXE_CONSIGNE = "[Message from the user"
+ENTETE_DIRECTIVES = "LATEST USER INSTRUCTIONS (verbatim, still in force unless the user said otherwise):"
+ENTETE_FICHIERS = ("WORKING FILES — last known version of the files you were working on. They are up to date: "
+                   "do not read them again unless you change them.")
 
 
 @dataclass
@@ -46,11 +58,14 @@ class EtatCompaction:
     # La demande de l'utilisateur, repérée par IDENTITÉ : les relances du harnais sont aussi des
     # messages `user`, et « le dernier `user` » aurait gardé une consigne en repliant la vraie demande.
     demande: MessageChat | None = None
+    projet: bool = False
+    # Consignes de l'utilisateur gardées mot pour mot d'une compaction à la suivante (plus anciennes d'abord).
+    directives: list[str] = field(default_factory=list)
 
 
-def demarrer(messages: Sequence[MessageChat]) -> EtatCompaction:
+def demarrer(messages: Sequence[MessageChat], projet: bool = False) -> EtatCompaction:
     """État de compaction d'une boucle : la demande est le dernier `user` AVANT le premier tour d'outil."""
-    return EtatCompaction(demande=next((m for m in reversed(messages) if m.role == "user"), None))
+    return EtatCompaction(demande=next((m for m in reversed(messages) if m.role == "user"), None), projet=projet)
 
 
 def _caracteres(messages: Sequence[MessageChat]) -> int:
@@ -129,6 +144,77 @@ async def compacter_si_besoin(messages: list[MessageChat], etat: EtatCompaction,
     return note
 
 
+def _directives(replies: Sequence[MessageChat], demande_index: int | None, messages: Sequence[MessageChat],
+                etat: EtatCompaction) -> list[str]:
+    """Consignes de l'utilisateur à garder mot pour mot : les plus récentes, dans ~2K tokens.
+
+    Sont des consignes : ses messages d'AVANT la demande en cours, et ceux glissés pendant le travail.
+    Les relances du harnais, rôle `user` elles aussi, n'en sont pas.
+    """
+    limite = messages[demande_index] if demande_index is not None else None
+    avant = True
+    nouvelles: list[str] = []
+    for message in messages:
+        if message is limite:
+            avant = False
+        if message in replies and message.role == "user" and isinstance(message.content, str):
+            if avant or message.content.startswith(PREFIXE_CONSIGNE):
+                nouvelles.append(message.content.split("]\n\n", 1)[-1].strip())
+    budget = int(DIRECTIVES_BRUTES_TOKENS * etat.caracteres_par_token)
+    gardees: list[str] = []
+    for texte in reversed([*etat.directives, *nouvelles]):
+        if len(texte) > budget:
+            break
+        gardees.insert(0, texte)
+        budget -= len(texte)
+    return gardees
+
+
+def _materiau(replies: Sequence[MessageChat], etat: EtatCompaction) -> str:
+    """Extraits à résumer, bornés pour que la requête du résumeur tienne : les plus récents sont gardés."""
+    assert etat.fenetre is not None
+    budget = int(FRACTION_MATERIAU * etat.fenetre * etat.caracteres_par_token)
+    extraits: list[str] = []
+    for message in reversed(replies):
+        extrait = _extrait(message)
+        if len(extrait) > budget:
+            break
+        extraits.insert(0, extrait)
+        budget -= len(extrait)
+    return "\n\n".join(extraits)
+
+
+def _corps(resume: str, taches: str, directives: list[str], fichiers: str) -> str:
+    corps = f"{MARQUEUR_RESUME}\n{resume}"
+    if taches:
+        corps += f"\n\nListe de tâches actuelle :\n{taches}"
+    if directives:
+        corps += f"\n\n{ENTETE_DIRECTIVES}\n" + "\n".join(f"- {d}" for d in directives)
+    if fichiers:
+        corps += f"\n\n{ENTETE_FICHIERS}\n{fichiers}"
+    return corps
+
+
+def _precedent(messages: Sequence[MessageChat]) -> str:
+    """Le résumé antérieur seul : ses blocs de consignes et de fichiers sont reconstruits à part."""
+    texte = next((str(m.content) for m in messages if _est_resume(m)), "")
+    texte = texte[len(MARQUEUR_RESUME):].strip() if texte else ""
+    for entete in (ENTETE_DIRECTIVES, ENTETE_FICHIERS):
+        texte = texte.split(f"\n\n{entete}", 1)[0]
+    return texte
+
+
+def _fichiers(messages: list[MessageChat], tete: int, debut: int, etat: EtatCompaction) -> str:
+    """Dernière version connue des fichiers touchés dans la partie repliée, hors ceux que la queue montre déjà."""
+    assert etat.fenetre is not None
+    queue = messages[debut:]
+    deja = set(suivre(queue))
+    connus = {chemin: f for chemin, f in suivre(messages[tete:debut]).items() if chemin not in deja}
+    recents = " ".join(str(m.content) for m in queue if isinstance(m.content, str))[-20_000:]
+    budget = int(FRACTION_FICHIERS * etat.fenetre * etat.caracteres_par_token)
+    return "\n\n".join(f.rendu() for f in selection(connus, budget, recents))
+
+
 async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: int, taches: str) -> str | None:
     assert etat.fenetre is not None
     tete = _tete(messages)
@@ -140,14 +226,14 @@ async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: i
     if not replies:
         logger.info("Compaction de boucle : rien à replier sous la queue minimale.")
         return None
-    precedent = next((m.content for m in messages[tete:debut] if _est_resume(m)), "")
-    precedent = precedent[len(MARQUEUR_RESUME):].strip() if isinstance(precedent, str) else ""
     plafond = max(RESUME_MAX_TOKENS_PLANCHER, int(FRACTION_MAX_RESUME * etat.fenetre))
-    resume = await produire_resume("\n\n".join(_extrait(m) for m in replies), precedent, "", plafond)
+    resume = await produire_resume(_materiau(replies, etat), _precedent(messages[tete:debut]), "", plafond,
+                                   projet=etat.projet)
     if resume is None:
         logger.warning("Résumé de boucle indisponible : la tâche continue sur le contexte courant.")
         return None
-    corps = f"{MARQUEUR_RESUME}\n{resume}" + (f"\n\nListe de tâches actuelle :\n{taches}" if taches else "")
+    etat.directives = _directives(replies, demande, messages, etat)
+    corps = _corps(resume, taches, etat.directives, _fichiers(messages, tete, debut, etat))
     garde_demande = [messages[demande]] if demande is not None and demande < debut else []
     messages[:] = [*messages[:tete], MessageChat(role="system", content=corps), *garde_demande, *messages[debut:]]
     logger.info("Compaction de boucle : {} messages repliés, ~{} tokens avant.", len(replies), avant)

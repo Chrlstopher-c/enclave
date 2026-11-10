@@ -341,6 +341,8 @@ class AdaptateurVllm(AdaptateurMoteur):
             charge["max_tokens"] = options.max_tokens
         if options.stop:
             charge["stop"] = list(options.stop)
+        if options.sans_reflexion:
+            charge["chat_template_kwargs"] = {"enable_thinking": False}
         if options.graine is not None:
             charge["seed"] = options.graine
         # Outils au format OpenAI, comme l'adaptateur llama-server. `tool_choice: "auto"` exige les

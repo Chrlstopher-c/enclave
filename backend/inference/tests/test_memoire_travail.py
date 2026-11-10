@@ -149,3 +149,13 @@ def test_une_consigne_glissee_redevient_un_message_utilisateur() -> None:
     segments = deplier(texte)
     assert [s.role for s in segments] == ["assistant", "tool", "user", "assistant", "tool", "assistant"]
     assert "Utilise pnpm" in segments[2].contenu and "id:k1" not in segments[2].contenu
+
+
+def test_une_relecture_remplace_les_lectures_precedentes() -> None:
+    segments = [Segment("tool", "v1 " * 20, "lire_fichier(chemin : a.py)"),
+                Segment("tool", "plage", "lire_fichier(chemin : a.py, ligne_debut : 5)"),
+                Segment("tool", "autre", "lire_fichier(chemin : b.py)"),
+                Segment("tool", "v2 " * 20, "lire_fichier(chemin : a.py)")]
+    rendus = budgeter(segments)
+    assert "superseded" in rendus[0].contenu and "superseded" in rendus[1].contenu
+    assert "autre" in rendus[2].contenu and "v2" in rendus[3].contenu

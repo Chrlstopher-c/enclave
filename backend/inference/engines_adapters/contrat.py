@@ -222,6 +222,8 @@ class OptionsGeneration(BaseModel):
     max_tokens: int | None = Field(default=None, gt=0)
     stop: list[str] = Field(default_factory=list)
     graine: int | None = None
+    # Raisonnement coupé (gabarits Qwen : `enable_thinking`) — pour les résumés, où il mangeait le budget.
+    sans_reflexion: bool = False
 
 
 class MorceauGeneration(BaseModel):

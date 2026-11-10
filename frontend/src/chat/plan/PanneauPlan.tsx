@@ -6,6 +6,7 @@ import type { PlanDeChargement } from '../api/contrats';
 import { ArbitrageContexte } from './ArbitrageContexte';
 import { BarresMemoire } from './BarresMemoire';
 import { EtatChargement } from './EtatChargement';
+import { ChargementEprouve } from './ChargementEprouve';
 import { Justifications } from './Justifications';
 import { ReglagesMemoire } from './ReglagesMemoire';
 import { RubanCouches } from './RubanCouches';
@@ -63,6 +64,7 @@ function Actions({ cible, plan, chargement }: ActionsProps): ReactElement {
       >
         {pret ? 'Recharger avec ce plan' : 'Charger avec ce plan'}
       </Button>
+      <ChargementEprouve identifiant={cible.demande.metadonnees.identifiant} chargement={chargement} />
       {chargement.erreur !== null && <span className="text-2xs text-critical">{chargement.erreur}</span>}
     </div>
   );

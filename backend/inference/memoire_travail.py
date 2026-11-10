@@ -109,13 +109,40 @@ def _retire(segment: Segment) -> str:
             "its exact content and it may have changed.")
 
 
+_LECTURE = re.compile(r"^lire_fichier\(chemin : (?P<chemin>[^,)]+)(?P<plage>,[^)]*)?\)$")
+
+
+def _perime(segment: Segment, lus: dict[str, set[str]]) -> bool:
+    """Une lecture refaite plus tard (même passage, ou fichier entier) : seule la dernière version compte.
+
+    Chris, 2026-11-10 : « si il est relu c'est toujours la dernière version lue qu'est gardée ». Note : une
+    relecture d'un fichier modifié entre-temps rend une autre sortie ; c'est la plus récente qui reste.
+    """
+    lecture = _LECTURE.match(segment.annonce.strip())
+    if lecture is None or segment.echec:
+        return False
+    chemin, plage = lecture.group("chemin").strip(), (lecture.group("plage") or "").strip()
+    vues = lus.setdefault(chemin, set())
+    perime = "" in vues or plage in vues
+    vues.add(plage)
+    return perime
+
+
+def _remplacee(segment: Segment) -> str:
+    return f"Result of {segment.annonce}: superseded by a later read of the same file, further down."
+
+
 def budgeter(segments: list[Segment], budget: int = BUDGET_SORTIES) -> list[Segment]:
     """Sorties entières des plus récentes aux plus anciennes tant que le budget tient ; ligne au-delà."""
     restant = budget
     rendus: list[Segment] = []
+    lus: dict[str, set[str]] = {}
     for segment in reversed(segments):
         if segment.role != "tool":
             rendus.append(segment)
+            continue
+        if _perime(segment, lus):
+            rendus.append(Segment("tool", _remplacee(segment)))
             continue
         garde = len(segment.contenu) <= restant
         restant -= len(segment.contenu) if garde else 0

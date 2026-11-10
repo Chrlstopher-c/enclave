@@ -202,6 +202,9 @@ class SuperviseurInference:
         duree: float,
     ) -> None:
         journal_chargement.cloturer(session, EtatChargement.PRET, duree_s=round(duree, 2))
+        from backend.inference.plans_eprouves import retenir
+
+        retenir(plan)
         self._statut = StatutInference(
             etat=EtatChargement.PRET,
             moteur=plan.moteur,

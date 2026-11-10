@@ -8,6 +8,7 @@
 
 import { getJson, postJson } from './client';
 import type {
+  PlanEprouve,
   DemandeDeChargement,
   PlanDeChargement,
   ReponsePlan,
@@ -31,6 +32,20 @@ export function degrader(demande: DemandeDeChargement, planEchoue: PlanDeChargem
 
 export function charger(cheminModele: string, plan: PlanDeChargement): Promise<StatutInference> {
   return postJson<StatutInference>(`${RACINE}/charger`, { chemin_modele: cheminModele, plan });
+}
+
+/** Plan éprouvé du modèle, ou `null` s'il n'a jamais été chargé avec succès. */
+export async function lirePlanEprouve(identifiant: string, signal?: AbortSignal): Promise<PlanEprouve | null> {
+  try {
+    return await getJson<PlanEprouve>(`${RACINE}/plans-eprouves/${encodeURI(identifiant)}`, signal);
+  } catch {
+    return null;
+  }
+}
+
+/** Recharge le modèle exactement comme la dernière fois où il a tenu. */
+export function chargerPlanEprouve(identifiant: string): Promise<StatutInference> {
+  return postJson<StatutInference>(`${RACINE}/plans-eprouves/${encodeURI(identifiant)}/charger`, {});
 }
 
 export function lireEtatInference(signal?: AbortSignal): Promise<StatutInference> {

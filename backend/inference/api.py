@@ -39,6 +39,7 @@ from backend.inference.engines_adapters import (
 )
 from backend.inference.hygiene_historique import pour_le_modele
 from backend.inference.engines_adapters.adaptateur_strata import SondeStrata, plan_strata, sonder_serveur
+from backend.inference import plans_eprouves
 from backend.inference.engines_adapters.contrat import OccupationContexte
 from backend.inference.engines_adapters.traduction_plan import vers_cause_planificateur, vers_plan_moteur
 from backend.inference.planner import DemandeDeChargement, PlanDeChargement, degrader, planifier
@@ -202,6 +203,26 @@ async def _verifier_moteur_disponible(moteur: MoteurSupporte) -> None:
 async def charger_modele(requete: RequeteChargement) -> StatutInference:
     """Démarre le chargement et rend la main aussitôt — l'avancement se lit sur `/etat`."""
     plan = _plan_moteur(requete)
+    try:
+        await _verifier_moteur_disponible(plan.moteur)
+        return await superviseur.demarrer_chargement(plan)
+    except EchoHubError as exc:
+        raise _en_http(exc) from exc
+
+
+@router.get("/plans-eprouves/{identifiant:path}", response_model=PlanChargement)
+def lire_plan_eprouve(identifiant: str) -> PlanChargement:
+    """Le dernier plan qui a réellement chargé ce modèle ; 404 s'il n'a jamais abouti."""
+    plan = plans_eprouves.lire(identifiant)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Aucun chargement réussi connu pour ce modèle.")
+    return plan
+
+
+@router.post("/plans-eprouves/{identifiant:path}/charger", response_model=StatutInference, status_code=202)
+async def charger_plan_eprouve(identifiant: str) -> StatutInference:
+    """Recharge le modèle exactement comme la dernière fois où il a tenu."""
+    plan = lire_plan_eprouve(identifiant)
     try:
         await _verifier_moteur_disponible(plan.moteur)
         return await superviseur.demarrer_chargement(plan)

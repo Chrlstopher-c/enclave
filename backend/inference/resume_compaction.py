@@ -34,6 +34,9 @@ PROMPT_RESUME_SYSTEME = (
     "t'adresse à personne, n'annonce pas que tu résumes : écris seulement le résumé. Structure-le "
     "pour qu'un agent reprenne la tâche sans relire les messages :\n"
     "- OBJECTIF : le but de la tâche, tel que l'utilisateur l'a demandé.\n"
+    "- DIRECTIVES ACTIVES : les consignes de l'utilisateur ENCORE VALABLES pour le travail en cours (outils "
+    "imposés, conventions, interdits, préférences, choix validés), condensées une par ligne. Omets celles qui "
+    "sont accomplies ou caduques : elles pollueraient le contexte.\n"
     "- ÉTAT : l'étape en cours et les suivantes ; la liste de tâches si elle existe, avec l'état de chacune.\n"
     "- DÉCISIONS : les choix faits et POURQUOI.\n"
     "- FICHIERS : fichiers lus, créés ou modifiés, avec pour chacun ce qu'on y a appris ou changé "
@@ -51,6 +54,16 @@ _ENTETE_RESUME_ANTERIEUR = "[RÉSUMÉ ANTÉRIEUR À INTÉGRER]"
 _ENTETE_ECHANGES = "[ÉCHANGES À RÉSUMER]"
 
 
+# Ce qu'un agent qui CONSTRUIT un projet doit retrouver après compaction (Chris, 2026-11-10) : la carte du
+# projet et ses notions, pas le récit de l'exploration.
+COMPLEMENT_PROJET = (
+    "\nCette tâche construit ou modifie un PROJET. Ajoute :\n"
+    "- CARTE : les chemins importants (dossiers, points d'entrée, configuration) et le rôle de chacun.\n"
+    "- NOTIONS : les concepts du domaine, les conventions de nommage et les interfaces internes à respecter.\n"
+    "N'y mets ni listing complet, ni contenu de fichier : seulement ce qui oriente le travail suivant."
+)
+
+
 def construire_messages_resume(a_resumer: str, resume_precedent: str) -> list[MessageChat]:
     """Prompt de résumé : consigne système + le matériau à condenser, résumé antérieur en tête."""
     corps = ""
@@ -63,8 +76,22 @@ def construire_messages_resume(a_resumer: str, resume_precedent: str) -> list[Me
     ]
 
 
+def _systeme(langue: str, consigne: str, projet: bool) -> str:
+    """Consigne du résumeur : la base, la langue, le complément projet, les instructions de /compact."""
+    systeme = PROMPT_RESUME_SYSTEME
+    if langue.strip():
+        systeme += f"\nLangue attendue du résumé : {langue.strip()}."
+    if projet:
+        systeme += COMPLEMENT_PROJET
+    if consigne.strip():
+        # Compaction manuelle (`/compact …`) : ce que l'utilisateur demande de garder prime.
+        systeme += f"\nINSTRUCTIONS DE L'UTILISATEUR POUR CE RÉSUMÉ, PRIORITAIRES : {consigne.strip()}"
+    return systeme
+
+
 async def produire_resume(
-    a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
+    a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = "",
+    projet: bool = False,
 ) -> str | None:
     """Demande au modèle chargé un résumé cumulatif, ou `None` si rien ne peut être produit.
 
@@ -75,14 +102,9 @@ async def produire_resume(
     if not a_resumer.strip() and not resume_precedent.strip():
         return None
     messages = construire_messages_resume(a_resumer, resume_precedent)
-    systeme = PROMPT_RESUME_SYSTEME
-    if langue.strip():
-        systeme += f"\nLangue attendue du résumé : {langue.strip()}."
-    if consigne.strip():
-        # Compaction manuelle (`/compact …`) : ce que l'utilisateur demande de garder prime.
-        systeme += f"\nINSTRUCTIONS DE L'UTILISATEUR POUR CE RÉSUMÉ, PRIORITAIRES : {consigne.strip()}"
+    systeme = _systeme(langue, consigne, projet)
     messages[0] = MessageChat(role="system", content=systeme)
-    options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens)
+    options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens, sans_reflexion=True)
     from backend.outils.noms_publics import publier_messages
 
     morceaux: list[str] = []
