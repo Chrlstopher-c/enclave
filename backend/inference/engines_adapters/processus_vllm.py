@@ -164,6 +164,10 @@ def construire_commande(plan: PlanChargement, interpreteur: Path) -> list[str]:
     # 150+ avec graphes sur un 2B). Les forcer partout étranglait les petits modèles.
     if plan.mode_eager:
         commande.append("--enforce-eager")
+    else:
+        # Graphes CUDA : le profilage compilé mesure son pic d'activations sur un lot de prefill
+        # complet. Borné au batch du plan, il laisse au cache KV ce que le défaut lui prenait.
+        commande += ["--max-num-batched-tokens", str(plan.batch)]
     # Cache KV compressé : vLLM ne connaît pas q8_0/q4_0 (formats llama.cpp) ; leur équivalent est
     # fp8, qui divise le cache par deux et tient sur Ampere. Sans ce drapeau, le plan qui avait
     # décidé « q8_0 » chargeait en fait un cache 16 bits, deux fois plus gros que prévu (2026-11-10).
