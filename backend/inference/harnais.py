@@ -310,6 +310,8 @@ class EtatBoucle:
     relances_radotage: int = 0
     # Le tour a buté sur la fenêtre : la boucle compacte de force et reprend (2026-11-10).
     fenetre_pleine: bool = False
+    # Une boucle a déjà été soignée par compaction dans cette génération : la suivante arrête vraiment.
+    secours_boucle: bool = False
 
 
 def harnais_demande(options: OptionsGeneration) -> str | None:

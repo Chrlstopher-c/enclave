@@ -256,6 +256,10 @@ def _appels_demandes(texte: str) -> list[dict[str, Any]]:
     return appels
 
 
+AVIS_ARRET_BOUCLE = ("\n\n*[Arrêt automatique : l'agent relisait les mêmes éléments sans avancer"
+                     ", même après avoir allégé son contexte. Relance-le avec une consigne précise.]*\n\n")
+
+
 def _signaler_pleine(etat: EtatBoucle | None) -> bool:
     """Dans une tâche d'agent, une fenêtre pleine n'arrête plus rien : la boucle compacte et reprend."""
     if etat is None or etat.outils_declares is None:
@@ -272,6 +276,28 @@ async def _compacter_fenetre_pleine(messages: list[MessageChat], etat: EtatBoucl
         messages.append(MessageChat(role="assistant", content=partiel[-4_000:]))
     messages.append(MessageChat(role="user", content=CONSIGNE_APRES_FENETRE))
     return await compacter_si_besoin(messages, etat.compaction, etape_terminee=True, forcer=True)
+
+
+CONSIGNE_APRES_BOUCLE = ("You kept re-reading the same thing without progress, so your older work has been summarized "
+                         "above. Do not read it again: decide the next concrete action (edit, write or run) from what "
+                         "you know, or tell the user exactly what blocks you.")
+
+
+async def _secourir_boucle(messages: list[MessageChat], etat: EtatBoucle, taches: str) -> str | None:
+    """Une boucle est un symptôme de contexte saturé : on compacte de force et la tâche reprend, une fois.
+
+    « TUI », 2026-11-10 : à 93K, le 9B relisait six fois les mêmes 24 lignes, malgré les avis, puis l'anti-boucle
+    arrêtait tout. Arrêter ne soigne rien ; un contexte allégé, si. Une seconde boucle, elle, arrête vraiment.
+    """
+    etat.secours_boucle = True
+    messages.append(MessageChat(role="user", content=CONSIGNE_APRES_BOUCLE))
+    note = await compacter_si_besoin(messages, etat.compaction, etape_terminee=True, taches=taches, forcer=True)
+    if note is None:
+        messages.pop()
+        return None
+    logger.warning("Boucle soignée par compaction forcée : la tâche reprend.")
+    etat.redites = 0
+    return note
 
 
 CONSIGNE_APRES_FENETRE = ("Your last turn was cut off: the context window was full. Older work has been "
@@ -855,6 +881,10 @@ class MoteurChat:
         note = await compacter_si_besoin(messages, etat.compaction, etape_terminee, _taches(contexte))
         if note is not None:
             yield {"texte": note}
+        if tourne_en_rond(etat.redites) and not etat.secours_boucle:
+            note = await _secourir_boucle(messages, etat, _taches(contexte))
+            if note is not None:
+                yield {"texte": note}
         if etat.compaction.occupation is not None and etat.compaction.fenetre:
             etat.activite.contexte = {"tokens": etat.compaction.occupation, "total": etat.compaction.fenetre}
             yield {"activite": etat.activite.instantane(force=True)}
@@ -876,6 +906,7 @@ class MoteurChat:
         logger.warning("Clôture sans outil, motif : {}.", motif)
         if motif == "boucle":
             messages = list(messages) + [MessageChat(role="tool", content=CONSIGNE_BOUCLE)]
+            yield {"texte": AVIS_ARRET_BOUCLE}
         elif aboutis == 0:
             logger.warning("Aucun outil abouti sur ce tour : clôture avec consigne explicite.")
             messages = list(messages) + [MessageChat(role="tool", content=_AUCUN_OUTIL_ABOUTI)]
