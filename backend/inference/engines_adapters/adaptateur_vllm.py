@@ -73,12 +73,19 @@ class AdaptateurVllm(AdaptateurMoteur):
         )
 
         debut = time.perf_counter()
-        self._journal_fichier = self._ouvrir_journal(chemin_journal)
-        self._processus = processus_vllm.demarrer(commande, plan.variables_env, self._journal_fichier)
-        processus_vllm.retenir_pid(self._processus.pid)
-
         try:
-            pret, raison = await processus_vllm.attendre_sante(self._processus)
+            pret, raison = await self._demarrer_et_attendre(commande, plan, chemin_journal)
+            if not pret and self._compilation_froide(plan, chemin_journal):
+                # Premier lancement d'une configuration avec graphes : la compilation à froid (Triton,
+                # torch.compile) gonfle le pic mesuré par le profilage, et le cache KV paraît négatif.
+                # Le second lancement trouve le cache de compilation chaud et passe (mesuré le
+                # 2026-11-10 : -0,29 Gio puis 1,40 Gio, mêmes réglages). Une seule nouvelle tentative.
+                journal_chargement.noter(
+                    session, "vllm", "Compilation à froid : nouvelle tentative avec le cache chaud",
+                    niveau=NiveauEntree.AVERTISSEMENT,
+                )
+                await self.decharger()
+                pret, raison = await self._demarrer_et_attendre(commande, plan, chemin_journal)
         except asyncio.CancelledError:
             # Une annulation pendant le démarrage laisserait un serveur vivant et sa VRAM prise :
             # le sous-processus doit mourir avant que l'annulation ne remonte.
@@ -91,6 +98,18 @@ class AdaptateurVllm(AdaptateurMoteur):
         if not pret:
             await self._echouer(plan, chemin_journal, raison, session)
         return self._enregistrer_etat(plan, time.perf_counter() - debut, vram_avant, session)
+
+    async def _demarrer_et_attendre(
+        self, commande: list[str], plan: PlanChargement, chemin_journal: Path,
+    ) -> tuple[bool, str]:
+        self._journal_fichier = self._ouvrir_journal(chemin_journal)
+        self._processus = processus_vllm.demarrer(commande, plan.variables_env, self._journal_fichier)
+        processus_vllm.retenir_pid(self._processus.pid)
+        return await processus_vllm.attendre_sante(self._processus)
+
+    def _compilation_froide(self, plan: PlanChargement, chemin_journal: Path) -> bool:
+        """Échec typique d'un premier lancement compilé : plus de place pour le cache KV au profilage."""
+        return not plan.mode_eager and "No available memory for the cache blocks" in self._lire_journal(chemin_journal)
 
     def _ouvrir_journal(self, chemin: Path) -> IO[bytes]:
         """Journal remis à zéro à chaque démarrage : un fichier qui couvre le run en cours est lisible."""
