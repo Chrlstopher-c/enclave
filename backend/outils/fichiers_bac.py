@@ -26,6 +26,8 @@ récente — c'est exactement ce que le modèle vient d'écrire.
 
 from __future__ import annotations
 
+import json
+
 import mimetypes
 from pathlib import Path
 from typing import Any
@@ -35,8 +37,10 @@ from loguru import logger
 from backend.agent import attribuer
 from backend.core import EchoHubError
 from backend.fichiers import deposer_fichier
+from backend.outils.fragment_approche import localiser_sans_accents
 from backend.outils.fichiers_tmp import ecrire_tmp, est_tmp, lire_tmp
 from backend.outils.bac_a_sable import CheminHorsBac, preparer_bac, resoudre_dans_bac, verifier_ecriture
+from backend.outils import mode_hybride
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 from backend.outils.verif_syntaxe import avis_syntaxe
 
@@ -205,6 +209,10 @@ _REQUIS_ECRIRE = {
 async def _ecrire(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     chemin_demande = str(arguments.get("chemin", "")).strip()
     contenu = arguments.get("contenu")
+    # Un objet au lieu d'un texte (le modèle « écrit » un package.json en JSON natif) devient du JSON, pas un
+    # repr Python à apostrophes : « Tetris test 35B + Haiku 2 », cinq appels perdus sur un JSON invalide.
+    if isinstance(contenu, (dict, list)):
+        contenu = json.dumps(contenu, ensure_ascii=False, indent=2) + "\n"
     # Les deux manques sont signalés par le MÊME message, qui liste les deux arguments. Auparavant
     # chacun avait le sien : le modèle corrigeait celui qu'on lui nommait et omettait l'autre, ce
     # qui produisait deux échecs successifs là où un seul appel complet suffisait.
@@ -213,6 +221,14 @@ async def _ecrire(arguments: dict[str, Any], contexte: ContexteExecution) -> str
     if est_tmp(chemin_demande):
         taille = await ecrire_tmp(chemin_demande, str(contenu), contexte)
         return f"Wrote « {chemin_demande} » ({taille} bytes).{avis_syntaxe(chemin_demande, str(contenu))}"
+    refus = mode_hybride.refuse(contexte, len(str(contenu)))
+    if refus:
+        raise EchecOutil(refus)
+    return poser_fichier(contexte, chemin_demande, str(contenu))
+
+
+def poser_fichier(contexte: ContexteExecution, chemin_demande: str, contenu: str) -> str:
+    """Écrit le fichier dans le bac ou le projet — aussi pour le harnais (code rendu par Haiku)."""
     try:
         cible = _preparer_cible(contexte, chemin_demande)
     except CheminHorsBac as exc:
@@ -377,6 +393,20 @@ def _verdict_occurrences(nombre: int, ancien: str) -> str | None:
     )
 
 
+def _remplacer(texte: str, ancien: str, nouveau: str) -> tuple[str, str]:
+    """Le texte avec le fragment remplacé, et une note quand il n'a été trouvé qu'aux accents près."""
+    nombre = texte.count(ancien)
+    if nombre == 0:
+        zone = localiser_sans_accents(texte, ancien)
+        if zone is not None:
+            debut, fin = zone
+            return texte[:debut] + nouveau + texte[fin:], " (fragment trouvé en ignorant les accents)"
+    refus = _verdict_occurrences(nombre, ancien)
+    if refus is not None:
+        raise EchecOutil(refus)
+    return texte.replace(ancien, nouveau, 1), ""
+
+
 async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     chemin_demande = str(arguments.get("chemin", "")).strip()
     ancien = arguments.get("ancien")
@@ -392,29 +422,26 @@ async def _modifier(arguments: dict[str, Any], contexte: ContexteExecution) -> s
         raise EchecOutil(f"Échec : {exc}") from exc
     if not cible.is_file():
         raise EchecOutil(f"Échec : « {chemin_demande} » n'existe pas. Le créer d'abord avec `ecrire_fichier`.")
+    refus = mode_hybride.refuse(contexte, len(str(nouveau)))
+    if refus:
+        raise EchecOutil(refus)
     try:
         texte = cible.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise EchecOutil(f"Échec : « {chemin_demande} » illisible en texte ({exc}).") from exc
-    refus = _verdict_occurrences(texte.count(str(ancien)), str(ancien))
-    if refus is not None:
-        raise EchecOutil(refus)
-    nouveau_texte = texte.replace(str(ancien), str(nouveau), 1)
+    nouveau_texte, note = _remplacer(texte, str(ancien), str(nouveau))
     cible.write_text(nouveau_texte, encoding="utf-8")
     attribuer(cible)
     mention = _enregistrer(contexte, chemin_demande, cible)
     avis = avis_syntaxe(chemin_demande, nouveau_texte)
-    return f"Modifié « {chemin_demande} » : un fragment remplacé, le reste du fichier est intact. {mention}{avis}"
+    return f"Modifié « {chemin_demande} » : un fragment remplacé{note}, le reste du fichier est intact. {mention}{avis}"
 
 
 async def _modifier_tmp(chemin: str, ancien: str, nouveau: str, contexte: ContexteExecution) -> str:
     texte = await lire_tmp(chemin, contexte)
-    refus = _verdict_occurrences(texte.count(ancien), ancien)
-    if refus is not None:
-        raise EchecOutil(refus)
-    nouveau_texte = texte.replace(ancien, nouveau, 1)
+    nouveau_texte, note = _remplacer(texte, ancien, nouveau)
     await ecrire_tmp(chemin, nouveau_texte, contexte)
-    return f"Edited « {chemin} »: one fragment replaced.{avis_syntaxe(chemin, nouveau_texte)}"
+    return f"Edited « {chemin} »: one fragment replaced{note}.{avis_syntaxe(chemin, nouveau_texte)}"
 
 
 OUTIL_ECRIRE = Outil(description=DESCRIPTION_ECRIRE, executer=_ecrire)

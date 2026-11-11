@@ -35,13 +35,23 @@ function corpsDe(parametres: Record<string, string>, cible: string | null): stri
   return valeurs.sort((a, b) => b.length - a.length)[0] ?? '';
 }
 
+/* Un argument non textuel (nombre, liste) s'affiche tel qu'il serait écrit, au lieu de faire tomber l'écran. */
+function enTexte(parametres: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(parametres).map(([cle, valeur]) => [
+      cle,
+      typeof valeur === 'string' ? valeur : (JSON.stringify(valeur) ?? ''),
+    ]),
+  );
+}
+
 export interface AppelEnDirectProps {
   readonly outil: OutilEnDirect;
 }
 
 export function AppelEnDirect({ outil }: AppelEnDirectProps): ReactElement {
   const descripteur = OUTILS_CONNUS[outil.nom];
-  const parametres = outil.parametres ?? {};
+  const parametres = enTexte(outil.parametres ?? {});
   const cible = cibleDe(outil.nom, parametres) ?? outil.chemin;
   const corps = corpsDe(parametres, cible);
   const defilement = useRef<HTMLPreElement | null>(null);

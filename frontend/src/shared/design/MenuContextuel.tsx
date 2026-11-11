@@ -53,9 +53,11 @@ interface PanneauProps {
   readonly onFermer: () => void;
   /** Sous le seuil : plein écran ancré en bas, à portée du pouce, plutôt qu'au point de contact. */
   readonly ancrageBas: boolean;
+  /** Élément porteur du menu : seul un défilement qui le déplace referme le menu. */
+  readonly ancre: React.RefObject<HTMLDivElement | null>;
 }
 
-function Panneau({ position, entrees, onFermer, ancrageBas }: PanneauProps): ReactElement {
+function Panneau({ position, entrees, onFermer, ancrageBas, ancre }: PanneauProps): ReactElement {
   const panneau = useRef<HTMLDivElement>(null);
   const [corrigee, setCorrigee] = useState<Position>(position);
   const reduit = useReducedMotion() === true;
@@ -81,15 +83,28 @@ function Panneau({ position, entrees, onFermer, ancrageBas }: PanneauProps): Rea
     };
     // `capture` : le menu se ferme avant que le clic n'atteigne l'élément visé, sinon un clic
     // ailleurs déclencherait l'action de cet autre élément en plus de fermer le menu.
+    // Un appui DANS le menu n'est pas un clic extérieur : le fermer ici démontait l'entrée avant le
+    // `click`, qui ne partait donc jamais (la sortie animée laissait le nœud quelques dizaines de ms).
+    const surPointeur = (evenement: PointerEvent): void => {
+      if (evenement.target instanceof Node && panneau.current?.contains(evenement.target) === true) return;
+      onFermer();
+    };
+    // Seul le défilement d'un conteneur de l'élément porteur déplace ce qu'on visait. Le fil qui
+    // défile tout seul pendant une génération ne doit pas refermer un menu ouvert sur la liste.
+    const surDefilement = (evenement: Event): void => {
+      const cible = evenement.target;
+      if (cible instanceof Node && ancre.current !== null && !cible.contains(ancre.current)) return;
+      onFermer();
+    };
     window.addEventListener('keydown', surTouche);
-    window.addEventListener('pointerdown', onFermer, true);
-    window.addEventListener('scroll', onFermer, true);
+    window.addEventListener('pointerdown', surPointeur, true);
+    window.addEventListener('scroll', surDefilement, true);
     return () => {
       window.removeEventListener('keydown', surTouche);
-      window.removeEventListener('pointerdown', onFermer, true);
-      window.removeEventListener('scroll', onFermer, true);
+      window.removeEventListener('pointerdown', surPointeur, true);
+      window.removeEventListener('scroll', surDefilement, true);
     };
-  }, [onFermer]);
+  }, [onFermer, ancre]);
 
   return (
     <motion.div
@@ -202,6 +217,7 @@ function useOuvertureMenu(): OuvertureMenu {
 export function MenuContextuel({ entrees, children, className }: MenuContextuelProps): ReactElement {
   const { position, setPosition, fermer, ouvrirDepuis } = useOuvertureMenu();
   const estGrandEcran = useEstGrandEcran();
+  const ancre = useRef<HTMLDivElement>(null);
 
   const surClavier = useCallback((evenement: React.KeyboardEvent<HTMLDivElement>): void => {
     if (evenement.key !== 'ContextMenu' && !(evenement.shiftKey && evenement.key === 'F10')) {
@@ -215,6 +231,7 @@ export function MenuContextuel({ entrees, children, className }: MenuContextuelP
 
   return (
     <div
+      ref={ancre}
       className={className}
       onContextMenu={(evenement) => {
         evenement.preventDefault();
@@ -225,7 +242,7 @@ export function MenuContextuel({ entrees, children, className }: MenuContextuelP
       {typeof children === 'function' ? children({ ouvert: position !== null, ouvrirDepuis }) : children}
       <AnimatePresence>
         {position !== null && (
-          <Panneau position={position} entrees={entrees} onFermer={fermer} ancrageBas={!estGrandEcran} />
+          <Panneau position={position} entrees={entrees} onFermer={fermer} ancrageBas={!estGrandEcran} ancre={ancre} />
         )}
       </AnimatePresence>
     </div>

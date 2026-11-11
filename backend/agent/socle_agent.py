@@ -6,7 +6,7 @@ AWARENESS.md) n'y entre jamais — le modèle le lit à la demande, par section,
 
 from __future__ import annotations
 
-from backend.agent.catalogue import Entree, memoire, skills
+from backend.agent.catalogue import Entree, memoire, methodes, skills
 from backend.agent.maison import AWARENESS, SYSTEME, lire_texte
 
 SYSTEME_MAX_CARACTERES = 6_000
@@ -16,13 +16,19 @@ _MODE_D_EMPLOI = """YOUR HOME (`~agent/`, shared by all your conversations — y
   It is LONG: NEVER read it whole. Call `plan_fichier` on it to see its sections, then `lire_fichier`
   with `ligne_debut`/`ligne_fin` on the one section you need, or `chercher_dans_fichiers` with
   `motif: "~agent/*"`. Consult it when you wonder whether a capability exists — before saying it does not.
-- Skills are reusable procedures. When a task matches one listed below, READ its SKILL.md first
-  (`lire_fichier`), then follow it.
+- METHODS are proven ways to do common work (search code, edit, write, debug, test, organise, run
+  servers). When your next step is of a kind listed, READ that method once (`lire_fichier`, whole file:
+  they are short) BEFORE doing it, then follow it. Do not reinvent a method that exists; do not reread one
+  already read in this conversation.
+- Skills are your own or the user's procedures. When a task matches one listed below, READ its SKILL.md
+  first, then follow it.
 - Memory: one fact per file in `~agent/memoire/<short-name>.md`, starting with a header
   `---` / `name: …` / `description: one line` / `---`. Save there what will matter in a FUTURE
   conversation: the user's preferences, decisions and why, non-obvious facts about a project, a pitfall
   and its fix. Never save what the code or git already records. Update a file rather than duplicating it.
   The index below shows each memory's description: read the file only when it is relevant.
+  Memory is background: use it to serve the CURRENT request. Never bring up a past project or subject
+  the user did not mention (a greeting gets a greeting, not a list of your earlier work).
 - You can create a skill (`~agent/skills/<name>/SKILL.md`, same header) when a procedure will recur.
 - You may only WRITE under `~agent/memoire/`, `~agent/skills/` and `~agent/notes/`."""
 
@@ -37,6 +43,7 @@ def bloc_socle() -> str:
     """Bloc complet à ajouter au socle d'outils."""
     systeme = lire_texte(SYSTEME, SYSTEME_MAX_CARACTERES).strip()
     parties = [_MODE_D_EMPLOI,
+               _liste("METHODS (read before the matching step):", methodes(), "none"),
                _liste("SKILLS available:", skills(), "none yet"),
                _liste("MEMORY index:", memoire(), "empty"),
                f"Capabilities: see `~agent/{AWARENESS}` (read by section)."]

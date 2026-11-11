@@ -41,6 +41,9 @@ _REGLES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"\b(npm|bun|yarn|pnpm|cargo|poetry)\s+publish\b", "publier un paquet — c'est à l'utilisateur de le faire"),
         (r"\btwine\s+upload\b", "publier un paquet — c'est à l'utilisateur de le faire"),
         (r"(^|[;&|(\s])(ssh|scp|sftp|rsync\s[^;&|]*:)\s", "se connecter à une machine distante"),
+        (r"\bplaywright\s+install\b|\bpuppeteer\b[^;&|]*\binstall\b",
+         "installer un navigateur : un navigateur est déjà branché — outil `playwright` via `mcp_appeler` "
+         "(méthode `serveur-et-interface`)"),
         (r"(^|[;&|(\s])(systemctl|crontab|docker|mount|umount|chroot)\b",
          "administrer le système hôte (indisponible et hors du périmètre)"),
     )

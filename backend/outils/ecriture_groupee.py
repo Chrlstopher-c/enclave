@@ -10,6 +10,7 @@ dépôt dans le magasin, mêmes alias d'arguments.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from loguru import logger
@@ -20,28 +21,29 @@ from backend.outils.fichiers_bac import DESCRIPTION_ECRIRE, OUTIL_ECRIRE
 # Au-delà, l'appel lui-même devient trop long à émettre d'un bloc : mieux vaut deux appels.
 FICHIERS_PAR_APPEL_MAX = 20
 
+# Format TEXTE BRUT des fichiers groupés. Constaté le 2026-11-11 (MoE 35B, appels XML) : une LISTE d'objets oblige le
+# modèle à écrire du code en JSON à l'intérieur du XML, donc à échapper chaque `"`. Un `"""` mal échappé fermait la
+# chaîne trop tôt : guillemets perdus, fichier tronqué, trois fichiers à réécrire. En texte brut, rien à échapper —
+# comme `ecrire_fichier`, qui n'a jamais eu ce défaut.
+ENTETE = re.compile(r"^=== FILE: (?P<chemin>[^\n]*?\S) ===[ \t]*$", re.MULTILINE)
+
 DESCRIPTION = DescriptionOutil(
     nom="ecrire_fichiers",
     description=(
-        "Writes SEVERAL files in one call — the way to create the files of a new project or module "
-        "that do not depend on each other's content. Each entry is a full file, content RAW. Same "
-        f"rules as `ecrire_fichier`; up to {FICHIERS_PAR_APPEL_MAX} files per call. To change part of "
-        "an existing file, use `modifier_fichier`."
+        "Writes SEVERAL files in one call — the way to create the files of a new project or module that do not "
+        "depend on each other's content. Put all the files in the single argument, as PLAIN TEXT, each one introduced by a "
+        "header line `=== FILE: <relative path> ===` followed by its full raw content (no quoting, no escaping):\n"
+        "=== FILE: app/__init__.py ===\n\"\"\"Package.\"\"\"\n=== FILE: app/config.py ===\nPORT = 8000\n"
+        f"Up to {FICHIERS_PAR_APPEL_MAX} files per call; a very large file gets its own `ecrire_fichier` call. To "
+        "change part of an existing file, use `modifier_fichier`."
     ),
     parametres={
         "type": "object",
         "properties": {
             "fichiers": {
-                "type": "array",
-                "description": "The files to write. Required, at least one.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "chemin": {"type": "string", "description": "Relative path, e.g. `src/app.py`."},
-                        "contenu": {"type": "string", "description": "The full text of the file."},
-                    },
-                    "required": ["chemin", "contenu"],
-                },
+                "type": "string",
+                "description": "All the files, each starting with its header line `=== FILE: <path> ===`, then "
+                               "its raw content.",
             },
         },
         "required": ["fichiers"],
@@ -50,18 +52,33 @@ DESCRIPTION = DescriptionOutil(
 )
 
 
+def sections(texte: str) -> list[dict[str, str]]:
+    """Fichiers du format texte, dans l'ordre : `{chemin, contenu}`, le contenu tel qu'écrit (sans la ligne d'en-tête)."""
+    entetes = list(ENTETE.finditer(texte))
+    fichiers = []
+    for rang, entete in enumerate(entetes):
+        fin = entetes[rang + 1].start() if rang + 1 < len(entetes) else len(texte)
+        contenu = texte[entete.end():fin].removeprefix("\n")
+        fichiers.append({"chemin": entete.group("chemin").strip(), "contenu": contenu})
+    return fichiers
+
+
 def _entrees(arguments: dict[str, Any]) -> list[dict[str, Any]]:
-    """Liste des fichiers demandés. Une liste sérialisée en chaîne JSON est acceptée et décodée."""
+    """Fichiers demandés : format texte (`=== FILE: … ===`), ou liste JSON d'objets {chemin, contenu}."""
     brut = DESCRIPTION.normaliser(arguments).get("fichiers")
-    if isinstance(brut, str):
+    if isinstance(brut, str) and ENTETE.search(brut):
+        brut = sections(brut)
+    elif isinstance(brut, str):
         try:
             brut = json.loads(brut)
         except json.JSONDecodeError as exc:
-            raise EchecOutil(f"Échec : `fichiers` n'est pas une liste JSON lisible ({exc}).") from exc
+            raise EchecOutil(
+                "Échec : `fichiers` ne contient aucune ligne d'en-tête `=== FILE: <chemin> ===`. Écrire chaque "
+                f"fichier précédé de sa ligne d'en-tête, contenu brut ensuite ({exc}).") from exc
     if not isinstance(brut, list) or not brut:
         raise EchecOutil(
-            "Échec : `ecrire_fichiers` attend `fichiers`, une liste NON vide d'objets "
-            "{\"chemin\": \"...\", \"contenu\": \"...\"}, tous dans le même appel."
+            "Échec : `ecrire_fichiers` attend `fichiers` : chaque fichier précédé d'une ligne "
+            "`=== FILE: <chemin> ===`, puis son contenu brut."
         )
     if len(brut) > FICHIERS_PAR_APPEL_MAX:
         raise EchecOutil(f"Échec : {len(brut)} fichiers demandés, {FICHIERS_PAR_APPEL_MAX} au plus par appel. "
@@ -87,4 +104,4 @@ async def _executer(arguments: dict[str, Any], contexte: ContexteExecution) -> s
 
 OUTIL = Outil(description=DESCRIPTION, executer=_executer)
 
-__all__ = ["FICHIERS_PAR_APPEL_MAX", "OUTIL"]
+__all__ = ["ENTETE", "FICHIERS_PAR_APPEL_MAX", "OUTIL", "sections"]

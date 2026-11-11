@@ -1,0 +1,11 @@
+[Unit]
+Description=EchoHub — résumés de compaction par Claude Haiku (compte Claude Code de l'hôte)
+After=docker.service
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/share/echohub-resumeur/serveur.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

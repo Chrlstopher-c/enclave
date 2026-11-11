@@ -21,9 +21,11 @@ avec les tours qui se sont ajoutés depuis.
 
 from __future__ import annotations
 
+import inspect
+
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from loguru import logger
 
@@ -162,6 +164,15 @@ async def choisir_nb_gardes(
     return meilleur
 
 
+
+def _accepte_suivi(resumer: Callable[..., Any]) -> bool:
+    """Le moteur sait-il rendre compte de sa progression ? Les moteurs de test et anciens adaptateurs, non."""
+    try:
+        return "suivi" in inspect.signature(resumer).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 async def preparer_compaction(
     moteur: MoteurGeneration,
     entete: str,
@@ -173,6 +184,7 @@ async def preparer_compaction(
     langue: str = "",
     forcer: bool = False,
     consigne: str = "",
+    suivi: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> ResultatCompaction:
     """Applique une compaction existante, mesure, et en déclenche une nouvelle si le seuil est franchi.
 
@@ -202,6 +214,9 @@ async def preparer_compaction(
     if not replies and active is None:
         logger.info("Compaction non applicable : rien à replier sous la queue minimale.")
         return ResultatCompaction(messages=courant, info=None)
+    if suivi is not None:
+        await suivi({"etape": "preparation", "detail": f"{len(replies)} messages à résumer, {tokens_avant} jetons"})
+        await suivi({"etape": "resume", "resumeur": None})
 
     resume = await moteur.resumer(
         _texte_des(replies),
@@ -209,10 +224,13 @@ async def preparer_compaction(
         langue,
         max(RESUME_MAX_TOKENS_PLANCHER, min(RESUME_MAX_TOKENS, int(FRACTION_MAX_RESUME * contexte_total))),
         **({"consigne": consigne} if consigne.strip() else {}),
+        **({"suivi": suivi} if suivi is not None and _accepte_suivi(moteur.resumer) else {}),
     )
     if resume is None:
         logger.warning("Résumé de compaction indisponible : génération sur contexte courant.")
         return ResultatCompaction(messages=courant, info=None)
+    if suivi is not None:
+        await suivi({"etape": "enregistrement"})
 
     coupe_id = replies[-1].id if replies else _coupe_active(active)
     if coupe_id is None:

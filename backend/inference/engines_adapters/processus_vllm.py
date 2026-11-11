@@ -15,6 +15,7 @@ processus système, là on parle à une API. Trois décisions structurantes :
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -27,6 +28,7 @@ import psutil
 from loguru import logger
 
 from backend.core import get_settings
+from backend.inference.engines_adapters import sobriete_reflexion
 from backend.inference.engines_adapters.contrat import CauseEchec, PlanChargement
 from backend.inference.engines_adapters.diagnostic import Diagnostic, EchecChargement
 
@@ -47,6 +49,10 @@ MAX_SEQUENCES_VLLM = 4
 # `<parameter=…>` ; `qwen3_xml` est le parseur que recommandent les cartes Qwen3.5 / Ornith pour vLLM
 # (2026-11-10). Surchargeable par `ECHOHUB_VLLM_TOOL_PARSER` pour un modèle d'une autre famille
 # (hermes, llama3_json, mistral…) sans toucher au code.
+CONFIG_REFLEXION_VLLM = json.dumps({
+    "reasoning_parser": "qwen3",
+    "reasoning_end_str": sobriete_reflexion.MESSAGE_FIN_REFLEXION + "</think>\n\n",
+})
 PARSEUR_OUTILS_VLLM = os.environ.get("ECHOHUB_VLLM_TOOL_PARSER", "").strip() or "qwen3_xml"
 
 # Bornes du démarrage : vLLM compile ses graphes CUDA au premier chargement, plusieurs minutes sont
@@ -128,6 +134,12 @@ def resoudre_interpreteur() -> Path:
     )
 
 
+# Vision sous vLLM : images par requête et surface bornées (cf. `construire_commande`).
+IMAGES_PAR_REQUETE = 4
+PIXELS_MAX_IMAGE = 1024 * 1024
+PIXELS_MIN_IMAGE = 64 * 1024
+
+
 def construire_commande(plan: PlanChargement, interpreteur: Path) -> list[str]:
     """Traduit le plan en ligne de commande vLLM.
 
@@ -157,6 +169,9 @@ def construire_commande(plan: PlanChargement, interpreteur: Path) -> list[str]:
         # vLLM refuse (400) sans ces deux options. llama-server, lui, les accepte nativement.
         "--enable-auto-tool-choice",
         "--tool-call-parser", PARSEUR_OUTILS_VLLM,
+        # Budget de réflexion par requête (`thinking_token_budget`, voir `sobriete_reflexion`) : sans cette
+        # config vLLM le refuse (400). Seul le budget est activé, la sortie n'est pas découpée en `reasoning`.
+        "--reasoning-config", CONFIG_REFLEXION_VLLM,
     ]
     # `--enforce-eager` seulement quand le plan l'a décidé, c'est-à-dire quand la marge VRAM ne
     # couvre pas la capture de graphes CUDA (cf. planificateur). Sur un modèle qui tient large, on
@@ -173,16 +188,17 @@ def construire_commande(plan: PlanChargement, interpreteur: Path) -> list[str]:
     # décidé « q8_0 » chargeait en fait un cache 16 bits, deux fois plus gros que prévu (2026-11-10).
     if plan.type_kv_cache in ("q8_0", "q4_0", "fp8"):
         commande += ["--kv-cache-dtype", "fp8"]
-    if _est_multimodal(Path(plan.chemin_modele)):
-        # Chargement TEXTE SEUL d'un modèle multimodal : zéro entrée image/vidéo. vLLM saute alors le
-        # profilage de la tour de vision — une passe sur image factice qui, sur ce 9B, dépassait la
-        # VRAM (OOM dans `qkv` de la tour, non quantifiée en bf16). Les poids de vision restent
-        # chargés, mais le pic d'activation qui faisait échouer le démarrage disparaît.
-        commande += ["--limit-mm-per-prompt", '{"image": 0, "video": 0}']
+    if est_multimodal(Path(plan.chemin_modele)):
+        # Images acceptées, mais BORNÉES : le profilage de vLLM passe une image factice de la taille maximale
+        # du processeur. Celle d'origine (16,7 Mpx) faisait exploser la VRAM sur ce 9B (OOM dans `qkv` de la
+        # tour de vision bf16). À ~1 Mpx (≈ 1 000 tokens par image), le pic reste petit. Pas de vidéo.
+        commande += ["--limit-mm-per-prompt", json.dumps({"image": IMAGES_PAR_REQUETE, "video": 0}),
+                     "--mm-processor-kwargs", json.dumps({"size": {"longest_edge": PIXELS_MAX_IMAGE,
+                                                                   "shortest_edge": PIXELS_MIN_IMAGE}})]
     return commande
 
 
-def _est_multimodal(chemin: Path) -> bool:
+def est_multimodal(chemin: Path) -> bool:
     """Vrai si le modèle déclare une tour de vision (`vision_config` dans son `config.json`).
 
     Lu à la volée sur le dossier qu'on s'apprête à charger : le plan ne transporte pas cette

@@ -7,7 +7,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ActiviteRecue } from '../conversation/useGeneration';
 import type { MessageChat } from '../api/contrats';
+import { useRetourPremierPlan, PERIODE_RESYNC_MS } from '../../shared/hooks/useRetourPremierPlan';
 import { appliquerBifurcation, messageOptimiste, type Bifurcation } from './apercu';
 import type { ActionsMessages } from './fournisseur';
 import { useFluxBranche } from './useFluxBranche';
@@ -19,6 +21,7 @@ export interface EtatActionsFil {
   messages: MessageChat[] | null;
   /** Réponse en cours de réception pour un rejeu ou une édition ; `null` hors de ces cas. */
   brouillon: string | null;
+  activite: ActiviteRecue | null;
   genere: boolean;
   erreur: string | null;
   actions: ActionsMessages;
@@ -123,6 +126,15 @@ export function useActionsFil(
   useRelectureEnFinDeTour(genereAilleurs, terminer);
 
   const occupe = genereAilleurs || flux.genere;
+  // Le fil se relit au retour sur la page et à intervalle, sauf pendant un tour (chemin optimiste).
+  useRetourPremierPlan(
+    useCallback((): void => {
+      if (!occupe) {
+        void recharger();
+      }
+    }, [occupe, recharger]),
+    PERIODE_RESYNC_MS,
+  );
   const gestes = useGestesBranche({
     conversationId,
     occupe,
@@ -137,6 +149,7 @@ export function useActionsFil(
   return {
     messages,
     brouillon: flux.brouillon,
+    activite: flux.activite,
     genere: flux.genere,
     erreur: flux.erreur ?? gestes.erreur ?? erreurVue,
     actions,

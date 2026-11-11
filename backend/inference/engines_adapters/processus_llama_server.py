@@ -102,6 +102,14 @@ def resoudre_binaire() -> Path | None:
 ARGUMENTS_REFLEXION = ("--reasoning-format", "none")
 
 
+# Points de reprise du cache, un par tour d'agent. Mesuré le 2026-11-11 (MoE 35B hybride, journal llama-server) : chaque
+# tour relisait 10 000 à 14 000 jetons (60-75 s d'écran figé après chaque outil) alors que 87 à 93 % du prompt était
+# inchangé. Un modèle à état récurrent ne peut reculer qu'à un point de reprise, et le défaut les espace de 8 192
+# jetons. À 256, chaque requête en pose un en fin de prompt : seul le dernier tour est relu. Coût : l'état récurrent
+# (≈ 61 Mio sur le 35B) par point, 32 au plus, en mémoire hôte. Sans effet sur un modèle à attention pure.
+ARGUMENTS_POINTS_DE_REPRISE = ("--checkpoint-min-step", "256", "--ctx-checkpoints", "32")
+
+
 def _motif_experts(blocs: list[int]) -> str:
     """Expression régulière ciblant les tenseurs d'experts des blocs déportés.
 
@@ -137,6 +145,7 @@ def construire_commande(plan: PlanChargement, binaire: Path) -> list[str]:
         # n'utilise — le backend est l'unique client de ce serveur, et il sérialise ses requêtes.
         "--parallel", "1",
         *ARGUMENTS_REFLEXION,
+        *ARGUMENTS_POINTS_DE_REPRISE,
     ]
     if plan.experts_deportes:
         commande += ["--override-tensor", _motif_experts(plan.experts_deportes)]

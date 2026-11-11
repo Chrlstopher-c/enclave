@@ -1,6 +1,6 @@
 """Domaine `agent` : la maison partagée de l'agent (instructions, mémoire, skills, awareness, MCP)."""
 
-from backend.agent.catalogue import Entree, memoire, skills
+from backend.agent.catalogue import Entree, memoire, methodes, skills
 from backend.agent.maison import (
     AWARENESS,
     AWARENESS_NOTES,
@@ -15,4 +15,4 @@ from backend.agent.maison import (
 from backend.agent.socle_agent import bloc_socle
 
 __all__ = ["AWARENESS", "AWARENESS_NOTES", "MCP", "PREFIXE", "SYSTEME", "Entree", "attribuer", "bloc_socle",
-           "ecriture_permise", "lire_texte", "memoire", "racine", "skills"]
+           "ecriture_permise", "lire_texte", "memoire", "methodes", "racine", "skills"]

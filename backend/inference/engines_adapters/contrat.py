@@ -226,6 +226,10 @@ class OptionsGeneration(BaseModel):
     graine: int | None = None
     # Raisonnement coupé (gabarits Qwen : `enable_thinking`) — pour les résumés, où il mangeait le budget.
     sans_reflexion: bool = False
+    # Sobriété de la réflexion (`sobriete_reflexion`) : plafond de tokens de réflexion pour CETTE requête,
+    # et bannissement des tokens d'hésitation (NoWait). Posés par la boucle d'outils, tour par tour.
+    budget_reflexion: int | None = Field(default=None, ge=0)
+    bannir_hesitations: bool = False
 
 
 class MorceauGeneration(BaseModel):

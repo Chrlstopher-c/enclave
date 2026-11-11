@@ -16,8 +16,10 @@ import type {
   ReglagesConversation,
   TacheAgent,
 } from '../api/contrats';
-import { compacterConversation, ecrireReglages, lireConversation, listerMessages } from '../api/conversations-api';
+import { ecrireReglages, lireConversation, listerMessages } from '../api/conversations-api';
 import { journal } from '../api/journal';
+import { useRetourPremierPlan, PERIODE_RESYNC_MS } from '../../shared/hooks/useRetourPremierPlan';
+import { fusionnerParId } from './fusion-par-id';
 import { useGeneration, type ActiviteRecue } from './useGeneration';
 
 export interface EtatConversation {
@@ -47,6 +49,8 @@ interface Socle {
   erreur: string | null;
   setDetail: (detail: ConversationDetaillee) => void;
   setMessages: (messages: MessageChat[]) => void;
+  /** Relecture de l'historique : fusion par identifiant, sans recréer les messages inchangés. */
+  fusionnerMessages: (recus: MessageChat[]) => void;
   setErreur: (erreur: string | null) => void;
 }
 
@@ -109,7 +113,11 @@ function useSocle(conversationId: string | null): Socle {
     return (): void => controle.abort();
   }, [conversationId]);
 
-  return { detail, messages, erreur, setDetail, setMessages, setErreur };
+  const fusionnerMessages = useCallback((recus: MessageChat[]): void => {
+    setMessages((courants) => fusionnerParId(courants, recus));
+  }, []);
+
+  return { detail, messages, erreur, setDetail, setMessages, setErreur, fusionnerMessages };
 }
 
 /**
@@ -120,7 +128,7 @@ function useSocle(conversationId: string | null): Socle {
  */
 function useRelectureMessages(
   conversationId: string | null,
-  setMessages: (messages: MessageChat[]) => void,
+  fusionner: (recus: MessageChat[]) => void,
   setErreur: (erreur: string | null) => void,
 ): (id: string) => Promise<void> {
   const idAffiche = useRef<string | null>(conversationId);
@@ -135,13 +143,36 @@ function useRelectureMessages(
         if (id !== idAffiche.current) {
           return;
         }
-        setMessages(messages);
+        fusionner(messages);
       } catch (cause) {
         journal.erreur('historique illisible', cause);
         setErreur(messageErreur(cause));
       }
     },
-    [setMessages, setErreur],
+    [fusionner, setErreur],
+  );
+}
+
+/*
+ * Relecture périodique et au retour, HORS génération seulement : pendant un tour, l'historique relu
+ * ne contient pas encore le message optimiste et le ferait disparaître.
+ */
+function useResyncMessages(
+  conversationId: string | null,
+  genere: boolean,
+  relire: (id: string) => Promise<void>,
+): void {
+  const genereRef = useRef<boolean>(genere);
+  useEffect((): void => {
+    genereRef.current = genere;
+  }, [genere]);
+  useRetourPremierPlan(
+    useCallback((): void => {
+      if (conversationId !== null && !genereRef.current) {
+        void relire(conversationId);
+      }
+    }, [conversationId, relire]),
+    PERIODE_RESYNC_MS,
   );
 }
 
@@ -161,23 +192,16 @@ function useDernieresTaches(conversationId: string | null, recues: TacheAgent[] 
 
 export function useConversation(conversationId: string | null): EtatConversation {
   const socle = useSocle(conversationId);
-  const { setMessages, setErreur } = socle;
-  const rafraichirMessages = useRelectureMessages(conversationId, setMessages, setErreur);
+  const { fusionnerMessages, setErreur } = socle;
+  const rafraichirMessages = useRelectureMessages(conversationId, fusionnerMessages, setErreur);
 
   const generation = useGeneration(conversationId, rafraichirMessages);
+  useResyncMessages(conversationId, generation.genere, rafraichirMessages);
   const taches = useDernieresTaches(conversationId, generation.activite?.activite.taches ?? null);
   const enregistrerReglages = useEnregistrementReglages(conversationId, socle);
-  const { detail, setDetail } = socle;
-  const appliquerReglages = useCallback(
-    (reglages: ReglagesConversation): void => {
-      if (detail !== null) {
-        setDetail({ ...detail, reglages });
-      }
-    },
-    [detail, setDetail],
-  );
+  const appliquerReglages = useAppliquerReglages(socle);
 
-  const envoyer = useEnvoi(conversationId, socle, generation.envoyer, rafraichirMessages);
+  const envoyer = useEnvoi(conversationId, socle, generation.envoyer);
 
   return {
     detail: socle.detail,
@@ -196,8 +220,21 @@ export function useConversation(conversationId: string | null): EtatConversation
   };
 }
 
+function useAppliquerReglages(socle: Socle): (reglages: ReglagesConversation) => void {
+  const { detail, setDetail } = socle;
+  return useCallback(
+    (reglages: ReglagesConversation): void => {
+      if (detail !== null) {
+        setDetail({ ...detail, reglages });
+      }
+    },
+    [detail, setDetail],
+  );
+}
+
 /*
- * Envoi d'un message — ou, pour `/compact [instructions]`, compaction manuelle sans génération.
+ * Envoi d'un message. Les commandes (`/compact`, `/clear`) n'arrivent jamais ici : la saisie les
+ * exécute elle-même (`chat/commandes`), et « //texte » y est déjà ramené à « /texte ».
  * Dépendance sur `lancerGeneration`, stable, et non sur l'objet d'état reconstruit à chaque fragment
  * reçu : sinon l'identité de `envoyer` change des dizaines de fois par seconde pendant une génération.
  */
@@ -205,46 +242,18 @@ function useEnvoi(
   conversationId: string | null,
   socle: Socle,
   lancerGeneration: (contenu: string, fichierIds?: string[]) => Promise<void>,
-  relire: (id: string) => Promise<void>,
 ): (contenu: string, fichierIds?: string[]) => Promise<void> {
-  const { messages, setMessages, setErreur } = socle;
+  const { messages, setMessages } = socle;
   return useCallback(
     async (contenu: string, fichierIds?: string[]): Promise<void> => {
       if (conversationId === null) {
         return;
       }
-      const instructions = instructionsDeCompaction(contenu);
-      if (instructions !== null) {
-        await compacterMaintenant(conversationId, instructions, relire, setErreur);
-        return;
-      }
       setMessages([...messages, messageLocal(conversationId, contenu)]);
       await lancerGeneration(contenu, fichierIds);
     },
-    [conversationId, messages, setMessages, setErreur, lancerGeneration, relire],
+    [conversationId, messages, setMessages, lancerGeneration],
   );
-}
-
-/** `/compact` ou `/compact <instructions>` : les instructions (éventuellement vides), sinon `null`. */
-export function instructionsDeCompaction(contenu: string): string | null {
-  const trouve = /^\/compact(?:\s+([\s\S]*))?$/.exec(contenu.trim());
-  return trouve === null ? null : (trouve[1] ?? '').trim();
-}
-
-async function compacterMaintenant(
-  conversationId: string,
-  instructions: string,
-  relire: (id: string) => Promise<void>,
-  setErreur: (erreur: string | null) => void,
-): Promise<void> {
-  try {
-    await compacterConversation(conversationId, instructions);
-    setErreur(null);
-    await relire(conversationId);
-  } catch (cause) {
-    journal.erreur('compaction manuelle refusée', cause);
-    setErreur(messageErreur(cause));
-  }
 }
 
 function useEnregistrementReglages(

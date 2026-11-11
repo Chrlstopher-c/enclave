@@ -49,7 +49,11 @@ def prompt_socle(modele: str = "", actifs: Sequence[str] | None = None, projet: 
         return construire(declarees, modele, projet)
     regenerer_awareness(declarees, projet)
     socle = construire(declarees, modele, projet, maison=_bloc_maison())
-    return f"{socle}\n\n{_bloc_env(projet)}".rstrip() if projet else socle
+    if projet:
+        return f"{socle}\n\n{_bloc_env(projet)}".rstrip()
+    from backend.outils.environnement import bloc_materiel
+
+    return f"{socle}\n\n{bloc_materiel()}".rstrip()
 
 
 def _bloc_env(projet: str) -> str:

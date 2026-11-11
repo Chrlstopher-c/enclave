@@ -88,3 +88,14 @@ def test_motif_absolu_du_projet_ramene_au_relatif(tmp_path: Path) -> None:
     assert _relatif_au_projet(contexte, f"{racine}/**/*") == "**/*"
     assert _relatif_au_projet(contexte, racine) == "*"
     assert _relatif_au_projet(contexte, "src/*.py") == "src/*.py"
+
+
+def test_le_materiel_est_une_information_d_environnement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.outils.environnement import bloc_materiel
+
+    monkeypatch.delenv("ECHOHUB_ATELIER_MATERIEL", raising=False)
+    assert bloc_materiel() == "" and "Hardware" not in bloc_environnement(tmp_path, "p")
+    monkeypatch.setenv("ECHOHUB_ATELIER_MATERIEL", "Wi-Fi adapter wlan0")
+    assert bloc_materiel() == "<env>\nHardware available in your shell: Wi-Fi adapter wlan0\n</env>"
+    assert "Scratch space: /tmp\nHardware available in your shell: Wi-Fi adapter wlan0\nFiles:" in \
+        bloc_environnement(tmp_path, "p")

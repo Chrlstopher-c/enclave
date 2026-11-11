@@ -10,6 +10,7 @@
  * typés `| null` et non `?`. Les corps de requête, eux, utilisent `?` — un champ omis y a un sens.
  */
 
+import type { CompactionEnDirect, EvenementCommande } from '../commandes/contrats';
 /* ------------------------------------------------------------------ planificateur : entrées */
 
 export type Moteur = 'llama.cpp' | 'vllm' | 'strata';
@@ -353,11 +354,8 @@ export interface EtatBranche {
   variantes: Record<string, string[]>;
 }
 
-/*
- * `GET /arbre` (arbre complet, branches abandonnées comprises) n'est volontairement pas transcrit :
- * aucun écran ne le consomme encore. Le type suivra la vue qui en aura besoin — un contrat sans
- * appelant se périme sans que personne ne s'en aperçoive.
- */
+/* `GET /arbre` n'est volontairement pas transcrit : aucun écran ne le consomme encore. Le type suivra
+   la vue qui en aura besoin — un contrat sans appelant se périme sans que personne ne s'en aperçoive. */
 
 /** Corps de `POST /branche` : bascule la vue sur la branche qui contient ce message. */
 export interface ActivationBranche {
@@ -467,19 +465,25 @@ export interface OutilEnDirect {
   chemin: string | null;
   caracteres: number;
   fichiers_sauves: string[];
-  /** Arguments déjà écrits, lisibles (fin des valeurs longues seulement) : ce qui s'affiche en direct. */
-  parametres?: Record<string, string>;
+  /** Arguments déjà écrits, lisibles (fin des valeurs longues seulement) : ce qui s'affiche en direct.
+   *  Pas toujours du texte : un argument peut arriver en nombre, liste ou objet. */
+  parametres?: Record<string, unknown>;
 }
 
 /** Instantané de l'activité du moteur, diffusé au plus deux fois par seconde, jamais persisté. */
 export interface ActiviteMoteur {
-  phase: 'reflexion' | 'texte' | 'outil' | 'execution';
+  phase: 'reflexion' | 'texte' | 'outil' | 'execution' | 'lecture' | 'compaction';
   tokens: number;
   tokens_par_seconde: number;
   outil?: OutilEnDirect | null;
   taches?: TacheAgent[] | null;
   /** Occupation réelle de la fenêtre pendant la tâche (mesurée ou estimée par la boucle). */
   contexte?: { tokens: number; total: number } | null;
+  /** Relecture du contexte avant le premier jeton : jetons relus sur jetons à relire (hors cache). */
+  lecture?: { faits: number; total: number } | null;
+  compaction?: CompactionEnDirect | null; // phase `compaction`, rafraîchie chaque seconde
+  /** Début du tour (ISO 8601) : « au travail depuis ». Absent d'un backend antérieur. */
+  debut?: string | null;
 }
 
 export interface EvenementActivite {
@@ -493,4 +497,5 @@ export type EvenementFlux =
   | EvenementFragment
   | EvenementCompaction
   | EvenementFin
-  | EvenementErreur;
+  | EvenementErreur
+  | EvenementCommande;

@@ -18,6 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xz-utils ripgrep tree jq sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
+# Antenne Wi-Fi de l'hôte (Alfa AR9271), confiée à l'atelier par `docker/wifi/echohub-wifi-atelier` sous le
+# nom wlan0 : de quoi s'en servir d'emblée (mode moniteur, injection, capture), le reste s'installe à la demande.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        iw wireless-tools rfkill iproute2 iputils-ping wpasupplicant aircrack-ng tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
 # Node 22 LTS et Bun : le nodejs d'Ubuntu 24.04 est en 18, refusé par Vite 6+ et la plupart des
 # outils de build actuels — un agent qui génère une app web tombait sur une erreur de version avant
 # même d'écrire une ligne. Bun est le runtime JS par défaut des projets de l'utilisateur.
@@ -44,6 +50,16 @@ RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 RUN python3 -m venv /opt/mcp-venv \
     && /opt/mcp-venv/bin/pip install --no-cache-dir "mcp==1.27.1" uvicorn loguru pydantic-settings pexpect pyte
 COPY serveur.py processus.py apercu.py mcp_http.py ./
+
+# `doc` : documentation d'un module installé (signatures, docstrings, liens officiels), lue sur place.
+# `verifier` : contrôle en une commande ce que l'agent vient d'écrire (syntaxe, ruff, normes de taille,
+# branchement au projet, fonctions mortes, tests liés). Code monté depuis le dépôt (atelier/verifier, atelier/doc) :
+# une retouche y prend effet sans reconstruire l'image.
+RUN pip install --no-cache-dir --break-system-packages ruff pytest \
+    && printf '#!/bin/sh\nexec python3 /opt/echohub/verifier "$@"\n' > /usr/local/bin/verifier \
+    && chmod +x /usr/local/bin/verifier \
+    && printf '#!/bin/sh\nexec python3 /opt/echohub/doc "$@"\n' > /usr/local/bin/doc \
+    && chmod +x /usr/local/bin/doc
 
 # Sonde locale, jamais publiée sur l'hôte : le healthcheck Docker interroge la route ouverte /sante.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \

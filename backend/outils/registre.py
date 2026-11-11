@@ -19,6 +19,8 @@ from loguru import logger
 
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil, ResultatOutil
 from backend.outils.creer_artefact import OUTIL as OUTIL_ARTEFACT
+from backend.outils.confier_a_haiku import OUTIL as OUTIL_HAIKU
+from backend.outils.deleguer_code import OUTIL as OUTIL_DELEGUER
 from backend.outils.ecriture_groupee import OUTIL as OUTIL_ECRIRE_GROUPE
 from backend.outils.executer_commande import OUTIL as OUTIL_COMMANDE
 from backend.outils.executer_python import OUTIL as OUTIL_PYTHON
@@ -75,6 +77,9 @@ _OUTILS: dict[str, Outil] = {
     OUTIL_PYTHON.nom: OUTIL_PYTHON,
     OUTIL_COMMANDE.nom: OUTIL_COMMANDE,
     OUTIL_SERVEUR_FOND.nom: OUTIL_SERVEUR_FOND,
+    # Après l'exécution : déléguer une fonction pure n'a de sens qu'une fois qu'on sait la tester (2026-11-11).
+    OUTIL_HAIKU.nom: OUTIL_HAIKU,
+    OUTIL_DELEGUER.nom: OUTIL_DELEGUER,
     OUTIL_PRESENTER.nom: OUTIL_PRESENTER,
     # Serveurs MCP : deux outils fixes, quel que soit le nombre de serveurs (outils « différés »).
     OUTIL_MCP_OUTILS.nom: OUTIL_MCP_OUTILS,
@@ -102,6 +107,8 @@ _GROUPES: dict[str, str] = {
     "executer_python": "execution",
     "executer_commande": "execution",
     "serveur_fond": "execution",
+    "deleguer_code": "execution",
+    "confier_a_haiku": "execution",
     "presenter_fichier": "presentation",
     "mcp_outils": "mcp",
     "mcp_appeler": "mcp",

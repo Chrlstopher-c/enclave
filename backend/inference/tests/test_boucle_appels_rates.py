@@ -158,7 +158,8 @@ def test_le_meme_appel_n_est_execute_qu_une_fois(monkeypatch: Any) -> None:
     _, executions, diffuse = _jouer(monkeypatch)
 
     assert len(executions) == 1, "les redites ne sont pas rejouées"
-    assert _REDITE in diffuse, "la redite est dite au modèle, pas avalée en silence"
+    assert _REDITE.split("{cause}")[0] in diffuse, "la redite est dite au modèle, pas avalée en silence"
+    assert diffuse.count("NOT RUN") >= 1 and "Its failure was:\n" in diffuse, "la cause de l'échec est redite"
 
 
 def test_la_cloture_sait_qu_aucun_outil_n_a_abouti(monkeypatch: Any) -> None:

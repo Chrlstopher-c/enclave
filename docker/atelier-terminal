@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Ouvre un shell dans l'atelier de l'agent, dans le dossier d'un projet : même machine, mêmes fichiers, même
+# antenne Wi-Fi (wlan0), mêmes paquets installés. `atelier` seul liste les projets ; `atelier <projet> [cmd…]`
+# lance une commande au lieu du shell (ex. : `atelier wifi-test python main.py`).
+set -euo pipefail
+C=echohub-atelier
+if [ $# -eq 0 ]; then
+    echo "Projets :"; docker exec "$C" ls /projets; exit 0
+fi
+projet="$1"; shift
+docker exec "$C" test -d "/projets/$projet" || { echo "Projet inconnu : $projet" >&2; exit 1; }
+[ $# -gt 0 ] || set -- bash
+exec docker exec -it -e TERM="${TERM:-xterm-256color}" -e COLUMNS="$(tput cols)" -e LINES="$(tput lines)" \
+    -w "/projets/$projet" "$C" "$@"

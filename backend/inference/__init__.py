@@ -18,11 +18,12 @@ normaliser — c'est exactement le point de souplesse que ce module documente.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import time
 from dataclasses import dataclass, field
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from loguru import logger
@@ -51,6 +52,7 @@ from backend.inference.reprise import CONSIGNE_CLOTURE_PROMESSE
 from backend.inference.fin_projet import DernierAppel
 from backend.inference.pre_remplissage import pre_remplir, sans_echo
 from backend.inference.compaction_boucle import compacter_si_besoin, demarrer
+from backend.inference import boucle_texte, budget_navigateur, budget_reflexion, exploration
 from backend.inference.hygiene_historique import pour_le_modele, sans_balises_imitees
 from backend.inference.activite import Ecriture, SuiviActivite, progression
 from backend.inference.engines_adapters.contrat import CauseEchec
@@ -268,6 +270,20 @@ def _signaler_pleine(etat: EtatBoucle | None) -> bool:
     return True
 
 
+def _apres_boucle_texte(messages: list[MessageChat], texte: str, etat: EtatBoucle) -> list[MessageChat] | None:
+    """Tour coupé pour boucle : une seule copie du passage reste, et le modèle est sommé de vérifier.
+
+    `None` quand les coupures sont épuisées : la boucle clôture plutôt que de recommencer sans fin.
+    """
+    bloc, etat.boucle_texte = etat.boucle_texte or "", None
+    etat.coupures_boucle += 1
+    if etat.coupures_boucle > boucle_texte.COUPURES_MAX:
+        logger.warning("Boucle de texte récidivante ({} coupures) : clôture.", etat.coupures_boucle)
+        return None
+    tronque = boucle_texte.tronquer(texte, bloc)
+    return harnais.relancer(sans_reflexion_passee(messages), pour_le_modele(tronque), boucle_texte.consigne(bloc))
+
+
 async def _compacter_fenetre_pleine(messages: list[MessageChat], etat: EtatBoucle) -> str | None:
     """Le tour a buté sur la fenêtre : on garde ce qu'il avait écrit, on compacte, la tâche continue."""
     etat.fenetre_pleine = False
@@ -336,10 +352,16 @@ def _signature(nom: str, arguments: Any) -> str:
 # sur un fichier absent, puis `ecrire_fichier`, puis la même lecture. Borner la répétition tout
 # court aurait cassé exactement la boucle de travail que ces outils existent pour permettre.
 _REDITE = (
-    "Failed: this exact call was already made in this turn and gave the same result. "
-    "Repeating it changes nothing. Either send it with the arguments that were missing, or stop "
-    "calling tools and answer with what you actually have."
+    "NOT RUN — this exact call (same tool, same arguments) already failed in this turn, and nothing has "
+    "changed since, so it would fail the same way. Its failure was:\n{cause}\n"
+    "Do what that failure says instead: different arguments, another source or another tool. If nothing else "
+    "can work, stop calling tools and tell the user what failed and why."
 )
+
+
+def _refus_redite(cause: str) -> str:
+    """Refus d'un appel déjà échoué, qui REDIT la cause : sans elle, le modèle ne sait pas pourquoi il est bloqué."""
+    return _REDITE.format(cause=cause.strip()[:700] or "(no message)")
 
 # Injecté avant le tour de clôture quand AUCUN appel du tour n'a abouti. Sans lui, le modèle
 # terminait sur « Voici le nouveau fichier […] vous pouvez l'ouvrir en cliquant sur la carte
@@ -527,6 +549,17 @@ def _effacer_tour_redit(messages: list[MessageChat], debut: int, appels: list[di
         messages.append(MessageChat(role="user", content=consigne))
 
 
+def _refus_prealable(nom: str, signature: str, navigateur: bool, etat: EtatBoucle) -> str | None:
+    """Ce que le harnais refuse avant d'exécuter : un échec identique redemandé, un navigateur hors budget."""
+    if signature in etat.echecs_vus:
+        logger.warning("Appel {} déjà échoué à l'identique : non réexécuté.", nom)
+        return _refus_redite(etat.echecs_vus[signature])
+    if navigateur and etat.navigateur >= budget_navigateur.PLAFOND:
+        logger.info("Budget navigateur épuisé ({} appels) : appel refusé.", etat.navigateur)
+        return budget_navigateur.REFUS
+    return None
+
+
 async def _executer_un(
     nom: str, arguments: Any, annonce: str, messages: list[MessageChat],
     contexte: ContexteExecution, etat: EtatBoucle,
@@ -535,12 +568,15 @@ async def _executer_un(
     from backend.outils import executer
 
     signature = _signature(nom, arguments)
-    if signature in etat.echecs_vus:
-        logger.warning("Appel {} déjà échoué à l'identique : non réexécuté.", nom)
-        return _REDITE, False, False
+    navigateur = budget_navigateur.est_navigateur(nom, arguments)
+    refus = _refus_prealable(nom, signature, navigateur, etat)
+    if refus:
+        return refus, False, False
     resultat = await executer(nom, arguments, contexte)
+    change = resultat.succes and budget_navigateur.est_changement(nom)
+    etat.navigateur = 0 if change else etat.navigateur + int(navigateur)
     if not resultat.succes:
-        etat.echecs_vus.add(signature)
+        etat.echecs_vus[signature] = resultat.texte
         return resultat.texte, False, False
     # Seule une LECTURE peut être une redite. Une écriture, une modification ou une commande agit même quand son
     # message est identique (« Modifié … : un fragment remplacé ») : banc du 2026-11-10, le harnais répondait
@@ -553,10 +589,12 @@ async def _executer_un(
         logger.info("Redite {} ({} d'affilée) : renvoi au résultat déjà au contexte.", nom, etat.redites)
         return avis_redite(annonce, etat.redites), True, True
     etat.echecs_vus.clear()
+    etat.lectures_serie = etat.lectures_serie + 1 if exploration.est_lecture(nom, arguments) else 0
+    rappel = exploration.avis(etat.lectures_serie)
     # Un résultat NEUF : la série de redites est rompue. Sans ceci, cinq redites éparses sur cent appels utiles
     # coupaient les outils en pleine tâche (« Testing », 2026-11-10, 11:18 → 11:23). Seule une série compte.
     etat.redites = 0
-    return resultat.texte, True, False
+    return "\n\n".join(filter(None, [resultat.texte, rappel])), True, False
 
 
 async def _executer_appels(
@@ -586,6 +624,42 @@ async def _executer_appels(
         # prose. L'ancienne forme — rôle `assistant` préfixé « [outil nom — résultat] » — était un
         # format inventé par nous, et le modèle a fini par l'imiter au lieu d'appeler l'outil.
         messages.append(MessageChat(role="tool", content=texte, tool_call_id=_id_appel(etat, rang)))
+
+
+# Surveiller la boucle tous les N jetons : assez souvent pour couper tôt, assez peu pour rester gratuit.
+_PAS_BOUCLE_TEXTE = 32
+
+
+def _guetter_boucle(recu: list[str], etat: EtatBoucle | None) -> None:
+    """Note dans `etat` le passage répété si le tour récite en boucle (voir `boucle_texte`)."""
+    if etat is None or len(recu) % _PAS_BOUCLE_TEXTE:
+        return
+    bloc = boucle_texte.bloc_repete("".join(recu[-1200:]))
+    if bloc is not None:
+        logger.warning("Boucle de texte détectée ({} caractères répétés) : tour coupé.", len(bloc))
+        etat.boucle_texte = bloc
+
+
+async def _sorties(
+    morceau: MorceauGeneration, recu: list[str], raisons: list[str | None], etat: EtatBoucle | None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Ce qu'un morceau du moteur produit pour l'écran, en tenant `recu` et `raisons` à jour."""
+    suivi = etat.activite if etat is not None else None
+    if suivi is not None:
+        await _suivre(suivi, morceau, etat)
+        instantane = suivi.instantane()
+        if instantane is not None:
+            yield {"activite": instantane}
+    if morceau.type == "token" and morceau.contenu:
+        recu.append(morceau.contenu)
+        yield {"texte": morceau.contenu}
+        _guetter_boucle(recu, etat)
+    elif morceau.type == "erreur":
+        # Le flux HTTP est déjà ouvert : signaler dedans est la seule façon d'informer.
+        logger.error("Génération interrompue par le moteur : {}", morceau.contenu)
+        raise RuntimeError(morceau.contenu or "Le moteur a interrompu la génération.")
+    elif morceau.type == "fin":
+        raisons.append(morceau.raison_arret)
 
 
 async def _suivre(suivi: SuiviActivite, morceau: MorceauGeneration, etat: EtatBoucle | None) -> None:
@@ -651,12 +725,13 @@ class MoteurChat:
         return await superviseur.compter_contexte(_socle_outils_json(), _messages_depuis(messages))
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = "",
+        suivi: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> str | None:
         """Résumé cumulatif orienté agent, produit par le modèle chargé — ou `None` s'il échoue."""
         from backend.inference.resume_compaction import produire_resume
 
-        return await produire_resume(a_resumer, resume_precedent, langue, max_tokens, consigne)
+        return await produire_resume(a_resumer, resume_precedent, langue, max_tokens, consigne, suivi=suivi)
 
     async def _flux(self, requete: object) -> AsyncIterator[dict[str, Any]]:
         """Assemble le tour complet : contexte d'exécution, boucle d'outils, mesure du débit."""
@@ -708,27 +783,21 @@ class MoteurChat:
         `raisons` recueille la raison d'arrêt du moteur. Elle existait déjà sur le morceau de fin et
         n'était lue par personne : c'est elle qui dit si la réponse est complète ou tronquée.
         """
-        suivi = etat.activite if etat is not None else None
         from backend.outils.noms_publics import publier_messages, publier_outils
 
         from backend.inference.forme_messages import un_seul_systeme
 
         envoyes = un_seul_systeme(publier_messages(messages))
-        async for morceau in superviseur.generer(envoyes, options, publier_outils(outils)):
-            if suivi is not None:
-                await _suivre(suivi, morceau, etat)
-                instantane = suivi.instantane()
-                if instantane is not None:
-                    yield {"activite": instantane}
-            if morceau.type == "token" and morceau.contenu:
-                recu.append(morceau.contenu)
-                yield {"texte": morceau.contenu}
-            elif morceau.type == "erreur":
-                # Le flux HTTP est déjà ouvert : signaler dedans est la seule façon d'informer.
-                logger.error("Génération interrompue par le moteur : {}", morceau.contenu)
-                raise RuntimeError(morceau.contenu or "Le moteur a interrompu la génération.")
-            elif morceau.type == "fin":
-                raisons.append(morceau.raison_arret)
+        flux = superviseur.generer(envoyes, options, publier_outils(outils))
+        try:
+            async for morceau in flux:
+                async for sortie in _sorties(morceau, recu, raisons, etat):
+                    yield sortie
+                if etat is not None and etat.boucle_texte is not None:
+                    break
+        finally:
+            # Fermer explicitement : une coupure doit arrêter le moteur tout de suite, pas au ramasse-miettes.
+            await flux.aclose()
 
     async def _diffuser_complet(
         self,
@@ -843,9 +912,14 @@ class MoteurChat:
         etat.ecrire_tot = _ecriture_anticipee(contexte)
         while not budget_epuise(etat) and not tourne_en_rond(etat.redites):
             messages = _avec_avertissement(messages, etat)
-            async for morceau in self._diffuser_tour(messages, options, etat):
+            # Avant le premier jeton, le moteur relit ce qui a changé : l'écran le dit au lieu de rester sur « Exécute ».
+            etat.activite.relecture(None)
+            yield {"activite": etat.activite.instantane(force=True)}
+            async for morceau in self._diffuser_tour(messages, budget_reflexion.options_du_tour(options, etat.issue_tour),
+                                                     etat):
                 yield morceau
             etat.activite.fin_de_tour()
+            etat.issue_tour = "relance"
             if etat.fenetre_pleine:
                 note = await _compacter_fenetre_pleine(messages, etat)
                 if note is None:
@@ -854,6 +928,13 @@ class MoteurChat:
                 yield {"texte": note}
                 continue
             texte = etat.texte_recu
+            if etat.boucle_texte is not None:
+                suite = _apres_boucle_texte(messages, texte, etat)
+                if suite is None:
+                    break
+                messages = suite
+                yield {"texte": BALISE_FIN_ETAPE}
+                continue
             appels = _appels_demandes(texte) if outils else []
             if not appels:
                 suite, messages = self._apres_tour_sans_appel(texte, messages, etat)
@@ -911,10 +992,15 @@ class MoteurChat:
         ouvertes_avant = len(etat.taches_ouvertes or [])
         async for etape in _jouer_appels(appels, messages, contexte, etat, texte):
             yield etape
+        etat.issue_tour = "succes" if etat.dernier_appel is not None and etat.dernier_appel.succes else "echec"
         _prolonger_si_demande(etat)
         # Fin d'étape au sens de Quart : une tâche s'est fermée pendant ce tour.
         etape_terminee = etat.taches_ouvertes is not None and len(etat.taches_ouvertes) < ouvertes_avant
-        note = await compacter_si_besoin(messages, etat.compaction, etape_terminee, _taches(contexte))
+        etat.compaction.suivi = etat.activite.suivre_compaction
+        tache = asyncio.create_task(compacter_si_besoin(messages, etat.compaction, etape_terminee, _taches(contexte)))
+        async for instantane in etat.activite.battements(tache):
+            yield {"activite": instantane}
+        note = tache.result()
         if note is not None:
             yield {"texte": note}
         if tourne_en_rond(etat.redites) and not etat.secours_boucle:

@@ -23,7 +23,7 @@ annule proprement.
 from __future__ import annotations
 
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -156,11 +156,13 @@ class MoteurGeneration(Protocol):
         ...
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = "",
+        suivi: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> str | None:
         """Résumé cumulatif orienté agent des tours anciens, produit par le modèle chargé.
 
         `consigne` : instructions de l'utilisateur pour CE résumé (compaction manuelle), prioritaires.
+        `suivi` : progression facultative (résumeur utilisé, jetons, débit), affichée pendant la compaction.
 
         `resume_precedent` est le résumé d'une compaction antérieure, à ENGLOBER et non à oublier.
         Rend `None` si le résumé ne peut pas être produit (aucun modèle prêt, échec moteur) : la

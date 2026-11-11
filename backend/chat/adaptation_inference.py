@@ -14,7 +14,7 @@ brutes ou des dictionnaires est normalisé ici, parce que c'est une conversion s
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from importlib import import_module
 from types import ModuleType
 
@@ -170,16 +170,18 @@ class _MoteurNormalise:
         return dump(mode="json") if callable(dump) else None
 
     async def resumer(
-        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = ""
+        self, a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = "",
+        suivi: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> str | None:
         """Résumé cumulatif du moteur enveloppé, ou `None` s'il ne sait pas le produire."""
         resumer = getattr(self._moteur, "resumer", None)
         if resumer is None:
             logger.debug("Moteur {} sans résumé : compaction inerte.", type(self._moteur).__name__)
             return None
-        if consigne.strip():
-            return await resumer(a_resumer, resume_precedent, langue, max_tokens, consigne=consigne)
-        return await resumer(a_resumer, resume_precedent, langue, max_tokens)
+        options: dict[str, Any] = {"consigne": consigne} if consigne.strip() else {}
+        if suivi is not None:
+            options["suivi"] = suivi
+        return await resumer(a_resumer, resume_precedent, langue, max_tokens, **options)
 
     async def _flux(self, requete: RequeteGeneration) -> AsyncIterator[ElementFlux]:
         source = self._ouvrir(requete)

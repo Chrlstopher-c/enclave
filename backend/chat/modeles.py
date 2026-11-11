@@ -360,9 +360,19 @@ class EvenementActivite(BaseModel):
     activite: dict[str, Any]
 
 
+class EvenementCommande(BaseModel):
+    """Progression d'une commande du chat (`/compact`…) : un ÉTAT, rejoué à un client qui se raccroche.
+
+    CONTRAT (`contrat-commandes.md`) : la charge `commande` est décodée à l'identique par le web et le mobile.
+    """
+
+    type: Literal["commande"] = "commande"
+    commande: dict[str, Any]
+
+
 EvenementFlux = (
     EvenementDebut | EvenementFragment | EvenementCompaction | EvenementFin | EvenementErreur
-    | EvenementActivite
+    | EvenementActivite | EvenementCommande
 )
 
 

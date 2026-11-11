@@ -75,3 +75,20 @@ def test_awareness_decrit_les_outils_reels(maison: Path) -> None:
     texte = contenu(descriptions(), "spoofer")
     assert "### plan_fichier" in texte and "### suivre_taches" in texte
     assert "## Skills" in texte and "deployer" in texte
+
+
+def test_methodes_installees_listees_et_en_lecture_seule(maison: Path, tmp_path: Path) -> None:
+    from backend.agent import methodes
+    from backend.agent.maison import ecriture_permise, installer_methodes
+
+    noms = {m.nom for m in methodes()}
+    assert {"chercher-dans-le-code", "deboguer", "tester-et-prouver"} <= noms
+    assert all(m.chemin.startswith("~agent/methodes/") and m.description for m in methodes())
+    assert "METHODS" in bloc_socle() and "chercher-dans-le-code" in bloc_socle()
+    assert not ecriture_permise(Path("methodes/deboguer.md"))
+
+    (maison / "methodes" / "deboguer.md").write_text("altéré")
+    (maison / "methodes" / "perimee.md").write_text("---\nname: x\n---\n")
+    installer_methodes(maison)
+    assert (maison / "methodes" / "deboguer.md").read_text().startswith("---\nname: deboguer")
+    assert not (maison / "methodes" / "perimee.md").exists()

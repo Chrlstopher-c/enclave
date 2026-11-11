@@ -20,6 +20,7 @@ from typing import Any
 from loguru import logger
 
 from backend.agent import MCP, racine
+from backend.outils.adresse_atelier import vers_atelier
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
 from backend.outils.mcp_client import ClientMCP, ErreurMCP, TransportHTTP, TransportStdio
 
@@ -122,7 +123,8 @@ DESCRIPTION_APPELER = DescriptionOutil(
     description=(
         "Calls a tool of an MCP server, e.g. the `playwright` browser for end-to-end tests: "
         "`browser_navigate`, then `browser_snapshot` (an accessibility tree in TEXT — you cannot see "
-        "images), `browser_click` / `browser_type` with the `ref` the snapshot gives."
+        "images), `browser_click` / `browser_type` with the `ref` the snapshot gives. The browser runs in another "
+        "container: a server you started in the workshop is at `http://echohub-atelier:<port>`."
     ),
     parametres={"type": "object", "properties": {
         "serveur": {"type": "string", "description": "Server name."},
@@ -161,6 +163,7 @@ async def _appeler(arguments: dict[str, Any], contexte: ContexteExecution) -> st
             raise EchecOutil(f"Échec : `arguments` n'est pas un objet JSON ({exc}).") from exc
     if not nom or not outil or not isinstance(parametres, dict):
         raise EchecOutil('Échec : `mcp_appeler` attend {"serveur": …, "outil": …, "arguments": {…}}.')
+    parametres, note = vers_atelier(parametres)
     try:
         texte, en_erreur = await _client(nom).appeler(outil, parametres)
     except ErreurMCP as exc:
@@ -168,8 +171,32 @@ async def _appeler(arguments: dict[str, Any], contexte: ContexteExecution) -> st
     if len(texte) > SORTIE_MAX:
         texte = f"{texte[:SORTIE_MAX]}\n[… sortie tronquée à {SORTIE_MAX} caractères sur {len(texte)}]"
     if en_erreur:
-        raise EchecOutil(f"Échec : {nom}.{outil} : {texte}")
-    return texte or "(aucune sortie)"
+        raise EchecOutil(f"Échec : {nom}.{outil} : {texte}{await _schema_si_arguments(nom, outil, texte)}")
+    return "\n\n".join(filter(None, [note, _note_image(outil), texte or "(aucune sortie)"]))
+
+
+async def _schema_si_arguments(nom: str, outil: str, erreur: str) -> str:
+    """Arguments refusés : le schéma exact part avec l'échec, pour corriger du premier coup.
+
+    « Tetris test 35B passe 3 » (2026-11-11) : six appels `browser_evaluate` / `browser_wait_for` refusés
+    pour arguments invalides, le modèle devinant à chaque fois un autre nom de champ au lieu de lire le schéma.
+    """
+    if "invalid argument" not in erreur.lower() and "invalid input" not in erreur.lower():
+        return ""
+    try:
+        trouve = [o for o in await _client(nom).outils() if o["name"] == outil]
+    except ErreurMCP as exc:
+        logger.warning("Schéma de {}.{} introuvable : {}", nom, outil, exc)
+        return ""
+    return f"\n\nThe exact schema — use these field names:\n{_decrire(trouve[0], detail=True)}" if trouve else ""
+
+
+def _note_image(outil: str) -> str | None:
+    """Une capture d'écran ne sert à rien au modèle : il ne voit pas les images."""
+    if "screenshot" not in outil:
+        return None
+    return ("(You cannot see this image. To check the page, use `browser_snapshot` (text) and "
+            "`browser_console_messages`; a screenshot is only for the user.)")
 
 
 OUTIL_MCP_OUTILS = Outil(description=DESCRIPTION_OUTILS, executer=_lister)

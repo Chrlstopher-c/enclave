@@ -8,7 +8,7 @@ from pathlib import Path
 from loguru import logger
 
 from backend.agent import frontmatter
-from backend.agent.maison import racine
+from backend.agent.maison import METHODES, racine
 
 ENTREES_MAX = 40
 DESCRIPTION_MAX = 160
@@ -44,4 +44,10 @@ def skills() -> list[Entree]:
     return [e for f in fichiers[:ENTREES_MAX] if (e := _entree(f, base, f.parent.name))]
 
 
-__all__ = ["Entree", "memoire", "skills"]
+def methodes() -> list[Entree]:
+    base = racine()
+    fichiers = sorted((base / METHODES).glob("*.md"))
+    return [e for f in fichiers[:ENTREES_MAX] if (e := _entree(f, base, f.stem))]
+
+
+__all__ = ["Entree", "memoire", "methodes", "skills"]

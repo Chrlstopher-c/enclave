@@ -17,3 +17,8 @@ os.environ.setdefault("ECHOHUB_AGENT_DIR", tempfile.mkdtemp(prefix="echohub-agen
 
 Settings.model_config["env_file"] = None
 reset_settings_cache()
+
+# Services de l'hôte que le conteneur connaît : un test ne doit jamais les appeler pour de vrai (relais de
+# résumé Claude, Strata). Le résumé retombe alors sur le moteur simulé par chaque test.
+for _variable in ("RESUMEUR_JETON", "RESUMEUR_URL", "STRATA_URL"):
+    os.environ.pop(_variable, None)

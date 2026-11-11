@@ -17,6 +17,8 @@ configuré nulle part (cf. `test_contexte_execution_outil.py`).
 
 from __future__ import annotations
 
+import backend.inference.engines_adapters.images_moteur as images_moteur
+
 import asyncio
 import ctypes
 from pathlib import Path
@@ -286,7 +288,7 @@ def test_messages_pour_moteur_sans_vision_remplace_image_par_une_ligne_factuelle
         ],
     )
 
-    rendu = module_llama_cpp._messages_pour_moteur([message], vision_disponible=False)
+    rendu = images_moteur._messages_pour_moteur([message], vision_disponible=False)
 
     assert rendu == [
         {"role": "user", "content": "Regarde ceci\n[image jointe : capture.png, 100×50, 0 Ko]"}
@@ -299,7 +301,7 @@ def test_messages_pour_moteur_sans_vision_ne_produit_jamais_de_message_de_refus(
     fichier.write_bytes(b"\x89PNG\r\n\x1a\nabc")
     message = MessageChat(role="user", content=[PartieImageChemin(chemin=str(fichier), type_mime="image/png")])
 
-    rendu = module_llama_cpp._messages_pour_moteur([message], vision_disponible=False)
+    rendu = images_moteur._messages_pour_moteur([message], vision_disponible=False)
 
     contenu = rendu[0]["content"].lower()
     for interdit in ("ne prend pas en charge", "non supporté", "unsupported", "désolé", "je ne peux pas"):
@@ -307,7 +309,7 @@ def test_messages_pour_moteur_sans_vision_ne_produit_jamais_de_message_de_refus(
 
 
 def test_messages_pour_moteur_sans_vision_laisse_un_message_texte_inchange() -> None:
-    rendu = module_llama_cpp._messages_pour_moteur(
+    rendu = images_moteur._messages_pour_moteur(
         [MessageChat(role="user", content="Bonjour")], vision_disponible=False
     )
     assert rendu == [{"role": "user", "content": "Bonjour"}]
@@ -319,7 +321,7 @@ def test_messages_pour_moteur_avec_vision_encode_toujours_en_image_url(tmp_path:
     fichier.write_bytes(b"\x89PNG\r\n\x1a\nabc")
     message = MessageChat(role="user", content=[PartieImageChemin(chemin=str(fichier), type_mime="image/png")])
 
-    rendu = module_llama_cpp._messages_pour_moteur([message], vision_disponible=True)
+    rendu = images_moteur._messages_pour_moteur([message], vision_disponible=True)
 
     assert rendu[0]["content"][0]["type"] == "image_url"
 
@@ -340,7 +342,7 @@ def test_vision_disponible_lit_le_chat_handler_de_l_instance_llama() -> None:
 
 def test_dimensions_image_lit_un_en_tete_png() -> None:
     octets = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + (800).to_bytes(4, "big") + (600).to_bytes(4, "big") + b"reste"
-    assert module_llama_cpp._dimensions_image(octets) == (800, 600)
+    assert images_moteur._dimensions_image(octets) == (800, 600)
 
 
 def test_dimensions_image_lit_un_en_tete_jpeg() -> None:
@@ -349,8 +351,8 @@ def test_dimensions_image_lit_un_en_tete_jpeg() -> None:
         + (300).to_bytes(2, "big") + (400).to_bytes(2, "big") + b"\x00" * 10
     )
     octets = b"\xff\xd8" + segment_sof0
-    assert module_llama_cpp._dimensions_image(octets) == (400, 300)
+    assert images_moteur._dimensions_image(octets) == (400, 300)
 
 
 def test_dimensions_image_sur_format_non_reconnu_rend_none() -> None:
-    assert module_llama_cpp._dimensions_image(b"GIF89a" + b"\x00" * 20) is None
+    assert images_moteur._dimensions_image(b"GIF89a" + b"\x00" * 20) is None

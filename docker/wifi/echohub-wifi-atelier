@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Confie l'antenne Wi-Fi USB de l'hôte à l'atelier de l'agent, sous le nom wlan0.
+#
+# Une carte Wi-Fi ne se monte pas comme un fichier : son « phy » se déplace d'un espace réseau à l'autre
+# (`iw phy … set netns`). Quand l'atelier s'arrête, le noyau la rend à l'hôte ; quand on la rebranche, elle
+# revient aussi côté hôte. D'où une boucle : toutes les quelques secondes, si l'antenne est visible ici et
+# que l'atelier tourne, elle part dans l'atelier. `iw` vient de l'image de l'atelier (rien à installer sur
+# l'hôte, ni sudo : le groupe docker suffit).
+#
+# Réglages (environnement) : ECHOHUB_WIFI_USB « vendeur:produit » séparés par des espaces (défaut : Alfa
+# AR9271), ECHOHUB_WIFI_NOM (wlan0), ECHOHUB_WIFI_CONTENEUR, ECHOHUB_WIFI_IMAGE, ECHOHUB_WIFI_PAUSE (s).
+set -uo pipefail
+CONTENEUR="${ECHOHUB_WIFI_CONTENEUR:-echohub-atelier}"
+IMAGE="${ECHOHUB_WIFI_IMAGE:-echohub-atelier:v2}"
+USB_IDS="${ECHOHUB_WIFI_USB:-0cf3:9271}"
+NOM="${ECHOHUB_WIFI_NOM:-wlan0}"
+PAUSE="${ECHOHUB_WIFI_PAUSE:-5}"
+
+phy_visible_ici() {
+    local phy usb id voulu
+    for phy in /sys/class/ieee80211/phy*; do
+        [ -e "$phy/device" ] || continue
+        usb="$(readlink -f "$phy/device")/.."
+        id="$(cat "$usb/idVendor" 2>/dev/null):$(cat "$usb/idProduct" 2>/dev/null)"
+        for voulu in $USB_IDS; do
+            [ "$id" = "$voulu" ] && { basename "$phy"; return 0; }
+        done
+    done
+    return 1
+}
+
+renommer_dans_atelier() {
+    docker exec "$CONTENEUR" sh -c '
+        for i in $(iw dev | awk "/Interface/ {print \$2}"); do
+            [ "$i" = "$1" ] && exit 0
+            ip link set "$i" down && ip link set "$i" name "$1" && exit 0
+        done
+        exit 1' _ "$NOM"
+}
+
+confier() {
+    local phy="$1" pid
+    pid="$(docker inspect -f '{{.State.Running}} {{.State.Pid}}' "$CONTENEUR" 2>/dev/null)" || return 1
+    [ "${pid%% *}" = "true" ] || return 1
+    pid="${pid##* }"
+    if ! docker run --rm --net=host --pid=host --cap-add NET_ADMIN --entrypoint iw "$IMAGE" \
+            phy "$phy" set netns "$pid"; then
+        echo "[wifi] échec du transfert de $phy vers $CONTENEUR (pid $pid)" >&2
+        return 1
+    fi
+    sleep 1
+    if renommer_dans_atelier; then
+        echo "[wifi] $phy confié à $CONTENEUR sous le nom $NOM"
+    else
+        echo "[wifi] $phy confié à $CONTENEUR, renommage en $NOM impossible" >&2
+    fi
+}
+
+echo "[wifi] surveillance : USB $USB_IDS -> $CONTENEUR ($NOM), toutes les ${PAUSE}s"
+while true; do
+    if phy="$(phy_visible_ici)"; then
+        confier "$phy" || true
+    fi
+    sleep "$PAUSE"
+done

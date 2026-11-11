@@ -124,6 +124,12 @@ services:
     environment:
       MODELS_DIR: /data/models
       XDG_DATA_HOME: /data/user
+      # Caches de compilation (vLLM/torch.compile, FlashInfer, Triton) dans le volume persistant : sous
+      # /root/.cache ils disparaissaient à chaque recréation du conteneur, et le premier chargement vLLM
+      # recompilait à froid (~7 min, échec puis seconde tentative) — mesuré le 2026-11-11.
+      XDG_CACHE_HOME: /data/user/cache
+      FLASHINFER_WORKSPACE_BASE: /data/user/cache
+      TRITON_CACHE_DIR: /data/user/cache/triton
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -147,10 +153,16 @@ services:
       ATELIER_JETON: ${ATELIER_JETON:-}
       ATELIER_WORKSPACE: /data/ateliers
       ECHOHUB_PROJETS_RACINE: /projets
+      # Matériel confié à l'atelier, décrit à l'agent dans son bloc <env> (docker/wifi) ; vide = rien.
+      ECHOHUB_ATELIER_MATERIEL: ${ECHOHUB_ATELIER_MATERIEL:-}
       ECHOHUB_AGENT_DIR: /data/agent
       # Serveur Strata de l'hôte : sa clé vient du .env, jamais du code (vide = Strata sans clé).
       STRATA_URL: http://host.docker.internal:${STRATA_PORT:-37926}
       STRATA_JETON: ${STRATA_JETON:-}
+      # Résumés de compaction par Claude Haiku via le compte Claude Code de l'hôte (docker/resumeur-hote).
+      # Jeton vide = relais non utilisé, le modèle local résume.
+      RESUMEUR_URL: http://host.docker.internal:${RESUMEUR_PORT:-37927}
+      RESUMEUR_JETON: ${RESUMEUR_JETON:-}
       # Le backend est root : les fichiers qu'il écrit dans la maison sont rendus à cet uid:gid.
       ECHOHUB_AGENT_PROPRIETAIRE: ${ECHOHUB_AGENT_PROPRIETAIRE:-}
       # GGML_CUDA_ENABLE_UNIFIED_MEMORY est volontairement ABSENTE : sous WSL2 elle immobilise
@@ -259,12 +271,19 @@ services:
       # Serveurs MCP de Chris (pty-mcp, log-watcher-mcp) servis DANS l'atelier par mcp_http.py — jamais
       # sur l'hôte, où ils donneraient à l'agent un terminal hors conteneur. Lecture seule, et seulement
       # ces deux dossiers : jamais le dossier parent, qui contient d'autres serveurs.
+      - ./atelier/verifier:/opt/echohub/verifier:ro   # commande `verifier` (cf. Dockerfile)
+      - ./atelier/doc:/opt/echohub/doc:ro             # commande `doc` (cf. Dockerfile)
       - ${ECHOHUB_MCP_PTY_HOTE:-./atelier/mcp-vide}:/opt/mcp/pty-mcp:ro
       - ${ECHOHUB_MCP_LOGWATCHER_HOTE:-./atelier/mcp-vide}:/opt/mcp/log-watcher-mcp:ro
     # Garde-fous : une commande de l'agent ne doit pas pouvoir asphyxier l'hôte. Généreux mais bornés.
     mem_limit: 4g
     cpus: 4.0
     pids_limit: 512
+    # Antenne Wi-Fi déplacée dans l'espace réseau de l'atelier (docker/wifi) : la piloter (iw, mode moniteur,
+    # injection) demande ces deux capacités, qui ne valent que pour le réseau du conteneur, jamais celui de l'hôte.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     expose:
       - "8080"
       - "8090"

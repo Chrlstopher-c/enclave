@@ -7,8 +7,10 @@ import type {
   ReactElement,
   RefObject,
 } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { Button } from '../../shared/design';
 import type { FichierConversation } from '../api/contrats';
+import { IndicationCommande, PaletteCommandes, useSaisieCommande, type SaisieCommande } from '../commandes';
 import {
   BoutonPiece,
   EntreesFichier,
@@ -40,10 +42,16 @@ import type { MessageEnAttente } from './useMessagesEnAttente';
  * (`capture` sur une entrée image, donc l'appareil photo directement). Le second n'est proposé que
  * sous 1024 px, où il a un sens. Aucun des deux ne juge le modèle chargé : la règle de l'opérateur
  * tient, l'application transmet toujours et ne refuse jamais d'elle-même.
+ *
+ * COMMANDES — un « / » en tête de saisie ouvre la palette (`chat/commandes`) ; une commande
+ * reconnue part par sa propre route au lieu d'un message, et pendant une commande longue
+ * (`/compact`) l'envoi attend sa fin : la saisie reste ouverte pour préparer la suite.
  */
 
 const HAUTEUR_MAX_PX = 200;
 const PLACEHOLDER_GLISSER = 'Ajouter une consigne — lue à la fin de l’étape en cours…';
+const PLACEHOLDER_COMMANDE = 'Compaction en cours… vous pourrez envoyer à sa fin.';
+const PLACEHOLDER = 'Écrire un message, ou / pour les commandes…';
 
 /*
  * Sous le seuil, la rangée passe à DEUX lignes : la saisie occupe la sienne, les boutons suivent.
@@ -89,18 +97,21 @@ interface BarreSaisieProps {
   peutGlisser: boolean;
   onChoisirFichier: () => void;
   onPrendrePhoto: () => void;
+  saisie: SaisieCommande;
 }
 
 function BoutonEnvoi({
   genere,
   envoyable,
   peutGlisser,
+  libelle,
   onEnvoyer,
   onAnnuler,
 }: {
   genere: boolean;
   envoyable: boolean;
   peutGlisser: boolean;
+  libelle: string;
   onEnvoyer: () => void;
   onAnnuler: () => void;
 }): ReactElement {
@@ -120,7 +131,7 @@ function BoutonEnvoi({
   }
   return (
     <Button variant="primary" size="sm" onClick={onEnvoyer} disabled={!envoyable}>
-      Envoyer
+      {libelle}
     </Button>
   );
 }
@@ -145,33 +156,60 @@ function BoutonsPieces({
   );
 }
 
-function BarreSaisie(props: BarreSaisieProps): ReactElement {
-  const { texte, genere, desactive, zone, onTexte, onTouche, onColle } = props;
+function placeholder(genere: boolean, peutGlisser: boolean, commandeEnCours: boolean): string {
+  if (commandeEnCours) {
+    return PLACEHOLDER_COMMANDE;
+  }
+  return genere && peutGlisser ? PLACEHOLDER_GLISSER : PLACEHOLDER;
+}
+
+/* Une commande reconnue s'EXÉCUTE : le bouton le dit, comme le badge au-dessus de la saisie. */
+function libelleEnvoi(saisie: SaisieCommande): string {
+  return saisie.analyse.type === 'commande' && saisie.analyse.definition !== null ? 'Exécuter' : 'Envoyer';
+}
+
+function Palette({ saisie }: { saisie: SaisieCommande }): ReactElement {
   return (
-    <div className={CLASSE_CADRE}>
-      <BoutonsPieces
-        desactive={desactive}
-        onChoisirFichier={props.onChoisirFichier}
-        onPrendrePhoto={props.onPrendrePhoto}
-      />
-      <textarea
-        ref={zone}
-        rows={1}
-        value={texte}
-        disabled={desactive}
-        onChange={onTexte}
-        onKeyDown={onTouche}
-        onPaste={onColle}
-        placeholder={genere && props.peutGlisser ? PLACEHOLDER_GLISSER : 'Écrire un message…'}
-        className={CLASSE_ZONE_SAISIE}
-      />
-      <BoutonEnvoi
-        genere={genere}
-        peutGlisser={props.peutGlisser}
-        envoyable={!desactive && texte.trim() !== ''}
-        onEnvoyer={props.onEnvoyer}
-        onAnnuler={props.onAnnuler}
-      />
+    <AnimatePresence>
+      {saisie.palette !== null && (
+        <PaletteCommandes palette={saisie.palette} onChoisir={saisie.choisir} onSurvol={saisie.survoler} />
+      )}
+    </AnimatePresence>
+  );
+}
+
+function BarreSaisie(props: BarreSaisieProps): ReactElement {
+  const { texte, genere, desactive, zone, onTexte, onTouche, onColle, saisie } = props;
+  const occupe = saisie.enCours !== null || saisie.envoi;
+  return (
+    <div className="relative">
+      <Palette saisie={saisie} />
+      <div className={CLASSE_CADRE}>
+        <BoutonsPieces
+          desactive={desactive}
+          onChoisirFichier={props.onChoisirFichier}
+          onPrendrePhoto={props.onPrendrePhoto}
+        />
+        <textarea
+          ref={zone}
+          rows={1}
+          value={texte}
+          disabled={desactive}
+          onChange={onTexte}
+          onKeyDown={onTouche}
+          onPaste={onColle}
+          placeholder={placeholder(genere, props.peutGlisser, saisie.enCours !== null)}
+          className={CLASSE_ZONE_SAISIE}
+        />
+        <BoutonEnvoi
+          genere={genere}
+          peutGlisser={props.peutGlisser}
+          envoyable={!desactive && !occupe && texte.trim() !== ''}
+          libelle={libelleEnvoi(saisie)}
+          onEnvoyer={props.onEnvoyer}
+          onAnnuler={props.onAnnuler}
+        />
+      </div>
     </div>
   );
 }
@@ -209,6 +247,7 @@ interface EntreesGestes {
   setTexte: (texte: string) => void;
   deposer: (fichiers: File[]) => void;
   vider: () => void;
+  saisie: SaisieCommande;
 }
 
 type Deposer = (fichiers: File[]) => void;
@@ -232,19 +271,38 @@ function choisirFichiers(deposer: Deposer, evenement: ChangeEvent<HTMLInputEleme
   evenement.target.value = '';
 }
 
-function envoyerTouche(envoyer: () => void, evenement: KeyboardEvent<HTMLTextAreaElement>): void {
+function envoyerTouche(
+  saisie: SaisieCommande,
+  envoyer: () => void,
+  evenement: KeyboardEvent<HTMLTextAreaElement>,
+): void {
+  if (saisie.intercepter(evenement)) {
+    return;
+  }
   if (evenement.key === 'Enter' && !evenement.shiftKey) {
     evenement.preventDefault();
     envoyer();
   }
 }
 
+/*
+ * Ce qui part comme MESSAGE, ou `null` : saisie vide, commande en cours, ou commande reconnue —
+ * celle-ci part par sa propre route. « //texte » revient ramené à « /texte ».
+ */
+function contenuAEnvoyer(texte: string, desactive: boolean, saisie: SaisieCommande): string | null {
+  if (texte.trim() === '' || desactive || saisie.enCours !== null) {
+    return null;
+  }
+  const decision = saisie.soumettre(texte.trim());
+  return decision.type === 'message' && decision.contenu !== '' ? decision.contenu : null;
+}
+
 /* Les gestes du composeur, sortis du composant : chacun tient en quelques lignes et se lit seul. */
 function useGestesComposeur(entrees: EntreesGestes): GestesComposeur {
-  const { texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider } = entrees;
+  const { texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider, saisie } = entrees;
   const envoyer = useCallback((): void => {
-    const contenu = texte.trim();
-    if (contenu === '' || desactive || (genere && onGlisser === undefined)) {
+    const contenu = contenuAEnvoyer(texte, desactive, saisie);
+    if (contenu === null || (genere && onGlisser === undefined)) {
       return;
     }
     if (genere && onGlisser !== undefined) {
@@ -258,11 +316,11 @@ function useGestesComposeur(entrees: EntreesGestes): GestesComposeur {
     onEnvoyer(contenu, fichierIds);
     setTexte('');
     vider();
-  }, [texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, vider]);
+  }, [texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, vider, saisie]);
 
   return {
     envoyer,
-    surTouche: (evenement) => envoyerTouche(envoyer, evenement),
+    surTouche: (evenement) => envoyerTouche(saisie, envoyer, evenement),
     surCollage: (evenement) => collerFichiers(deposer, evenement),
     surDepot: (evenement) => deposerGlisse(deposer, evenement),
     surSelectionFichier: (evenement) => choisirFichiers(deposer, evenement),
@@ -280,6 +338,7 @@ interface CorpsComposeurProps {
   gestes: GestesComposeur;
   onAnnuler: () => void;
   peutGlisser: boolean;
+  saisie: SaisieCommande;
 }
 
 function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
@@ -291,6 +350,7 @@ function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
     <div className="mx-auto max-w-3xl">
       <EntreesFichier fichier={entreeFichier} photo={entreePhoto} onChoisir={gestes.surSelectionFichier} />
       <RangeePieces pieces={props.pieces} onRetirer={props.retirer} />
+      <IndicationCommande saisie={props.saisie} />
       <BarreSaisie
         texte={texte}
         genere={genere}
@@ -304,6 +364,7 @@ function CorpsComposeur(props: CorpsComposeurProps): ReactElement {
         peutGlisser={props.peutGlisser}
         onChoisirFichier={() => entreeFichier.current?.click()}
         onPrendrePhoto={() => entreePhoto.current?.click()}
+        saisie={props.saisie}
       />
     </div>
   );
@@ -314,8 +375,9 @@ export function Composeur(props: ComposeurProps): ReactElement {
   const [texte, setTexte] = useState<string>('');
   const zone = useHauteurAuto(texte);
   const [pieces, deposer, retirer, vider] = useDepotPieces(conversationId);
+  const saisie = useSaisieCommande({ texte, setTexte, conversationId, genere });
   const gestes = useGestesComposeur({
-    texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider,
+    texte, genere, desactive, pieces, onEnvoyer, onGlisser, setTexte, deposer, vider, saisie,
   });
   return (
     <div
@@ -335,8 +397,11 @@ export function Composeur(props: ComposeurProps): ReactElement {
         retirer={retirer}
         gestes={gestes}
         onAnnuler={props.onAnnuler}
+        saisie={saisie}
       />
-      <Empechement texte={props.empechement} />
+      <Empechement
+        texte={saisie.enCours !== null ? 'Compaction en cours : l’envoi reprend dès sa fin.' : props.empechement}
+      />
     </div>
   );
 }

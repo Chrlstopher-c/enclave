@@ -5,6 +5,8 @@
     AWARENESS.notes.md   ajouts manuels, recopiés à la fin d'AWARENESS.md
     memoire/<nom>.md     un fait par fichier, en-tête `name` / `description` ; l'index va dans le socle
     skills/<nom>/SKILL.md  une procédure réutilisable ; la liste va dans le socle, le corps se lit au besoin
+    methodes/<nom>.md    méthodes éprouvées livrées avec EchoHub (backend/agent/methodes), recopiées à
+                         chaque lecture de la maison, en lecture seule pour le modèle
     mcp.json             serveurs MCP à brancher
 
 Le modèle y accède par le préfixe `~agent/` de ses outils de fichiers. Il ne peut ÉCRIRE que dans
@@ -26,6 +28,8 @@ SYSTEME = "SYSTEM.md"
 AWARENESS = "AWARENESS.md"
 AWARENESS_NOTES = "AWARENESS.notes.md"
 MCP = "mcp.json"
+METHODES = "methodes"
+_SOURCE_METHODES = Path(__file__).parent / "methodes"
 
 _SYSTEME_INITIAL = """# SYSTEM.md — instructions permanentes de l'agent EchoHub
 
@@ -49,9 +53,28 @@ def racine() -> Path:
             for sous in DOSSIERS_ECRITURE:
                 attribuer(dossier / sous)
             attribuer(systeme)
+        installer_methodes(dossier)
     except OSError as exc:
         logger.error("Maison de l'agent inaccessible ({}) : {}", dossier, exc)
     return dossier.resolve()
+
+
+def installer_methodes(dossier: Path) -> None:
+    """Recopie les méthodes du dépôt dans `methodes/` : celles du dépôt font foi, les autres disparaissent.
+
+    Le dépôt est monté dans le conteneur : modifier une méthode prend effet au tour suivant, sans redémarrage.
+    """
+    cible = dossier / METHODES
+    cible.mkdir(exist_ok=True)
+    sources = {f.name: f.read_bytes() for f in _SOURCE_METHODES.glob("*.md")}
+    for nom, contenu in sources.items():
+        fichier = cible / nom
+        if not fichier.exists() or fichier.read_bytes() != contenu:
+            fichier.write_bytes(contenu)
+            attribuer(fichier)
+    for perime in cible.glob("*.md"):
+        if perime.name not in sources:
+            perime.unlink()
 
 
 def attribuer(chemin: Path) -> None:
@@ -96,5 +119,5 @@ def lire_texte(nom: str, plafond: int) -> str:
     return f"{texte[:plafond]}\n[… tronqué : {len(texte) - plafond} caractères de plus, lire ~agent/{nom}]"
 
 
-__all__ = ["AWARENESS", "AWARENESS_NOTES", "DOSSIERS_ECRITURE", "MCP", "PREFIXE", "SYSTEME",
-           "attribuer", "ecriture_permise", "lire_texte", "racine"]
+__all__ = ["AWARENESS", "AWARENESS_NOTES", "DOSSIERS_ECRITURE", "MCP", "METHODES", "PREFIXE", "SYSTEME",
+           "attribuer", "installer_methodes", "ecriture_permise", "lire_texte", "racine"]

@@ -12,16 +12,20 @@ déjà complets dans `brut` sont rendus une fois chacun, pour être écrits sans
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
 from collections import deque
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from backend.outils.noms_publics import nom_interne, parametres_internes
 
 INTERVALLE_S = 0.5
+INTERVALLE_BATTEMENT_S = 1.0
 FENETRE_DEBIT_S = 3.0
 OUTILS_GROUPES = frozenset({"ecrire_fichiers"})
 
@@ -35,6 +39,12 @@ Ecriture = Callable[[str, str], Awaitable[None]]
 
 def chemin_courant(brut: str) -> str | None:
     """Dernier `chemin` déjà écrit dans les arguments partiels : le fichier en cours."""
+    texte = _texte_groupe(brut)
+    if texte is not None:
+        from backend.outils.ecriture_groupee import sections
+
+        en_cours = sections(texte)
+        return en_cours[-1]["chemin"] if en_cours else None
     trouves = _CHEMIN.findall(brut)
     if not trouves:
         return None
@@ -88,8 +98,29 @@ def parametres_partiels(brut: str) -> dict[str, str]:
     return {nom: valeur[-APERCU_MAX:] for nom, valeur in valeurs.items()}
 
 
+_DEBUT_TEXTE_JSON = re.compile(r'"(?:fichiers|files)"\s*:\s*"')
+_DEBUT_TEXTE_XML = re.compile(r"<parameter=(?:fichiers|files)>\n?")
+
+
+def _texte_groupe(brut: str) -> str | None:
+    """Valeur, même partielle, d'un `fichiers` au format texte (`=== FILE: … ===`), JSON ou XML ; None sinon."""
+    if (json_ := _DEBUT_TEXTE_JSON.search(brut)) is not None:
+        return _chaine_json_partielle(brut, json_.end())
+    if (xml := _DEBUT_TEXTE_XML.search(brut)) is not None and not brut[xml.end():].lstrip().startswith("["):
+        return brut[xml.end():].split("</parameter>")[0]
+    return None
+
+
 def fichiers_termines(brut: str) -> list[dict[str, str]]:
-    """Objets `{chemin, contenu}` COMPLETS de la liste `fichiers`, dans l'ordre ; le dernier, partiel, est exclu."""
+    """Fichiers COMPLETS d'une écriture groupée, dans l'ordre ; le dernier, encore en cours d'écriture, est exclu.
+
+    Format texte : un fichier est complet quand l'en-tête du suivant est arrivé. Format liste JSON : objet décodable.
+    """
+    texte = _texte_groupe(brut)
+    if texte is not None:
+        from backend.outils.ecriture_groupee import sections
+
+        return sections(texte)[:-1]
     debut = _DEBUT_LISTE.search(brut)
     if debut is None:
         return []
@@ -120,10 +151,16 @@ class SuiviActivite:
     taches: list[dict[str, str]] | None = None
     # Occupation réelle de la fenêtre pendant la tâche, `{"tokens", "total"}` (compaction de boucle).
     contexte: dict[str, int] | None = None
+    # Relecture du prompt avant le premier jeton, `{"faits", "total"}` en jetons à relire (hors cache).
+    lecture: dict[str, int] | None = None
     _horodatages: deque[tuple[float, int]] = field(default_factory=deque)
     _dernier_envoi: float = 0.0
     _dans_reflexion: bool = False
     _progression_vue: bool = False
+    # Départ de la génération, ISO 8601 UTC : l'écran en tire « au travail depuis … », juste après un refresh.
+    debut: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    compaction: dict[str, Any] | None = None
+    _debut_compaction: float = 0.0
 
     def compter(self, nombre: int, *, progression: bool) -> None:
         """Jetons générés. Un moteur qui envoie des `progression` est compté par elles seules."""
@@ -137,8 +174,19 @@ class SuiviActivite:
         while self._horodatages and maintenant - self._horodatages[0][0] > FENETRE_DEBIT_S:
             self._horodatages.popleft()
 
+    def relecture(self, avancement: dict[str, int] | None) -> None:
+        """Le moteur relit son contexte avant d'écrire : phase `lecture`, avec l'avancement s'il est connu."""
+        self.outil, self.brut, self.phase = None, "", "lecture"
+        if avancement is None:
+            self.lecture = None
+            return
+        cache = avancement.get("cache", 0)
+        total = max(0, avancement.get("total", 0) - cache)
+        self.lecture = {"faits": min(total, max(0, avancement.get("processed", 0) - cache)), "total": total}
+
     def texte(self, fragment: str) -> None:
         """Texte visible : suit l'ouverture et la fermeture du raisonnement pour nommer la phase."""
+        self.lecture = None
         if "<think>" in fragment:
             self._dans_reflexion = True
         if "</think>" in fragment:
@@ -148,7 +196,7 @@ class SuiviActivite:
 
     def appel(self, nom: str, brut: str) -> list[dict[str, str]]:
         """Appel en cours d'écriture ; rend les fichiers d'une écriture groupée devenus complets."""
-        self.outil, self.brut, self.phase = nom, brut, "outil"
+        self.outil, self.brut, self.phase, self.lecture = nom, brut, "outil", None
         if nom not in OUTILS_GROUPES:
             return []
         nouveaux = fichiers_termines(brut)[len(self.sauves):]
@@ -182,11 +230,37 @@ class SuiviActivite:
                      "fichiers_sauves": list(self.sauves),
                      "parametres": parametres_internes(self.outil, parametres_partiels(self.brut))[1]}
         return {"phase": self.phase, "tokens": self.jetons, "tokens_par_seconde": self.debit(),
-                "outil": outil, "taches": self.taches, "contexte": self.contexte}
+                "outil": outil, "taches": self.taches, "contexte": self.contexte, "lecture": self.lecture,
+                "compaction": self._compaction_courante(), "debut": self.debut}
+
+    def _compaction_courante(self) -> dict[str, Any] | None:
+        if self.phase != "compaction" or self.compaction is None:
+            return None
+        return {**self.compaction, "duree_ms": round((time.monotonic() - self._debut_compaction) * 1000)}
+
+    async def suivre_compaction(self, details: dict[str, Any]) -> None:
+        """Étapes de la compaction de boucle : phase `compaction`, mise à jour par le résumeur."""
+        if self.compaction is None or details.get("etape") == "preparation":
+            self.compaction = {"etape": "preparation", "detail": "", "resumeur": None, "tokens": None,
+                               "tokens_par_seconde": None}
+            self._debut_compaction = time.monotonic()
+        self.phase, self.outil, self.brut, self.lecture = "compaction", None, "", None
+        self.compaction.update(details)
+
+    async def battements(self, tache: asyncio.Future[Any]) -> AsyncIterator[dict[str, Any] | None]:
+        """Pendant une compaction : un instantané au plus toutes les `INTERVALLE_BATTEMENT_S` secondes."""
+        while True:
+            await asyncio.wait({tache}, timeout=INTERVALLE_BATTEMENT_S)
+            if tache.done():
+                return
+            yield self.instantane(force=True)
 
 
 async def progression(suivi: SuiviActivite, details: dict[str, Any], ecrire: Ecriture | None) -> None:
     """Applique un morceau `progression` du moteur ; écrit aussitôt les fichiers groupés devenus complets."""
+    if isinstance(details.get("lecture"), dict):
+        suivi.relecture(details["lecture"])
+        return
     jetons = details.get("jetons")
     suivi.compter(int(jetons) if isinstance(jetons, int) else 1, progression=True)
     outil = details.get("outil")

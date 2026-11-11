@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 
 from loguru import logger
 
-from backend.chat.modeles import EvenementActivite, EvenementFlux, EvenementFragment
+from backend.chat.modeles import EvenementActivite, EvenementCommande, EvenementFlux, EvenementFragment
 
 _DIFFUSIONS: dict[str, Diffusion] = {}
 
@@ -36,6 +36,9 @@ class Diffusion:
             self._journal[-1], EvenementActivite
         ):
             self._journal[-1] = evenement  # un état, pas un historique : le journal n'en garde qu'un d'affilée
+        elif isinstance(evenement, EvenementCommande):
+            # L'état d'une commande, comme l'activité : seul le dernier sert à qui se raccroche.
+            self._journal = [e for e in self._journal if not isinstance(e, EvenementCommande)] + [evenement]
         else:
             self._journal.append(evenement)
         for file in self._abonnes:

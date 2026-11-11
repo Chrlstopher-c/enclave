@@ -50,6 +50,7 @@ from backend.chat.modeles import (
 )
 from backend.core import EchoHubError
 from backend.projets import LiaisonProjet, chemin_projet
+from backend.chat.routes_effacements import routeur as _routeur_effacements
 
 PREFIXE = "/chat"
 
@@ -387,3 +388,5 @@ async def mesurer_contexte(conversation_id: str) -> dict[str, object]:
                 "avertissements": [], "moteur": None, "modele": None, "contexte_total": None,
                 "contexte_plan": None, "tokens_mesures": None, "tokens_libres": None, "depassement_tokens": None}
     return detail
+
+routeur.include_router(_routeur_effacements)

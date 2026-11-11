@@ -3,23 +3,31 @@
 Même mécanique que la compaction automatique (`compaction.preparer_compaction`), non destructive et
 cumulative, mais sans seuil et la queue réduite au minimum — c'est l'utilisateur qui décide. Les
 instructions éventuelles sont données au résumeur comme prioritaires (« garde surtout la liste des
-endpoints »). Refusée pendant une génération : le moteur est occupé et le contexte bouge.
+endpoints »). Elle s'exécute comme commande (`backend.commandes.execution`), qui réserve la conversation.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from loguru import logger
 
-from backend.chat import annulation, compaction, depot, port_inference
-from backend.chat.erreurs import BrancheInvalide, GenerationDejaEnCours
+from backend.chat import compaction, depot, port_inference
+from backend.chat.erreurs import BrancheInvalide
 from backend.chat.generation import contexte_de_branche
 from backend.chat.modeles import InfoCompaction
 
 
-async def compacter_maintenant(conversation_id: str, instructions: str = "") -> InfoCompaction:
-    """Compacte la branche affichée et persiste la balise. Lève si rien ne peut être replié."""
-    if annulation.est_active(conversation_id):
-        raise GenerationDejaEnCours("Une génération est en cours : compacter après sa fin.")
+async def produire_compaction(
+    conversation_id: str,
+    instructions: str = "",
+    suivi: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+) -> InfoCompaction:
+    """Compacte la branche affichée et persiste la balise. Lève si rien ne peut être replié.
+
+    Appelée par l'exécution des commandes, qui détient la réservation de la conversation.
+    """
     feuille = depot.feuille_active(conversation_id)
     contexte = contexte_de_branche(conversation_id, feuille)
     if not contexte.ancres:
@@ -28,7 +36,7 @@ async def compacter_maintenant(conversation_id: str, instructions: str = "") -> 
     resultat = await compaction.preparer_compaction(
         port_inference.obtenir_moteur(), contexte.entete, contexte.ancres, active,
         conversation_id=conversation_id, message_id=contexte.ancres[-1].id,
-        forcer=True, consigne=instructions,
+        forcer=True, consigne=instructions, suivi=suivi,
     )
     if resultat.info is None:
         raise BrancheInvalide("Compaction impossible : trop peu d'échanges à replier, ou aucun modèle prêt.")
@@ -38,4 +46,11 @@ async def compacter_maintenant(conversation_id: str, instructions: str = "") -> 
     return resultat.info
 
 
-__all__ = ["compacter_maintenant"]
+async def compacter_maintenant(conversation_id: str, instructions: str = "") -> InfoCompaction:
+    """`POST …/compacter` (mobile) : délègue à l'exécution des commandes, qui réserve la conversation."""
+    from backend.commandes.execution import compacter_et_attendre  # import paresseux : évite le cycle
+
+    return await compacter_et_attendre(conversation_id, instructions)
+
+
+__all__ = ["compacter_maintenant", "produire_compaction"]

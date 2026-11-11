@@ -77,7 +77,7 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
     del contexte
     requete = str(arguments.get("requete", "")).strip()
     if not requete:
-        return "Échec : aucune requête fournie. Rappeler l'outil avec des mots-clés."
+        return "SEARCH NOT RUN — no keywords given. Call again with `requete`, e.g. \"httpx AsyncClient timeout\"."
 
     demande = arguments.get("nombre_resultats")
     nombre = demande if isinstance(demande, int) and 1 <= demande <= RESULTATS_MAX else RESULTATS_MAX
@@ -87,11 +87,19 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
         )
     except Exception as exc:  # noqa: BLE001 — frontière : tout échec doit revenir au modèle en texte
         logger.error("Recherche web « {} » échouée : {}", requete, exc)
-        return f"Échec de la recherche web : {exc}. Le dire à l'utilisateur plutôt que de répondre de mémoire."
+        return (f"SEARCH FAILED — the search engine of the harness (SearXNG) did not answer ({exc}). This is the "
+                "harness, not your query and not the site you want: retrying now will fail the same way. Tell the "
+                "user web search is down; meanwhile use local sources (`doc <package>`, `--help`, installed code) "
+                "or `recuperer_page` on an address you already have.")
 
-    resultats = list(reponse.resultats)[:nombre]
+    return _rendre(requete, list(reponse.resultats)[:nombre])
+
+
+def _rendre(requete: str, resultats: list[Any]) -> str:
     if not resultats:
-        return f"Aucun résultat pour « {requete} ». Le dire à l'utilisateur ; ne pas inventer de sources."
+        return (f"SEARCH EMPTY — no result for « {requete} ». The engine works; these keywords matched nothing. "
+                "Do not repeat them: use FEWER and more distinctive words (package name + one key term, in "
+                "English), or a different angle. Never invent a source.")
 
     lignes = [_formater(r.titre, r.url, r.extrait, i) for i, r in enumerate(resultats, start=1)]
     entete = f"{len(lignes)} résultat(s) pour « {requete} » :"

@@ -250,7 +250,8 @@ class EtatBoucle:
 
     harnais: Harnais
     outils_declares: list[dict[str, Any]] | None
-    echecs_vus: set[str] = field(default_factory=set)
+    # Appels échoués (signature → message d'échec), pour redire la CAUSE quand le modèle insiste.
+    echecs_vus: dict[str, str] = field(default_factory=dict)
     # Cumule sur TOUS les tours : un fichier écrit au premier reste écrit même si les suivants
     # échouent.
     aboutis: int = 0
@@ -293,6 +294,15 @@ class EtatBoucle:
     # Texte du dernier tour du moteur, rangé par `_diffuser_tour` pour que la boucle n'ait pas à
     # tenir le tampon elle-même.
     texte_recu: str = ""
+    # Passage répété en boucle dans le dernier tour, qui l'a fait couper (`boucle_texte`).
+    boucle_texte: str | None = None
+    coupures_boucle: int = 0
+    # Issue du tour précédent (« debut », « succes », « echec », « relance ») : fixe son budget de réflexion.
+    issue_tour: str = "debut"
+    # Appels réussis d'affilée qui n'ont fait que regarder (`exploration`).
+    lectures_serie: int = 0
+    # Appels au navigateur depuis le dernier changement de code (`budget_navigateur`).
+    navigateur: int = 0
     # Compaction pendant la tâche (`compaction_boucle`) : fenêtre et ratio caractères/token mesurés.
     compaction: EtatCompaction = field(default_factory=EtatCompaction)
     relances_taches: int = 0

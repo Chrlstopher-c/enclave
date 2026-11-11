@@ -20,6 +20,7 @@ passer du texte de menu sur les pages très structurées.
 from __future__ import annotations
 
 import html
+import json
 import re
 from typing import Any
 
@@ -27,6 +28,7 @@ import httpx
 from loguru import logger
 
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
+from backend.outils.diagnostic_web import echec_http, echec_reseau
 
 NOM = "recuperer_page"
 
@@ -59,6 +61,8 @@ _RUPTURES = re.compile(r"</?(p|div|br|li|tr|h[1-6]|section|article|blockquote)\b
 _BALISES = re.compile(r"<[^>]+>")
 _LIGNES_VIDES = re.compile(r"\n\s*\n\s*\n+")
 _ESPACES = re.compile(r"[ \t ]+")
+# JSON et texte brut (API PyPI, README bruts de GitHub) : rendus tels quels, l'extraction HTML les abîmerait.
+_BRUT = re.compile(r"json|text/plain|text/markdown|text/x-")
 _TITRE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.DOTALL | re.IGNORECASE)
 
 _SCHEMA: dict[str, Any] = {
@@ -81,8 +85,10 @@ DESCRIPTION = DescriptionOutil(
     description=(
         "Really fetches a web page and returns its readable text. Use it when a search result "
         "matters and its two-line snippet is not enough, or when the user gives you an address to "
-        "read. Returns the page title and its text, truncated if long. It reads a page; it cannot "
-        "log in, fill a form, or run the page's scripts."
+        "read. Returns the page title and its text, truncated if long; JSON and plain text come back raw "
+        "(e.g. `https://pypi.org/pypi/<package>/json` gives a package's real documentation URLs). It cannot "
+        "log in, fill a form, or run the page's scripts. On failure it tells you WHY (missing page, site "
+        "down, no Internet…) and whether retrying can help: follow that, never retry a permanent failure."
     ),
     parametres=_SCHEMA,
     alias={a: "url" for a in ("adresse", "lien", "link", "page", "uri", "address", "chemin")},
@@ -138,28 +144,59 @@ async def executer(arguments: dict[str, Any], _: ContexteExecution) -> str:
             reponse = await client.get(url)
             reponse.raise_for_status()
             brut = reponse.text[:OCTETS_MAX]
+            genre = reponse.headers.get("content-type", "").lower()
     except httpx.HTTPStatusError as exc:
         logger.warning("recuperer_page : {} a répondu {}", url, exc.response.status_code)
-        raise EchecOutil(
-            f"The server answered HTTP {exc.response.status_code} for {url}. "
-            "The page may be gone, private, or refusing automated access. "
-            "Try another source rather than repeating this call.") from exc
+        raise EchecOutil(echec_http(url, exc.response.status_code)) from exc
     except httpx.HTTPError as exc:
-        logger.warning("recuperer_page : {} injoignable : {}", url, exc)
-        raise EchecOutil(f"Could not reach {url}: {exc}. Check the address, or try another source.") from exc
+        logger.warning("recuperer_page : {} injoignable : {!r}", url, exc)
+        raise EchecOutil(await echec_reseau(url, exc)) from exc
+    return _rendre(url, genre, brut)
 
+
+def _rendre(url: str, genre: str, brut: str) -> str:
+    """Texte rendu au modèle selon le type de contenu : brut (JSON, texte), refus expliqué, ou page lisible."""
+    if _BRUT.search(genre):
+        return _borne(f"Page : {url} ({genre.split(';')[0]}, raw)", _fiche_pypi(brut) or brut.strip())
+    if genre and "html" not in genre and not genre.startswith("text/"):
+        raise EchecOutil(
+            f"FETCH UNUSABLE — {url} is a {genre.split(';')[0]} file, not a web page: this tool reads text only. "
+            "Download it with `executer_commande` (curl -sLo file URL) and inspect it there if you need it.")
     texte = _texte_lisible(brut)
     if not texte:
         raise EchecOutil(
-            f"{url} was fetched but contains no readable text — it is probably a page built "
-            "entirely by scripts, or a non-text file. Its content cannot be used.")
+            f"FETCH EMPTY — {url} answered, but has no readable text: the page is built by JavaScript in the browser "
+            "(this tool does not run scripts). PERMANENT for this tool. Use the `playwright` browser (MCP) to read it, "
+            "or another source.")
     titre = _titre(brut)
     logger.info("recuperer_page : {} — {} caractères extraits", url, len(texte))
-    entete = f"Page : {url}" + (f"\nTitre : {titre}" if titre else "")
-    if len(texte) > LONGUEUR_PAGE_MAX:
-        texte = f"{texte[:LONGUEUR_PAGE_MAX]}\n\n[page tronquée à {LONGUEUR_PAGE_MAX} caractères]"
-    return f"{entete}\n\n{texte}"
+    return _borne(f"Page : {url}" + (f"\nTitre : {titre}" if titre else ""), texte)
 
+
+def _fiche_pypi(brut: str) -> str | None:
+    """JSON de l'API PyPI réduit à ce qui sert : version, résumé et VRAIES adresses de documentation.
+
+    Brut, le README d'une page PyPI occupe les 6 000 caractères et coupe les liens (`project_urls`) qui sont la raison
+    même de l'appel.
+    """
+    try:
+        info = json.loads(brut).get("info")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(info, dict) or "project_urls" not in info:
+        return None
+    liens = {**({"Homepage": info["home_page"]} if info.get("home_page") else {}), **(info.get("project_urls") or {})}
+    lignes = [f"Package: {info.get('name')} {info.get('version')} — {info.get('summary') or ''}",
+              f"Requires Python: {info.get('requires_python') or '?'}", "Official links (use these, never guess):"]
+    lignes += [f"- {nom}: {adresse}" for nom, adresse in liens.items()]
+    return "\n".join(lignes)
+
+
+def _borne(entete: str, texte: str) -> str:
+    if len(texte) > LONGUEUR_PAGE_MAX:
+        texte = (f"{texte[:LONGUEUR_PAGE_MAX]}\n\n[page truncated at {LONGUEUR_PAGE_MAX} characters; the rest "
+                 "is not available through this tool]")
+    return f"{entete}\n\n{texte}"
 
 OUTIL = Outil(description=DESCRIPTION, executer=executer)
 

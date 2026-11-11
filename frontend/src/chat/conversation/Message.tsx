@@ -7,13 +7,23 @@
  * Sous chaque réponse, une ligne de mesures à la manière du panneau de plan : mono, chiffres
  * tabulaires, texte tertiaire. Chaque valeur vient du backend et n'apparaît que si elle existe —
  * un moteur qui ne rapporte pas son débit ne se voit pas attribuer un chiffre inventé.
+ *
+ * Au survol (ou au focus, pour le clavier), chaque message dit QUAND il a été écrit — et une
+ * réponse, combien de temps elle a pris. Révélé plutôt qu'affiché en permanence : c'est une
+ * information qu'on va chercher, pas une qu'on lit à chaque tour.
  */
+
+/* Révélation au survol du message ; toujours visible au doigt, où le survol n'existe pas. */
+const CLASSE_REVELEE =
+  'opacity-100 transition-opacity duration-fast lg:opacity-0 lg:group-hover:opacity-100 ' +
+  'lg:group-focus-within:opacity-100';
 
 import { motion } from 'framer-motion';
 import type { ReactElement } from 'react';
 import { Badge, cn, fadeUp } from '../../shared/design';
 import type { MessageChat } from '../api/contrats';
 import { EnveloppeMessage } from '../actions';
+import { dureeGeneration, horodatageLisible } from '../commandes';
 import { ReponseModele } from '../raisonnement';
 import { formaterDebit, formaterHeure } from '../plan/format';
 
@@ -37,7 +47,7 @@ function Mesures({ message }: { message: MessageChat }): ReactElement {
   const modele = message.modele_id;
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-2xs tabular-nums text-text-3">
-      <span>{formaterHeure(message.cree_le)}</span>
+      <span title={horodatageLisible(message.cree_le)}>{formaterHeure(message.cree_le)}</span>
       {modele !== null && (
         <span className="max-w-full truncate text-text-2 lg:max-w-[22rem]" title={modele}>
           {nomCourt(modele)}
@@ -46,7 +56,18 @@ function Mesures({ message }: { message: MessageChat }): ReactElement {
       {tokens !== null && <span>{tokens} tokens</span>}
       {debit !== null && <span>{formaterDebit(debit)}</span>}
       {message.interrompu && <Badge tone="caution">interrompu</Badge>}
+      <Temporalite message={message} />
     </div>
+  );
+}
+
+function Temporalite({ message }: { message: MessageChat }): ReactElement {
+  const duree = dureeGeneration(message.tokens_generes, message.tokens_par_seconde);
+  return (
+    <span className={cn('text-text-3', CLASSE_REVELEE)}>
+      {horodatageLisible(message.cree_le)}
+      {duree !== null && <span title="Durée d’écriture, relecture du contexte exclue"> · écrite en {duree}</span>}
+    </span>
   );
 }
 
@@ -69,7 +90,7 @@ export function Message({ message }: MessageProps): ReactElement {
       variants={fadeUp}
       initial="hidden"
       animate="visible"
-      className={cn('flex', utilisateur ? 'justify-end' : 'justify-start')}
+      className={cn('group flex', utilisateur ? 'justify-end' : 'justify-start')}
     >
       {/* La largeur est portée par CE conteneur, pas par la bulle : l'enveloppe d'actions insère un
           bloc entre le flex et la bulle, et un `max-w-[80%]` posé plus bas se calculerait alors par
@@ -86,6 +107,11 @@ export function Message({ message }: MessageProps): ReactElement {
             )}
             {!utilisateur && <Mesures message={message} />}
           </div>
+          {utilisateur && (
+            <p className={cn('mt-1 text-right font-mono text-2xs tabular-nums text-text-3', CLASSE_REVELEE)}>
+              {horodatageLisible(message.cree_le)}
+            </p>
+          )}
         </EnveloppeMessage>
       </div>
     </motion.article>

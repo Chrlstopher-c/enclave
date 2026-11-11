@@ -1,4 +1,4 @@
-"""Résumé de compaction — le modèle chargé résume ses propres tours anciens.
+"""Résumé de compaction — Claude Haiku 5.5 d'abord (resume_claude), le modèle chargé en repli.
 
 Ce module ne DÉCIDE rien : il ne dit ni quand compacter, ni où couper (c'est le domaine `chat`, qui
 possède la fenêtre de contexte et l'historique). Il fait une seule chose : demander au modèle prêt
@@ -13,6 +13,9 @@ permet à une session longue de ne pas oublier sa tâche.
 from __future__ import annotations
 
 import re
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from loguru import logger
 
@@ -72,6 +75,7 @@ RAPPEL_FINAL = (
     "Fin de la transcription. Ne la continue PAS et n'y réponds pas : écris maintenant le RÉSUMÉ CUMULATIF "
     "demandé, avec ses sections, en 700 mots au plus. Aucun code, aucune sortie d'outil recopiée."
 )
+Suivi = Callable[[dict[str, Any]], Awaitable[None]]
 _REFLEXION = re.compile(r"<think>.*?</think>|<think>.*\Z|^.*?</think>", re.DOTALL)
 
 
@@ -106,7 +110,7 @@ def _systeme(langue: str, consigne: str, projet: bool) -> str:
 
 async def produire_resume(
     a_resumer: str, resume_precedent: str, langue: str, max_tokens: int, consigne: str = "",
-    projet: bool = False,
+    projet: bool = False, suivi: Suivi | None = None,
 ) -> str | None:
     """Demande au modèle chargé un résumé cumulatif, ou `None` si rien ne peut être produit.
 
@@ -119,14 +123,36 @@ async def produire_resume(
     messages = construire_messages_resume(a_resumer, resume_precedent)
     systeme = _systeme(langue, consigne, projet)
     messages[0] = MessageChat(role="system", content=systeme)
-    options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens, sans_reflexion=True)
+    from backend.inference import resume_claude
     from backend.outils.noms_publics import publier_messages
 
+    publies = publier_messages(messages)
+    if suivi is not None:
+        await suivi({"etape": "resume", "resumeur": None})
+    texte = await resume_claude.resumer(str(publies[0].content), str(publies[1].content))
+    if texte is not None:
+        if suivi is not None:
+            await suivi({"resumeur": "claude-haiku"})
+        return texte
+    if suivi is not None:
+        await suivi({"resumeur": "local"})
+    if suivi is None:
+        return await _resume_local(publies, max_tokens)
+    return await _resume_local(publies, max_tokens, suivi)
+
+
+async def _resume_local(messages: list[MessageChat], max_tokens: int, suivi: Suivi | None = None) -> str | None:
+    """Résumé par le modèle chargé : le repli quand Claude n'a pas pu répondre."""
+    options = OptionsGeneration(temperature=_TEMPERATURE_RESUME, max_tokens=max_tokens, sans_reflexion=True)
     morceaux: list[str] = []
+    debut = time.monotonic()
     try:
-        async for morceau in superviseur.generer(publier_messages(messages), options, None):
+        async for morceau in superviseur.generer(messages, options, None):
             if morceau.type == "token" and morceau.contenu:
                 morceaux.append(morceau.contenu)
+                if suivi is not None:
+                    debit = round(len(morceaux) / max(time.monotonic() - debut, 1e-3), 1)
+                    await suivi({"tokens": len(morceaux), "tokens_par_seconde": debit})
             elif morceau.type == "erreur":
                 logger.error("Résumé de compaction interrompu par le moteur : {}", morceau.contenu)
                 return None

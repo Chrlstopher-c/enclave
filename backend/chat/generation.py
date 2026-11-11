@@ -15,6 +15,7 @@ donnait des statistiques crédibles et fausses.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -22,7 +23,8 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
-from backend.chat import annulation, compaction, depot, diffusion, port_inference
+from backend.chat import annulation, compaction, depot, diffusion, effacement, port_inference
+from backend.commandes.progression import ProgressionCompaction, activite_compaction, battements
 from backend.chat.annulation import GenerationActive
 from backend.chat.compaction import MessageAncre
 from backend.chat.erreurs import BrancheInvalide
@@ -378,13 +380,14 @@ def _historique_branche(
     reglages: ReglagesConversation,
     ancre: str | None,
 ) -> list[MessageChat]:
-    """Chemin racine → ancre, tronqué en NOMBRE DE MESSAGES quand l'utilisateur l'a demandé."""
+    """Chemin racine → ancre, après le dernier /clear actif, tronqué en NOMBRE DE MESSAGES si demandé."""
     historique = [] if ancre is None else depot.chemin_jusqua(conversation_id, ancre)
     if not historique:
         raise BrancheInvalide(
             "Aucun historique en amont de ce point : il n'y a rien à envoyer au moteur.",
             details={"conversation_id": conversation_id, "ancre": ancre},
         )
+    historique = effacement.apres_effacement(conversation_id, historique)
     if reglages.historique_max_messages is None:
         return historique
     return historique[-reglages.historique_max_messages :]
@@ -482,18 +485,30 @@ async def _compacter_si_besoin(
     (mesure absente, moteur occupé, résumé en échec), la requête part inchangée — jamais tronquée en
     silence. La balise éventuelle est émise en direct et retenue pour être persistée après le message.
     """
+    progression = ProgressionCompaction()
+
+    async def suivre(details: dict[str, Any]) -> None:
+        progression.appliquer(details)
+        if "etape" in details:
+            await file.put(EvenementActivite(activite=activite_compaction(progression)))
+
     try:
         moteur = port_inference.obtenir_moteur()
         chemin_ids = {ancre.id for ancre in preparation.ancres}
         active = depot.lire_compaction_active(preparation.conversation_id, chemin_ids)
-        resultat = await compaction.preparer_compaction(
+        tache = asyncio.create_task(compaction.preparer_compaction(
             moteur,
             preparation.entete,
             preparation.ancres,
             active,
             conversation_id=preparation.conversation_id,
             message_id=preparation.message_id,
-        )
+            suivi=suivre,
+        ))
+        async for _ in battements(tache):
+            if progression.demarree:
+                await file.put(EvenementActivite(activite=activite_compaction(progression)))
+        resultat = tache.result()
     except Exception as exc:  # noqa: BLE001 — la compaction est un plus, jamais une condition de génération
         logger.warning("Compaction non tentée sur {} ({}) : contexte inchangé.",
                        preparation.conversation_id, exc)

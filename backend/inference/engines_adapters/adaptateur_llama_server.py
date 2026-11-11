@@ -39,6 +39,7 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from backend.inference.engines_adapters import sobriete_reflexion
 from backend.inference.engines_adapters import processus_llama_server as serveur
 from backend.inference.engines_adapters.base import (
     AdaptateurMoteur,
@@ -58,6 +59,7 @@ from backend.inference.engines_adapters.contrat import (
     Sante,
 )
 from backend.inference.engines_adapters.diagnostic import Diagnostic, EchecChargement, qualifier
+from backend.inference.engines_adapters.evenements_llama_server import _Delta, _decoder_evenement
 from backend.inference.engines_adapters.journal import SessionChargement, journal_chargement
 from backend.inference.engines_adapters.vram import lire_vram
 
@@ -77,8 +79,6 @@ Processus = subprocess.Popen  # type: ignore[type-arg]
 # Un fragment vide traverse `_appliquer` sans rien afficher et réarme le délai.
 _BATTEMENT = MorceauGeneration(type="token", contenu="")
 
-PREFIXE_SSE = "data: "
-MARQUEUR_FIN_SSE = "[DONE]"
 # Une génération outillée sur un contexte long peut légitimement durer plusieurs minutes ; le flux
 # est borné par le nombre de tokens émis, pas par ce délai, qui ne protège que d'un serveur muet.
 DELAI_GENERATION_S = 900.0
@@ -96,6 +96,8 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
         self._processus: Processus | None = None
         self._etat: EtatMoteur | None = None
         self._journal: IO[bytes] | None = None
+        # (modèle, logit_bias NoWait) : tokenisé une fois par modèle chargé.
+        self._biais_cache: tuple[str, dict[str, float]] | None = None
 
     @property
     def etat(self) -> EtatMoteur | None:
@@ -230,6 +232,20 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
         reponse.raise_for_status()
         return len(reponse.json()["tokens"])
 
+    async def _biais(self, options: OptionsGeneration) -> dict[str, float] | None:
+        """`logit_bias` NoWait du modèle servi, tokenisé à la première demande puis gardé."""
+        if not options.bannir_hesitations or self._etat is None:
+            return None
+        if self._biais_cache is None or self._biais_cache[0] != self._etat.modele:
+            async with self._client(serveur.DELAI_SONDE_HTTP_S) as client:
+                async def jetons(mot: str) -> list[int]:
+                    reponse = await client.post(f"{self._url_base()}/tokenize", json={"content": mot})
+                    reponse.raise_for_status()
+                    return [int(jeton) for jeton in reponse.json()["tokens"]]
+
+                self._biais_cache = (self._etat.modele, await sobriete_reflexion.biais_hesitation(jetons))
+        return self._biais_cache[1]
+
     def generer(
         self,
         messages: Sequence[MessageChat],
@@ -258,6 +274,8 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
         `_Accumulateur` pour le défaut que cela corrige.
         """
         charge = self._charge_utile(messages, options, outils)
+        budget = None if options.sans_reflexion else options.budget_reflexion
+        charge.update(sobriete_reflexion.champs_llama_server(budget, await self._biais(options)))
         plafond = options.max_tokens or (self._etat.contexte if self._etat else 0)
         appels = _Accumulateur()
         raison: str | None = None
@@ -285,6 +303,9 @@ class AdaptateurLlamaServer(AdaptateurMoteur):
             "temperature": options.temperature,
             "top_p": options.top_p,
             "stream": True,
+            # Avancement de la relecture du prompt (`prompt_progress`) : sans lui, l'écran restait figé de longues
+            # secondes après chaque outil, sans rien qui distingue « il relit » de « il est bloqué » (2026-11-11).
+            "return_progress": True,
         }
         if outils:
             charge["tools"] = list(outils)
@@ -358,16 +379,18 @@ async def _lire_flux(
         if delta.fin:
             yield None, delta.raison_arret
             return
+        if delta.lecture is not None:
+            yield MorceauGeneration(type="progression", details={"jetons": 0, "lecture": delta.lecture}), None
+            continue
         appels.ajouter(delta.fragments)
         if delta.contenu:
             emis += 1
             yield MorceauGeneration(type="token", contenu=delta.contenu), delta.raison_arret
         elif delta.fragments:
             # Arguments d'un appel en cours : progression, avec l'appel déjà écrit toutes les 0,5 s.
-            details: dict[str, Any] = {"jetons": 1}
-            if time.monotonic() - derniere >= 0.5:
-                derniere = time.monotonic()
-                details["outil"] = appels.en_cours()
+            avec_appel = time.monotonic() - derniere >= 0.5
+            derniere = time.monotonic() if avec_appel else derniere
+            details = {"jetons": 1, **({"outil": appels.en_cours()} if avec_appel else {})}
             yield MorceauGeneration(type="progression", details=details), delta.raison_arret
         else:
             yield None, delta.raison_arret
@@ -384,45 +407,6 @@ async def _verifier_reponse(reponse: httpx.Response) -> None:
     logger.error("llama-server {} sur /v1/chat/completions : {}", reponse.status_code, corps[:500])
     raise EchecChargement(qualifier(corps, source_verifiee=True),
                           details={"statut": reponse.status_code})
-
-
-class _Delta(BaseModel):
-    """Ce qu'un événement SSE apporte : du texte, et/ou des FRAGMENTS d'appels d'outils."""
-
-    contenu: str = ""
-    fragments: list[dict[str, Any]] = Field(default_factory=list)
-    raison_arret: str | None = None
-    fin: bool = False
-
-
-def _decoder_evenement(ligne: str) -> _Delta | None:
-    """Traduit une ligne SSE en delta. `None` pour tout ce qui n'est pas un événement.
-
-    Fonction PURE et sans état : elle ne sait pas ce qui a précédé, donc elle ne peut pas
-    reconstituer un appel d'outil. C'est `_Accumulateur` qui le fait — la séparation est
-    délibérée, et c'est exactement ce qui manquait dans la version qui a produit le défaut décrit
-    sur `_Accumulateur`.
-    """
-    if not ligne or not ligne.startswith(PREFIXE_SSE):
-        return None
-    charge = ligne[len(PREFIXE_SSE):].strip()
-    if charge == MARQUEUR_FIN_SSE:
-        return _Delta(fin=True)
-    try:
-        evenement = json.loads(charge)
-    except json.JSONDecodeError:
-        logger.warning("Événement SSE llama-server illisible, ignoré : {}", charge[:120])
-        return None
-    choix = (evenement.get("choices") or [{}])[0]
-    delta = choix.get("delta") or {}
-    # `reasoning_content` est délibérément IGNORÉ : le serveur tourne avec `--reasoning-format
-    # none`, qui laisse les balises de réflexion dans `content`. Le lire en plus dupliquerait la
-    # réflexion — une fois balisée dans le contenu, une fois nue à côté.
-    return _Delta(
-        contenu=delta.get("content") or "",
-        fragments=list(delta.get("tool_calls") or []),
-        raison_arret=choix.get("finish_reason"),
-    )
 
 
 class _Accumulateur:

@@ -29,6 +29,7 @@ from typing import Any
 
 from loguru import logger
 
+from backend.outils import indice_api
 from backend.outils.bac_a_sable import (
     chemin_dans_atelier,
     TIMEOUT_COMMANDE_SECONDES,
@@ -37,6 +38,7 @@ from backend.outils.bac_a_sable import (
 )
 from backend.outils.balayage_bac import balayer_et_enregistrer, etat_bac
 from backend.outils.contrat import ContexteExecution, DescriptionOutil, EchecOutil, Outil
+from backend.outils import mode_hybride
 from backend.outils.garde_fous import CommandeRefusee, verifier_commande
 
 NOM = "executer_commande"
@@ -90,7 +92,7 @@ def _tronque(texte: str) -> str:
     return f"{texte[:LONGUEUR_SORTIE_MAX]}\n[sortie tronquée à {LONGUEUR_SORTIE_MAX} caractères]"
 
 
-def _formater(resultat: Any, fichiers: list[Any]) -> str:
+def _formater(resultat: Any, fichiers: list[Any], commande: str = "") -> str:
     """Compte rendu pour le modèle. Le code de retour vient EN PREMIER, à dessein.
 
     Une commande qui échoue écrit souvent sur la sortie standard avant d'échouer : un modèle qui
@@ -114,14 +116,28 @@ def _formater(resultat: Any, fichiers: list[Any]) -> str:
     if fichiers:
         noms = ", ".join(f"{f.nom_affiche} (id {f.id})" for f in fichiers)
         lignes.append(f"Fichier(s) produit(s), déposés dans la conversation : {noms}")
+    conseil = indice_api.indice(commande, f"{resultat.sortie}\n{resultat.erreur}")
+    if conseil is not None:
+        lignes.append(conseil)
     return "\n\n".join(lignes)
+
+
+def _controler(commande: str, contexte: ContexteExecution) -> None:
+    """Garde-fous, puis mode hybride (pas de code écrit par le shell) : lève `EchecOutil` si refusé."""
+    try:
+        verifier_commande(commande, chemin_dans_atelier(contexte.racine_bac))
+    except CommandeRefusee as exc:
+        logger.warning("executer_commande refusée par les garde-fous : {}", exc)
+        raise EchecOutil(str(exc)) from exc
+    refus = mode_hybride.refuse_commande(contexte, commande)
+    if refus:
+        raise EchecOutil(refus)
 
 
 async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> str:
     """Exécute la commande dans le bac de `contexte`, balaie, rend un compte rendu au modèle.
 
-    Le sous-processus est bloquant : il tourne sur un thread séparé pour ne pas geler la boucle
-    asyncio pendant l'attente — qui peut atteindre le filet de sécurité complet sur un appel réseau.
+    Le sous-processus bloquant tourne sur un thread séparé : la boucle asyncio ne gèle pas pendant l'attente.
 
     Un code de retour non nul lève `EchecOutil` avec le compte rendu COMPLET : le harnais a besoin
     de savoir qu'un appel n'a pas abouti (`_AUCUN_OUTIL_ABOUTI`, anti-redite), et le modèle a
@@ -134,11 +150,7 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
             "No command given. Send the `commande` argument with the full shell line, "
             'for example: {"commande": "gcc hello.c -o hello && ./hello"}'
         )
-    try:
-        verifier_commande(commande, chemin_dans_atelier(contexte.racine_bac))
-    except CommandeRefusee as exc:
-        logger.warning("executer_commande refusée par les garde-fous : {}", exc)
-        raise EchecOutil(str(exc)) from exc
+    _controler(commande, contexte)
     preparer_bac(contexte.racine_bac)
     # En mode projet, pas de balayage : un `bun install` crée des milliers de fichiers, qui ne sont
     # pas des livrables de la conversation — le projet sur disque EST le livrable.
@@ -149,7 +161,7 @@ async def executer(arguments: dict[str, Any], contexte: ContexteExecution) -> st
         "executer_commande : code_retour={} durée={:.2f}s fichiers_produits={}",
         resultat.code_retour, resultat.duree_s, len(fichiers),
     )
-    compte_rendu = _formater(resultat, fichiers)
+    compte_rendu = _formater(resultat, fichiers, commande)
     if resultat.code_retour != 0:
         raise EchecOutil(compte_rendu)
     return compte_rendu

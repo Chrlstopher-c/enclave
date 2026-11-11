@@ -6,6 +6,10 @@
  * Quand le suivi est décroché, une pastille « reprendre le fil » apparaît au-dessus du composeur :
  * revenir en bas après avoir relu trois écrans plus haut est un geste, pas une glissade — surtout
  * au doigt, où le fil peut faire plusieurs milliers de pixels pendant une génération.
+ *
+ * COMMANDES — le fil masque ce qu'un `/clear` a effacé (séparateur annulable à sa place) et montre
+ * la progression d'une `/compact` en cours au bas du fil. L'état vient du magasin des commandes,
+ * indexé par la conversation des messages affichés : le fil n'a pas besoin qu'on la lui passe.
  */
 
 import { AnimatePresence, motion } from 'framer-motion';
@@ -13,6 +17,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { cn, fadeUp } from '../../shared/design';
 import type { InfoCompaction, MessageChat } from '../api/contrats';
+import {
+  CarteCommande,
+  ecarterCommande,
+  masquerEfface,
+  SeparateurEffacement,
+  useEffacements,
+  useEtatCommandes,
+  type EtatCommandes,
+  type EtatEffacements,
+  type VueEffacee,
+} from '../commandes';
 import { BaliseCompaction } from './BaliseCompaction';
 import { ActiviteEnDirect } from './ActiviteEnDirect';
 import { Message, MessageEnCours } from './Message';
@@ -69,7 +84,7 @@ interface SuiviDefilement {
   reprendre: () => void;
 }
 
-function useSuiviDefilement(messages: MessageChat[], brouillon: string | null): SuiviDefilement {
+function useSuiviDefilement(messages: MessageChat[], brouillon: string | null, autre: unknown): SuiviDefilement {
   const conteneur = useRef<HTMLDivElement | null>(null);
   const suit = useRef<boolean>(true);
   // Doublon d'état volontaire : `suit` pilote le défilement à chaque fragment sans re-rendu,
@@ -82,7 +97,7 @@ function useSuiviDefilement(messages: MessageChat[], brouillon: string | null): 
       return;
     }
     element.scrollTop = element.scrollHeight;
-  }, [messages, brouillon]);
+  }, [messages, brouillon, autre]);
 
   const surDefilement = (): void => {
     const element = conteneur.current;
@@ -104,14 +119,33 @@ function useSuiviDefilement(messages: MessageChat[], brouillon: string | null): 
   return { conteneur, decroche, surDefilement, reprendre };
 }
 
-export function FilMessages({
-  messages,
-  brouillon,
-  compactionEnCours,
-  activite = null,
-  vide,
-}: FilMessagesProps): ReactElement {
-  const { conteneur, decroche, surDefilement, reprendre } = useSuiviDefilement(messages, brouillon);
+/* La balise d'une `/compact` qui vient de finir passe avant celle, plus ancienne, du fil pas encore relu. */
+function baliseDe(message: MessageChat, commandes: EtatCommandes): InfoCompaction | null {
+  if (commandes.compaction !== null && commandes.compaction.message_id === message.id) {
+    return commandes.compaction;
+  }
+  // `?? null` : un message servi par un backend antérieur à la compaction n'a pas ce champ.
+  return message.compaction ?? null;
+}
+
+function useCommandesDuFil(messages: MessageChat[]): {
+  conversationId: string | null;
+  commandes: EtatCommandes;
+  effacements: EtatEffacements;
+} {
+  const conversationId = messages[0]?.conversation_id ?? null;
+  const commandes = useEtatCommandes(conversationId);
+  const effacements = useEffacements(conversationId, commandes.effacements !== null);
+  return { conversationId, commandes, effacements };
+}
+
+export function FilMessages(props: FilMessagesProps): ReactElement {
+  const { messages, brouillon, vide } = props;
+  const { conversationId, commandes, effacements } = useCommandesDuFil(messages);
+  const vue = masquerEfface(messages, commandes.effacements ?? []);
+  const { conteneur, decroche, surDefilement, reprendre } = useSuiviDefilement(
+    messages, brouillon, commandes.commande?.commande.etape ?? vue.masques,
+  );
   const aucunContenu = messages.length === 0 && brouillon === null;
   return (
     // `min-h-0` : sans lui, ce bloc flex refuse de rétrécir sous la hauteur de son contenu et pousse
@@ -125,22 +159,75 @@ export function FilMessages({
         {aucunContenu ? (
           vide
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-6">
-            {messages.map((message) => (
-              <div key={message.id} className="flex flex-col gap-6">
-                {/* `!= null` et non `!== null` : un message servi par un backend antérieur à la
-                    compaction n'a pas du tout ce champ — il vaut `undefined`, pas `null`. */}
-                {message.compaction != null && <BaliseCompaction compaction={message.compaction} />}
-                <Message message={message} />
-              </div>
-            ))}
-            {compactionEnCours != null && <BaliseCompaction compaction={compactionEnCours} />}
-            {brouillon !== null && <MessageEnCours texte={brouillon} />}
-            {brouillon !== null && <ActiviteEnDirect activite={activite} />}
-          </div>
+          <CorpsFil {...props} vue={vue} conversationId={conversationId} commandes={commandes}
+            effacements={effacements} />
         )}
       </div>
       <PastilleReprise visible={decroche && !aucunContenu} onReprendre={reprendre} />
+    </div>
+  );
+}
+
+interface CorpsFilProps extends Omit<FilMessagesProps, 'messages'> {
+  vue: VueEffacee;
+  conversationId: string | null;
+  commandes: EtatCommandes;
+  effacements: EtatEffacements;
+}
+
+function MessagesVisibles({ vue, commandes }: { vue: VueEffacee; commandes: EtatCommandes }): ReactElement {
+  return (
+    <>
+      {vue.visibles.map((message) => {
+        const balise = baliseDe(message, commandes);
+        return (
+          <div key={message.id} className="flex flex-col gap-6">
+            {balise !== null && <BaliseCompaction compaction={balise} />}
+            <Message message={message} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function CarteDuFil({ conversationId, commandes }: { conversationId: string | null; commandes: EtatCommandes }):
+ReactElement {
+  return (
+    <AnimatePresence>
+      {commandes.commande !== null && conversationId !== null && (
+        <CarteCommande
+          key={commandes.commande.commande.id}
+          recue={commandes.commande}
+          onFermer={() => ecarterCommande(conversationId)}
+        />
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* Après un `/clear` qui a tout masqué, l'accueil d'une conversation neuve revient SOUS le séparateur. */
+function CorpsFil(props: CorpsFilProps): ReactElement {
+  const { vue, brouillon, compactionEnCours, activite = null, commandes, effacements } = props;
+  const filVide = vue.visibles.length === 0 && brouillon === null && commandes.commande === null;
+  const effacement = vue.effacement;
+  return (
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6">
+      {effacement !== null && (
+        <SeparateurEffacement
+          effacement={effacement}
+          masques={vue.masques}
+          enAnnulation={effacements.enAnnulation}
+          erreur={effacements.erreur}
+          onAnnuler={() => void effacements.annuler(effacement.id)}
+        />
+      )}
+      <MessagesVisibles vue={vue} commandes={commandes} />
+      {compactionEnCours != null && <BaliseCompaction compaction={compactionEnCours} />}
+      {brouillon !== null && <MessageEnCours texte={brouillon} />}
+      {brouillon !== null && <ActiviteEnDirect activite={activite} />}
+      <CarteDuFil conversationId={props.conversationId} commandes={commandes} />
+      {filVide && <div className="flex-1">{props.vide}</div>}
     </div>
   );
 }

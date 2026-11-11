@@ -21,6 +21,7 @@ from typing import IO, Any, AsyncIterator, Sequence
 import httpx
 from loguru import logger
 
+from backend.inference.engines_adapters import sobriete_reflexion
 from backend.inference.engines_adapters import processus_vllm
 from backend.inference.engines_adapters.adaptateur_llama_server import _Accumulateur
 from backend.inference.engines_adapters.base import AdaptateurMoteur, exiger_moteur, exiger_source_lisible
@@ -34,9 +35,9 @@ from backend.inference.engines_adapters.contrat import (
     OptionsGeneration,
     PlanChargement,
     Sante,
-    en_charge_moteur,
 )
 from backend.inference.engines_adapters.diagnostic import Diagnostic, EchecChargement, qualifier
+from backend.inference.engines_adapters.images_moteur import messages_pour_moteur
 from backend.inference.engines_adapters.journal import NiveauEntree, SessionChargement, journal_chargement
 from backend.inference.engines_adapters.vram import MesureVram, lire_vram
 
@@ -58,6 +59,10 @@ class AdaptateurVllm(AdaptateurMoteur):
         self._processus: subprocess.Popen[bytes] | None = None
         self._journal_fichier: IO[bytes] | None = None
         self._etat: EtatMoteur | None = None
+        # Le modèle chargé a-t-il une tour de vision ? Sinon chaque image devient une ligne de texte.
+        self._vision = False
+        # (modèle, logit_bias NoWait) : tokenisé une fois par modèle chargé.
+        self._biais_cache: tuple[str, dict[str, float]] | None = None
 
     @property
     def etat(self) -> EtatMoteur | None:
@@ -70,6 +75,7 @@ class AdaptateurVllm(AdaptateurMoteur):
 
         interpreteur = processus_vllm.resoudre_interpreteur()
         commande = processus_vllm.construire_commande(plan, interpreteur)
+        self._vision = processus_vllm.est_multimodal(Path(plan.chemin_modele))
         chemin_journal = processus_vllm.chemin_journal()
         vram_avant = lire_vram()
         journal_chargement.noter(
@@ -251,6 +257,31 @@ class AdaptateurVllm(AdaptateurMoteur):
         reponse.raise_for_status()
         return int(reponse.json()["count"])
 
+    async def _biais(self, options: OptionsGeneration) -> dict[str, float] | None:
+        """`logit_bias` NoWait du modèle servi, tokenisé à la première demande puis gardé."""
+        if not options.bannir_hesitations or self._etat is None:
+            return None
+        if self._biais_cache is None or self._biais_cache[0] != self._etat.modele:
+            biais = await self._tokeniser_hesitations(self._etat.modele)
+            if biais is None:
+                return None
+            self._biais_cache = (self._etat.modele, biais)
+        return self._biais_cache[1]
+
+    async def _tokeniser_hesitations(self, modele: str) -> dict[str, float] | None:
+        try:
+            async with httpx.AsyncClient(timeout=DELAI_GENERATION_S) as client:
+                async def jetons(mot: str) -> list[int]:
+                    corps = {"model": modele, "prompt": mot, "add_special_tokens": False}
+                    reponse = await client.post(f"{processus_vllm.url_base()}/tokenize", json=corps)
+                    reponse.raise_for_status()
+                    return [int(jeton) for jeton in reponse.json()["tokens"]]
+
+                return await sobriete_reflexion.biais_hesitation(jetons)
+        except httpx.HTTPError as exc:
+            logger.warning("NoWait indisponible sur vLLM : {}", exc)
+            return None
+
     def generer(
         self,
         messages: Sequence[MessageChat],
@@ -275,6 +306,8 @@ class AdaptateurVllm(AdaptateurMoteur):
     ) -> AsyncIterator[MorceauGeneration]:
         """Relaie le flux SSE de vLLM, borné par le contexte servi : un flux sans fin est un bug."""
         charge_utile = self._charge_utile(messages, options, outils)
+        budget = None if options.sans_reflexion else options.budget_reflexion
+        charge_utile.update(sobriete_reflexion.champs_vllm(budget, await self._biais(options)))
         plafond = options.max_tokens or (self._etat.contexte if self._etat else 0)
         # Avec `--tool-call-parser`, vLLM rend les appels dans `delta.tool_calls` et les RETIRE du texte.
         # La boucle d'outils les lit dans le texte : ils sont recomposés en `<tool_call>{…}</tool_call>`,
@@ -325,7 +358,7 @@ class AdaptateurVllm(AdaptateurMoteur):
     ) -> dict[str, Any]:
         charge: dict[str, Any] = {
             "model": self._etat.modele if self._etat else "",
-            "messages": [en_charge_moteur(message) for message in messages],
+            "messages": messages_pour_moteur(messages, self._vision),
             "temperature": options.temperature,
             "top_p": options.top_p,
             "stream": True,

@@ -8,6 +8,7 @@ pour ne pas casser le cache de préfixe du moteur.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from loguru import logger
@@ -15,6 +16,21 @@ from loguru import logger
 from backend.outils.explorer_bac import DOSSIERS_IGNORES
 
 ENTREES_MAX = 40
+# Matériel de l'hôte confié à l'atelier (antenne Wi-Fi, docker/wifi) : une information sur l'environnement,
+# pas un outil — l'agent s'en sert par le shell comme de n'importe quelle commande. Décrit dans le .env.
+VARIABLE_MATERIEL = "ECHOHUB_ATELIER_MATERIEL"
+
+
+def ligne_materiel() -> str:
+    """« Hardware: … » si un matériel est déclaré, sinon vide."""
+    texte = os.environ.get(VARIABLE_MATERIEL, "").strip()
+    return f"Hardware available in your shell: {texte}" if texte else ""
+
+
+def bloc_materiel() -> str:
+    """Bloc `<env>` réduit au matériel, pour une conversation sans projet."""
+    ligne = ligne_materiel()
+    return f"<env>\n{ligne}\n</env>" if ligne else ""
 
 
 def _entrees(dossier: Path, profondeur: int) -> list[str]:
@@ -44,8 +60,9 @@ def bloc_environnement(racine: Path, projet: str) -> str:
     arbre = "\n".join(lignes[:ENTREES_MAX]) or "(empty folder)"
     if reste > 0:
         arbre += f"\n… {reste} more (use list_files)"
+    materiel = ligne_materiel()
     return (f"<env>\nWorking directory: /projets/{projet} (already the shell's cwd; use relative paths)\n"
-            f"Scratch space: /tmp\nFiles:\n{arbre}\n</env>")
+            f"Scratch space: /tmp\n{materiel + chr(10) if materiel else ''}Files:\n{arbre}\n</env>")
 
 
-__all__ = ["bloc_environnement"]
+__all__ = ["bloc_environnement", "bloc_materiel", "ligne_materiel"]

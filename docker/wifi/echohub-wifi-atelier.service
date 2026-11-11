@@ -1,0 +1,11 @@
+[Unit]
+Description=EchoHub — confie l'antenne Wi-Fi USB à l'atelier de l'agent
+After=docker.service
+
+[Service]
+ExecStart=%h/.local/bin/echohub-wifi-atelier
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

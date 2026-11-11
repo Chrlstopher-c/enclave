@@ -22,7 +22,7 @@ def test_le_moteur_ne_voit_que_des_noms_publics() -> None:
     lire = next(o for o in publies if o["function"]["name"] == "read_file")["function"]["parameters"]
     assert set(lire["properties"]) == {"path", "start_line", "end_line"} and lire["required"] == ["path"]
     groupe = next(o for o in publies if o["function"]["name"] == "write_files")["function"]["parameters"]
-    assert set(groupe["properties"]["files"]["items"]["properties"]) == {"path", "content"}
+    assert groupe["properties"]["files"]["type"] == "string" and groupe["required"] == ["files"]
 
 
 def test_un_appel_public_redevient_interne() -> None:

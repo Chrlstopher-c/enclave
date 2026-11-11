@@ -23,6 +23,8 @@ import {
 } from '../api/conversations-api';
 import { archiverConversation, listerConversationsArchivees } from './api-archivage';
 import { journal } from '../api/journal';
+import { useRetourPremierPlan, PERIODE_RESYNC_MS } from '../../shared/hooks/useRetourPremierPlan';
+import { fusionnerParId } from './fusion-par-id';
 
 const TITRE_PAR_DEFAUT = 'Nouvelle conversation';
 
@@ -139,24 +141,34 @@ async function chargerLesArchivees(poser: PoseListes, poserErreur: PoseErreur): 
   }
 }
 
+async function rafraichirListe(poser: PoseListes, poserErreur: PoseErreur): Promise<void> {
+  try {
+    const actives = await listerConversations();
+    poser((courantes) => ({ ...courantes, actives: fusionnerParId(courantes.actives, actives) }));
+    poserErreur(null);
+  } catch (cause) {
+    journal.erreur('liste des conversations indisponible', cause);
+    poserErreur(messageErreur(cause));
+  }
+}
+
 export function useConversations(): EtatConversations {
   const [listes, setListes] = useState<Listes>({ actives: [], archivees: null });
   const [erreur, setErreur] = useState<string | null>(null);
 
-  const rafraichir = useCallback(async (): Promise<void> => {
-    try {
-      const actives = await listerConversations();
-      setListes((courantes) => ({ ...courantes, actives }));
-      setErreur(null);
-    } catch (cause) {
-      journal.erreur('liste des conversations indisponible', cause);
-      setErreur(messageErreur(cause));
-    }
-  }, []);
+  const rafraichir = useCallback((): Promise<void> => rafraichirListe(setListes, setErreur), []);
 
   useEffect((): void => {
     void rafraichir();
   }, [rafraichir]);
+
+  // Au retour sur la page et à intervalle : titres, ordre et activité suivent sans rechargement.
+  useRetourPremierPlan(
+    useCallback((): void => {
+      void rafraichir();
+    }, [rafraichir]),
+    PERIODE_RESYNC_MS,
+  );
 
   return {
     conversations: listes.actives,

@@ -117,6 +117,17 @@ CREATE TABLE IF NOT EXISTS chat_compactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_compactions_conversation ON chat_compactions(conversation_id);
+
+-- Effacements de contexte (`/clear`) : une ligne = une ancre (dernier message de la branche au moment
+-- du clear). Annulable : la ligne est supprimée. Ajout purement additif, comme `chat_compactions`.
+CREATE TABLE IF NOT EXISTS chat_effacements (
+    id                TEXT PRIMARY KEY,
+    conversation_id   TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    ancre_message_id  TEXT NOT NULL,
+    cree_le           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_effacements_conversation ON chat_effacements(conversation_id);
 """
 
 # Retrait de l'ancien défaut inventé de `max_tokens`. Il valait 1024 et était figé À LA CRÉATION de

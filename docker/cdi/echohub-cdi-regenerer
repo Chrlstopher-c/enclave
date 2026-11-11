@@ -17,7 +17,13 @@ reel="$(awk '$2 == "nvidia-uvm" {print $1}' /proc/devices)"
 [ -n "$reel" ] || { echo "[cdi] nvidia-uvm absent de /proc/devices" >&2; exit 1; }
 
 fige="$(grep -A1 'path: /dev/nvidia-uvm$' "$SPEC" 2>/dev/null | awk '/major:/ {print $2}' || true)"
-if [ "$fige" = "$reel" ]; then
+manquant=""
+while read -r chemin; do
+    [ -e "$chemin" ] || manquant="$chemin"
+done < <(awk '$1 == "-" && $2 == "path:" && $3 ~ /^\/dev\// {print $3}' "$SPEC" 2>/dev/null | sort -u)
+if [ -n "$manquant" ]; then
+    echo "[cdi] device du spec absent : $manquant — régénération"
+elif [ "$fige" = "$reel" ]; then
     echo "[cdi] spec à jour (nvidia-uvm major $reel)"
     exit 0
 fi

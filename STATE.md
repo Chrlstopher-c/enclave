@@ -17,6 +17,53 @@
   `/sante` dit si le PC répond. **Piège (2026-10-02)** : changer le mot de passe nginx d'enclave
   (`ECHOHUB_AUTH_HASH`) casse le relais — le hash doit correspondre à `RELAIS_ECHOHUB_MOTDEPASSE`.
 
+## EN COURS (2026-11-11, soir) — mode hybride aveugle (déployé, NON commité)
+
+- **Mode hybride** : en mode projet, si le relais est configuré, le modèle local pilote et Haiku écrit le code
+  (`confier_a_haiku` → relais `/agent`). Haiku travaille dans un espace vierge opaque. Il ne reçoit que la tâche et
+  ses propres fichiers. Une garde de fuite passe sur tout l'envoi : nom du projet, `~agent/canaris.txt`, URL, chemins,
+  IP et secrets. Les écritures locales de plus de 400 caractères et les écritures de code par le shell sont
+  refusées. `MODE_HYBRIDE=0` désactive le mode. L'abonnement Claude Code est obligatoire, jamais l'API.
+- Plusieurs autres ajouts sont actifs :
+  - `deleguer_code`, une fonction pure anonymisée via `/coder` ;
+  - la réécriture des adresses localhost vers `echohub-atelier` ;
+  - un rappel après 8 lectures d'affilée ;
+  - un plafond de 10 appels navigateur sans changement de code ;
+  - des budgets de réflexion resserrés ;
+  - le schéma de l'outil renvoyé quand un argument MCP est invalide.
+- Mesures sur le même prompt de jeu : Haiku seul 2m25 ; 35B seul 24 min ; **hybride aveugle 3 en 14m45, 30 appels,
+  14/14 tests**. Restent : la réflexion du 35B domine, `find /` sur des captures playwright, des tentatives sur
+  `.echohub`, des relances après le plafond navigateur.
+- Le téléphone (app echo-centre) n'affiche une génération qu'à la fin si elle a démarré ailleurs. Le correctif
+  (rejoindre `/flux` à l'ouverture) a été reporté par Chris.
+- Ménage à faire : les projets de test `tetris-*` et `essai-harnais` dans le dossier projets.
+
+## EN COURS (2026-11-11)
+
+- **Étape franchie : auto-compaction en pleine tâche.** Session de test « ServerBuilding » (MoE 35B-A3B, chat client/
+  serveur V1→V3) : à ~51K jetons la compaction s'est déclenchée seule en boucle d'outils, puis l'agent a REPRIS
+  automatiquement et continue de bien travailler. Les compactions passent par Claude Haiku (relais hôte).
+- **Modèle en service** : Huihui Ornith 1.5 35B-A3B abliterated Q4_K_M (llama.cpp, 128K, plan éprouvé).
+- **Prêt, NON déployé** (relance à faire au GO de Chris, l'agent travaille) : méthodes `~agent/methodes/`, commandes
+  `verifier` et `doc` dans l'atelier (image reconstruite), diagnostic des échecs web, points de reprise llama-server
+  (`--checkpoint-min-step 256` : fin des relectures de 10-14K jetons par tour), phase « Relit le contexte »,
+  `ecrire_fichiers` en texte brut (`=== FILE: … ===`), commandes `/compact` (tâche serveur, progression en direct,
+  survit au refresh) et `/clear` annulable, palette de commandes, correctifs menu « … » et écran sortant bloquant
+  la page Modèles. Relance : `docker compose restart echohub`, puis recharger le MoE (plan éprouvé).
+- **Reprise après compaction — ordre des opérations (au GO de Chris seulement, vérifier `curl :8081/slots` libre) :**
+  1. `cd frontend && bun run build` (le dist est servi en direct ; la synchro « lot D » doit être finie et verte).
+  2. `docker compose restart echohub` puis recharger le MoE : `POST /inference/plans-eprouves/<id>/charger`
+     (id = `mradermacher/Huihui-Ornith-1.5-35B-A3B-abliterated-i1-GGUF::Huihui-Ornith-1.5-35B-A3B-abliterated.i1-Q4_K_M.gguf`).
+  3. Vérifier en réel : journal `/data/user/journaux/llama-server.log` → `prompt eval` de quelques centaines de jetons
+     par tour (et non 10K) ; une écriture groupée de l'agent → fichiers intacts sur le disque (`verifier`) ;
+     `/compact` avec refresh au milieu ; `/clear` puis annulation.
+  4. Puis analyser la session « ServerBuilding » (UNIQUEMENT celle-là, conversation 513cba3d…) : pertes de temps,
+     boucles, échecs mal compris → corriger le harnais.
+- **Rien n'est commité** depuis dc7bb3b (atelier Wi-Fi, relais Haiku, méthodes, verifier/doc, diagnostic web, points
+  de reprise, commandes, /clear, interface). Commit au go de Chris, diff scanné (aucun identifiant d'infra).
+- **Plus tard** : vision du 9B sous vLLM (W4-LM8-VL prêt, jamais testé GPU) ; lint préexistant hors périmètre
+  (`generation.py` 695 lignes, `adaptateur_llama_server._client` sans try/except).
+
 ## EN COURS (2026-11-10, fin de journée) — à reprendre après compaction
 
 - **Modèle en service** : Ornith 1.5 9B huihui abliterated, W4A16 maison

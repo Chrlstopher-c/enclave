@@ -16,6 +16,7 @@ import { messageErreur } from '../api/client';
 import { lireBranche } from '../api/branches-api';
 import type { EtatBranche, MessageChat } from '../api/contrats';
 import { journal } from '../api/journal';
+import { fusionnerParId, memeContenu } from '../conversation/fusion-par-id';
 
 /*
  * Constante partagée et non un `{}` reconstruit à chaque rendu : cette valeur part dans un contexte
@@ -54,6 +55,37 @@ function charger(
     });
 }
 
+/* Relecture fusionnée : une vue identique garde son objet, et les messages inchangés gardent le leur. */
+function fusionnerVue(courant: EtatBranche | null, vue: EtatBranche): EtatBranche {
+  if (courant === null || courant.conversation_id !== vue.conversation_id) {
+    return vue;
+  }
+  if (memeContenu(courant, vue)) {
+    return courant;
+  }
+  return {
+    ...vue,
+    messages: fusionnerParId(courant.messages, vue.messages),
+    variantes: memeContenu(courant.variantes, vue.variantes) ? courant.variantes : vue.variantes,
+  };
+}
+
+async function relire(
+  conversationId: string | null,
+  poser: (vue: EtatBranche) => void,
+  signaler: (erreur: string) => void,
+): Promise<void> {
+  if (conversationId === null) {
+    return;
+  }
+  try {
+    poser(await lireBranche(conversationId));
+  } catch (cause) {
+    journal.erreur('vue de branche illisible', cause);
+    signaler(messageErreur(cause));
+  }
+}
+
 export function useVueBranche(conversationId: string | null): VueBranche {
   const [etat, setEtat] = useState<EtatBranche | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -61,7 +93,7 @@ export function useVueBranche(conversationId: string | null): VueBranche {
 
   const poser = useCallback((vue: EtatBranche): void => {
     if (attendue.current === vue.conversation_id) {
-      setEtat(vue);
+      setEtat((courant) => fusionnerVue(courant, vue));
       setErreur(null);
     }
   }, []);
@@ -78,17 +110,10 @@ export function useVueBranche(conversationId: string | null): VueBranche {
     return (): void => controle.abort();
   }, [conversationId, poser]);
 
-  const recharger = useCallback(async (): Promise<void> => {
-    if (conversationId === null) {
-      return;
-    }
-    try {
-      poser(await lireBranche(conversationId));
-    } catch (cause) {
-      journal.erreur('vue de branche illisible', cause);
-      setErreur(messageErreur(cause));
-    }
-  }, [conversationId, poser]);
+  const recharger = useCallback(
+    (): Promise<void> => relire(conversationId, poser, setErreur),
+    [conversationId, poser],
+  );
 
   const variantes = etat?.variantes ?? AUCUNE_VARIANTE;
   return { chemin: etat?.messages ?? null, variantes, erreur, recharger, poser };

@@ -29,7 +29,7 @@ from backend.core.politique_compaction import (
 )
 from backend.inference.engines_adapters import MessageChat, superviseur
 from backend.inference.fichiers_travail import selection, suivre
-from backend.inference.resume_compaction import produire_resume
+from backend.inference.resume_compaction import Suivi, produire_resume
 
 MARQUEUR_RESUME = "[RÉSUMÉ DU TRAVAIL DÉJÀ FAIT DANS CETTE TÂCHE — relu à la place des tours repliés]"
 # Sous-estimation volontaire du ratio caractères/token : on mesure pour de vrai un peu trop tôt plutôt
@@ -63,6 +63,8 @@ class EtatCompaction:
     # messages `user`, et « le dernier `user` » aurait gardé une consigne en repliant la vraie demande.
     demande: MessageChat | None = None
     projet: bool = False
+    # Rappel de progression du résumé (`SuiviActivite.suivre_compaction`), posé par la boucle ; None = silencieux.
+    suivi: Suivi | None = None
     # Consignes de l'utilisateur gardées mot pour mot d'une compaction à la suivante (plus anciennes d'abord).
     directives: list[str] = field(default_factory=list)
     # Définitions d'outils envoyées à chaque tour (~4K tokens) : comptées dans la mesure, comme par le moteur.
@@ -233,6 +235,7 @@ def _fichiers(messages: list[MessageChat], tete: int, debut: int, etat: EtatComp
 
 
 async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: int, taches: str) -> str | None:
+    suivi = etat.suivi
     assert etat.fenetre is not None
     tete = _tete(messages)
     demande = next((i for i, m in enumerate(messages) if m is etat.demande), None)
@@ -244,8 +247,10 @@ async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: i
         logger.info("Compaction de boucle : rien à replier sous la queue minimale.")
         return None
     plafond = RESUME_MAX_TOKENS
+    if suivi is not None:
+        await suivi({"etape": "preparation", "detail": f"{len(replies)} messages à résumer, ~{avant} jetons"})
     resume = await produire_resume(_materiau(replies, etat), _precedent(messages[tete:debut]), "", plafond,
-                                   projet=etat.projet)
+                                   projet=etat.projet, suivi=suivi)
     if resume is None:
         logger.warning("Résumé de boucle indisponible : la tâche continue sur le contexte courant.")
         return None
@@ -253,6 +258,8 @@ async def _compacter(messages: list[MessageChat], etat: EtatCompaction, avant: i
     corps = _corps(resume, taches, etat.directives, _fichiers(messages, tete, debut, etat))
     garde_demande = [messages[demande]] if demande is not None and demande < debut else []
     messages[:] = [*messages[:tete], MessageChat(role="system", content=corps), *garde_demande, *messages[debut:]]
+    if suivi is not None:
+        await suivi({"etape": "enregistrement"})
     logger.info("Compaction de boucle : {} messages repliés, ~{} tokens avant.", len(replies), avant)
     return f"\n\n*[Contexte compacté : {len(replies)} messages résumés ({avant} tokens avant).]*\n\n"
 

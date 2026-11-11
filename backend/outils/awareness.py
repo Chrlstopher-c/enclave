@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from loguru import logger
 
-from backend.agent import AWARENESS, AWARENESS_NOTES, attribuer, lire_texte, memoire, racine, skills
+from backend.agent import AWARENESS, AWARENESS_NOTES, attribuer, lire_texte, memoire, methodes, racine, skills
 from backend.outils.bac_a_sable import LIMITES_REELLES_TEXTE
 from backend.outils.contrat import DescriptionOutil
 from backend.outils.mcp_registre import serveurs_connus
@@ -58,6 +58,7 @@ def contenu(descriptions: Sequence[DescriptionOutil], projet_courant: str | None
     lignes = ["# AWARENESS — ce que l'agent EchoHub peut utiliser", "",
               "Régénéré automatiquement à chaque conversation. Ajouts manuels : `~agent/AWARENESS.notes.md`.", ""]
     lignes += _outils(descriptions) + _mcp(serveurs_mcp or serveurs_connus())
+    lignes += ["## Méthodes", ""] + [f"- {m.nom} — {m.description} ({m.chemin})" for m in methodes()] + [""]
     lignes += ["## Skills", ""] + [f"- {s.nom} — {s.description} ({s.chemin})" for s in skills()] + [""]
     souvenirs = memoire()
     lignes += ["## Mémoire", "", f"{len(souvenirs)} souvenir(s) dans `~agent/memoire/` (index dans le socle).", ""]

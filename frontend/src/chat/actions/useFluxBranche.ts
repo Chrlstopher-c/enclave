@@ -13,6 +13,7 @@ import { annulerGeneration } from '../api/conversations-api';
 import type { EvenementFlux } from '../api/contrats';
 import type { RappelsFlux } from '../api/flux-generation';
 import { journal } from '../api/journal';
+import type { ActiviteRecue } from '../conversation/useGeneration';
 
 /** Ouverture d'un flux déjà paramétré par l'appelant (route, message ciblé, corps). */
 export type Ouverture = (rappels: RappelsFlux, signal: AbortSignal) => Promise<void>;
@@ -20,6 +21,8 @@ export type Ouverture = (rappels: RappelsFlux, signal: AbortSignal) => Promise<v
 export interface FluxBranche {
   /** Texte reçu jusqu'ici pour la réponse en cours ; `null` hors génération. */
   brouillon: string | null;
+  /** Activité du moteur pendant un rejeu ou une édition (même carte que pour un envoi). */
+  activite: ActiviteRecue | null;
   genere: boolean;
   erreur: string | null;
   lancer: (ouvrir: Ouverture) => Promise<void>;
@@ -83,11 +86,16 @@ export function useFluxBranche(
   onTermine: () => Promise<void>,
 ): FluxBranche {
   const [brouillon, setBrouillon] = useState<string | null>(null);
+  const [activite, setActivite] = useState<ActiviteRecue | null>(null);
   const [genere, setGenere] = useState<boolean>(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const controleur = useRef<AbortController | null>(null);
 
   const traiter = useCallback((evenement: EvenementFlux): void => {
+    if (evenement.type === 'activite') {
+      setActivite({ activite: evenement.activite, recueMs: Date.now() });
+      return;
+    }
     appliquer(evenement, (fragment) => setBrouillon((texte) => (texte ?? '') + fragment), setErreur);
   }, []);
 
@@ -107,6 +115,7 @@ export function useFluxBranche(
         controleur.current = null;
         setGenere(false);
         setBrouillon(null);
+        setActivite(null);
         await onTermine();
       }
     },
@@ -125,5 +134,5 @@ export function useFluxBranche(
 
   useEffect((): (() => void) => (): void => controleur.current?.abort(), []);
 
-  return { brouillon, genere, erreur, lancer, annuler };
+  return { brouillon, activite, genere, erreur, lancer, annuler };
 }

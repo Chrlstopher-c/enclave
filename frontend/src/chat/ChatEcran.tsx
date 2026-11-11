@@ -115,7 +115,7 @@ function ColonneEchange(props: ColonneEchangeProps): ReactElement {
             messages={fil.messages ?? courante.messages}
             brouillon={fil.brouillon ?? courante.brouillon}
             compactionEnCours={courante.compactionEnCours}
-            activite={courante.activite}
+            activite={fil.activite ?? courante.activite}
             vide={<FilVide cible={cible} />}
           />
         </FournisseurAtelier>

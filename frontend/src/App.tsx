@@ -1,6 +1,6 @@
 import { Component, useCallback, useEffect, useState } from 'react';
 import type { ErrorInfo, ReactElement, ReactNode } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, usePresence } from 'framer-motion';
 
 import { ChatEcran } from './chat';
 import { useCible } from './cible';
@@ -306,6 +306,42 @@ interface EtatFrontiere {
  * plutôt que chaque écran, pour couvrir aussi les effets de layout de framer-motion, qui sont au-
  * dessus des écrans.
  */
+// Au-delà, une sortie d'écran est tenue pour bloquée et l'écran est retiré quand même (fondu prévu : ~120 ms).
+const SORTIE_MAX_MS = 400;
+
+/*
+ * Un écran dans la cellule partagée. Constaté le 2026-11-11 : quitter le chat pendant une génération pouvait laisser
+ * sa sortie inachevée ; l'écran restait monté, invisible (opacité 0) mais AU-DESSUS du suivant, et captait tous les
+ * clics — page Modèles inutilisable jusqu'au rechargement. Ici, dès que l'écran sort, il ne reçoit plus aucun
+ * événement et passe dessous (c'est ce qui rend la page suivante utilisable quoi qu'il arrive) ; sa part de la
+ * sortie est en plus déclarée finie après `SORTIE_MAX_MS`, pour ne pas dépendre de la seule animation.
+ */
+function EcranAnime({ children }: { children: ReactNode }): ReactElement {
+  const [present, retirer] = usePresence();
+  useEffect((): (() => void) | undefined => {
+    if (present) {
+      return undefined;
+    }
+    const minuterie = window.setTimeout((): void => retirer(), SORTIE_MAX_MS);
+    return (): void => window.clearTimeout(minuterie);
+  }, [present, retirer]);
+  return (
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      aria-hidden={!present}
+      className={cn(
+        'col-start-1 row-start-1 h-full min-h-0 overflow-y-auto',
+        present ? 'relative z-[1]' : 'pointer-events-none relative z-0',
+      )}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 class FrontiereErreur extends Component<FrontiereProps, EtatFrontiere> {
   constructor(props: FrontiereProps) {
     super(props);
@@ -431,16 +467,7 @@ export function App(): ReactElement {
       <main className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1">
         <FrontiereErreur ecran={ecran}>
           <AnimatePresence initial={false}>
-            <motion.div
-              key={ecran}
-              variants={fadeUp}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="col-start-1 row-start-1 h-full min-h-0 overflow-y-auto"
-            >
-              {rendreEcran()}
-            </motion.div>
+            <EcranAnime key={ecran}>{rendreEcran()}</EcranAnime>
           </AnimatePresence>
         </FrontiereErreur>
       </main>

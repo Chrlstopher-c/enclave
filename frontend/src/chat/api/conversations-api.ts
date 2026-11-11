@@ -5,7 +5,6 @@
 
 import { deleteJson, getJson, patchJson, postJson } from './client';
 import type {
-  InfoCompaction,
   ConversationDetaillee,
   MajReglages,
   MessageChat,
@@ -52,9 +51,4 @@ export function annulerGeneration(id: string): Promise<{ annulee: boolean }> {
 /** Message glissé pendant le travail de l'agent. `acceptee: false` : aucune génération, l'envoyer normalement. */
 export function glisserConsigne(id: string, consigneId: string, texte: string): Promise<{ acceptee: boolean }> {
   return postJson<{ acceptee: boolean }>(`${RACINE}/${id}/consignes`, { id: consigneId, texte });
-}
-
-/** Compaction manuelle (`/compact [instructions]`) de la branche affichée. */
-export function compacterConversation(id: string, instructions: string): Promise<InfoCompaction> {
-  return postJson<InfoCompaction>(`${RACINE}/${id}/compacter`, { instructions });
 }

@@ -13,6 +13,8 @@ Ce que ce fichier prouve, dans l'ordre :
 
 from __future__ import annotations
 
+import backend.inference.engines_adapters.images_moteur as images_moteur
+
 import asyncio
 import base64
 import importlib.util
@@ -122,7 +124,7 @@ def test_encoder_data_uri_produit_un_data_uri_valide(tmp_path: Path) -> None:
     octets = b"\x89PNG\r\n\x1a\nfaux-contenu-png"
     fichier.write_bytes(octets)
 
-    uri = module_llama_cpp._encoder_data_uri(str(fichier), "image/png")
+    uri = images_moteur._encoder_data_uri(str(fichier), "image/png")
 
     assert uri is not None
     assert uri.startswith("data:image/png;base64,")
@@ -132,7 +134,7 @@ def test_encoder_data_uri_produit_un_data_uri_valide(tmp_path: Path) -> None:
 
 def test_encoder_data_uri_sur_fichier_absent_rend_none_sans_lever(tmp_path: Path) -> None:
     absent = tmp_path / "n_existe_pas.png"
-    assert module_llama_cpp._encoder_data_uri(str(absent), "image/png") is None
+    assert images_moteur._encoder_data_uri(str(absent), "image/png") is None
 
 
 def test_messages_pour_moteur_laisse_un_contenu_texte_inchange() -> None:

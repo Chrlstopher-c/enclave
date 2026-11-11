@@ -77,7 +77,7 @@ def test_mode_projet_reste_qui_depend_de_l_utilisateur_termine() -> None:
 
 def test_mode_projet_pause_apres_un_appel_echoue_est_relancee() -> None:
     etat = harnais.EtatBoucle(harnais=harnais.FORGE, outils_declares=None, mode_projet=True)
-    etat.echecs_vus.add("lire_fichier:todo-final/main.py")
+    etat.echecs_vus["lire_fichier:todo-final/main.py"] = "échec"
     pause = "Les fichiers sont dans le bac mais pas à l'endroit supposé. Laissez-moi les retrouver."
     assert harnais.consigne_de_relance(pause, etat, avec_outils=True) is not None
 

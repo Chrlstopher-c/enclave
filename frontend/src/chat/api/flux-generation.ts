@@ -25,6 +25,8 @@ const PREFIXE_DONNEES = 'data:';
 
 export interface RappelsFlux {
   onEvenement: (evenement: EvenementFlux) => void;
+  /** Appelé à chaque morceau reçu, trame complète ou non : preuve que la connexion vit encore. */
+  onOctet?: () => void;
 }
 
 function extraireCharge(trame: string): string | null {
@@ -70,6 +72,7 @@ async function drainer(corps: ReadableStream<Uint8Array>, rappels: RappelsFlux):
         consommerTrames(`${tampon}${SEPARATEUR_TRAME}`, rappels);
         return;
       }
+      rappels.onOctet?.();
       tampon = consommerTrames(tampon + decodeur.decode(value, { stream: true }), rappels);
     }
     journal.avertissement('flux de génération interrompu : borne de lectures atteinte');
